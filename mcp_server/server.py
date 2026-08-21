@@ -47,10 +47,14 @@ CONTEXT_TIMEFRAMES = ["1h", DAILY]
 server = MCPServer(
     name="claude-chart-bot",
     instructions=(
-        "Liefert Marktdaten-Snapshots fuer CME-Futures (MNQ, MGC und weitere) "
-        "aus Tradovate. Alle Werte sind berechnete Kennzahlen mit Einheiten - "
-        "der Server interpretiert nicht. Abstaende zu Preisniveaus stehen "
-        "immer in Punkten UND in ATR-Vielfachen; nur letztere sind zwischen "
+        "Liefert Marktdaten-Snapshots fuer CME-Futures aus NinjaTrader 8. "
+        "Die Kerzen kommen ueber den lokalen ntbridge-Empfaenger in eine "
+        "SQLite-Datei; der Server liest nur daraus. Laeuft der Empfaenger "
+        "nicht oder ist in NinjaTrader kein Chart offen, sind die Daten "
+        "veraltet - das steht dann im Block 'datenherkunft'. "
+        "Alle Werte sind berechnete Kennzahlen mit Einheiten - der Server "
+        "interpretiert nicht. Abstaende zu Preisniveaus stehen immer in "
+        "Punkten UND in ATR-Vielfachen; nur letztere sind zwischen "
         "Instrumenten vergleichbar."
     ),
 )
@@ -83,8 +87,10 @@ def _normalise_timeframes(requested: list[str] | None) -> list[str]:
         "(RSI mit Divergenz, MACD, Stochastik, EMA-Stack, ADX), Volatilitaet "
         "(ATR, Bollinger mit Squeeze), Volumen (VWAP mit Sigma-Baendern, "
         "kumulatives Delta) und erkannte Muster mit Konfidenz. "
-        "Standardmaessig MNQ; MGC und weitere Instrumente werden on-demand "
-        "nachgeladen."
+        "Standardmaessig MNQ. Ein anderes Symbol ist nur abrufbar, wenn in "
+        "NinjaTrader ein Chart mit der ClaudeBridge dafuer laeuft - es wird "
+        "NICHT on-demand nachgeladen. Kumulatives Delta bleibt null: dafuer "
+        "braeuchte es das kostenpflichtige NT8-Add-on 'Order Flow +'."
     ),
 )
 async def get_market_snapshot(
@@ -193,8 +199,12 @@ async def list_instruments() -> dict[str, Any]:
         "instrumente": [
             instrument.describe_contract() for instrument in all_instruments()
         ],
-        "hinweis": "Der Live-Bot streamt MNQ. Andere Instrumente werden fuer "
-                   "den Snapshot on-demand nachgeladen.",
+        "hinweis": "Registrierte Kontraktspezifikationen - NICHT gleichbedeutend "
+                   "mit verfuegbaren Daten. Abrufbar ist ein Instrument nur, "
+                   "wenn in NinjaTrader ein Chart mit der ClaudeBridge dafuer "
+                   "laeuft. Derzeit ist das MNQ. Welche Daten tatsaechlich "
+                   "vorliegen, zeigt get_market_snapshot im Block "
+                   "'datenherkunft'.",
     }
 
 

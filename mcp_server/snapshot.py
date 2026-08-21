@@ -238,8 +238,11 @@ def _volume_block(
             "kumulativ": None,
             "letzte_kerze": None,
             "verfuegbar": False,
-            "reason": "Tradovate liefert fuer dieses Abo kein bidVolume/offerVolume. "
-                      "Es wird bewusst nichts aus Auf-/Abwaertskerzen geschaetzt.",
+            "reason": "NinjaTrader liefert Bid-/Ask-Volumen je Kerze nur mit dem "
+                      "kostenpflichtigen Add-on 'Order Flow +'. Das ist nicht "
+                      "lizenziert, deshalb bleibt das Delta dauerhaft null. "
+                      "Es wird bewusst nichts aus Auf-/Abwaertskerzen geschaetzt - "
+                      "eine Schaetzung saehe aus wie eine Messung und waere keine.",
         }
     else:
         bar_delta = float(enriched["ask_volume"].iloc[-1] - enriched["bid_volume"].iloc[-1])

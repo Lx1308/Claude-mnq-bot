@@ -1,18 +1,23 @@
 """Bar-Beschaffung fuer den MCP-Server.
 
-Die Schnittstelle :class:`BarSource` ist bewusst so geschnitten, dass ein
-spaeterer lokaler Bar-Cache **ohne Umbau** dahinterpasst: er implementiert
-dieselbe Methode, beantwortet Treffer aus der Datei und delegiert Fehltreffer
-an :class:`TradovateBarSource`.
+AKTIV IST :class:`NTBridgeBarSource`.
+Sie liest die Kerzen aus der SQLite-Datei, die der ntbridge-Empfaenger mit
+den Daten aus NinjaTrader fuellt. Kein Netzaufruf, kein Login.
 
-Warum ein Aufruf je Timeframe statt Hochsampeln aus 1m
-------------------------------------------------------
+:class:`TradovateBarSource` ist **Altlast** und wird vom Zielsystem nicht
+mehr verwendet. Tradovate wurde als Datenquelle verworfen: es verlangt ein
+Live-Konto mit Mindesteinlage plus ein kostenpflichtiges API-Add-on. Die
+Klasse steht noch hier, weil sie die Schnittstelle dokumentiert, an der sich
+die Abloesung bewaehrt hat - beide erfuellen dasselbe ``load()``-Protokoll,
+weshalb ``snapshot.py`` beim Wechsel strukturell unveraendert blieb.
+
+Warum ein Satz Bars je Timeframe statt Hochsampeln aus 1m
+---------------------------------------------------------
 Ein EMA200 auf dem Stundenchart braucht 200 Stundenkerzen, also 12.000
-Minutenkerzen - deutlich mehr, als ``md/getChart`` in einer Antwort liefert.
-Wer aus zu wenig 1m-Daten hochsampelt, bekommt eine EMA200, die auf halber
-Strecke abbricht und trotzdem wie ein Wert aussieht. Deshalb holt jeder
-Timeframe seine eigenen Bars mit eigener Warmlaufphase - alle ueber
-**dieselbe** WebSocket-Verbindung.
+Minutenkerzen. Wer aus zu wenig 1m-Daten hochsampelt, bekommt eine EMA200,
+die auf halber Strecke abbricht und trotzdem wie ein Wert aussieht. Deshalb
+liefert NinjaTrader jeden Timeframe als eigene Datenserie, und jeder bringt
+seine eigene Warmlaufphase mit.
 """
 
 from __future__ import annotations

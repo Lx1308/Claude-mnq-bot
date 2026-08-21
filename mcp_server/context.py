@@ -1,10 +1,19 @@
 """Langlebiger Zustand des MCP-Servers.
 
-Der Server laeuft als Dauerprozess unter Claude Desktop. Tradovate-Login und
-Kontraktaufloesung duerfen deshalb **nicht** je Werkzeugaufruf passieren -
-Tradovate drosselt haeufige Logins, und die Kontraktaufloesung kostet einen
-zusaetzlichen REST-Roundtrip. Beides wird hier einmal aufgebaut und danach
-wiederverwendet.
+Der Server laeuft als Dauerprozess unter Claude Desktop. Der Kerzenspeicher
+wird deshalb **einmal** beim ersten Werkzeugaufruf geoeffnet und danach
+wiederverwendet, statt je Aufruf eine neue SQLite-Verbindung aufzubauen.
+
+Es gibt hier **keinen Broker-Login und keine Zugangsdaten**. Die Kerzen
+liefert NinjaTrader ueber den ntbridge-Empfaenger in eine SQLite-Datei; der
+Server liest ausschliesslich daraus.
+
+Historischer Hinweis: Frueher stand hier ein Tradovate-Login mit
+Kontraktaufloesung, der wegen Tradovates Drosselung nicht je Aufruf
+passieren durfte. Diese Datenquelle wurde verworfen (sie verlangt ein
+Live-Konto mit Mindesteinlage plus kostenpflichtiges API-Add-on). Die
+Entscheidung, den Zustand einmal aufzubauen, ist geblieben - die
+urspruengliche Begruendung gilt so aber nicht mehr.
 """
 
 from __future__ import annotations
@@ -34,7 +43,7 @@ DEFAULT_ENV_PATH = PROJECT_ROOT / ".env"
 
 
 class ServerContext:
-    """Haelt Konfiguration, Tradovate-Verbindung und Bar-Quelle."""
+    """Haelt Konfiguration, Kerzenspeicher und Kalenderdienst."""
 
     def __init__(
         self,
@@ -124,7 +133,7 @@ class ServerContext:
     # -- Wirtschaftskalender ----------------------------------------------
 
     def calendar(self) -> CalendarService:
-        """Kalenderdienst - braucht keine Tradovate-Verbindung."""
+        """Kalenderdienst - unabhaengig vom Kerzenspeicher."""
         if self._calendar is None:
             config, secrets = self.config, self.secrets
             settings = CalendarSettings(
