@@ -1,0 +1,18 @@
+# --- Kern ---
+mcp>=2.0.0                 # MCP-Server fuer Claude Desktop (stdio-Transport)
+anthropic>=0.40.0          # Claude API (nur Live-Bot, NICHT im MCP-Pfad)
+httpx>=0.27.0              # REST (Tradovate, Telegram)
+websockets>=12.0           # Tradovate Market-Data WebSocket
+PyYAML>=6.0                # config.yaml
+python-dotenv>=1.0.0       # .env laden
+
+# --- Analyse / Backtesting ---
+pandas>=2.1.0
+numpy>=1.26.0
+
+# --- Reporting (Backtest-Vergleich) ---
+tabulate>=0.9.0
+matplotlib>=3.8.0
+
+# --- Tests ---
+pytest>=8.0.0

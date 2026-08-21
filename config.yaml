@@ -1,0 +1,308 @@
+# ===========================================================================
+# Claude Chart Bot - Konfiguration
+# ===========================================================================
+# Alle Schwellenwerte sind hier konfigurierbar. Secrets stehen ausschliesslich
+# in der .env (siehe .env.example) und tauchen in dieser Datei nicht auf.
+# ===========================================================================
+
+# ---------------------------------------------------------------------------
+# Tradovate-Verbindung
+# ---------------------------------------------------------------------------
+tradovate:
+  # "demo" oder "live". Wird von TRADOVATE_ENV aus der .env ueberschrieben,
+  # falls dort gesetzt.
+  environment: demo
+
+  # Sicherheitsschalter: Solange false, verweigert der Bot jeden Start gegen
+  # die Live-Umgebung - selbst wenn TRADOVATE_ENV=live gesetzt ist.
+  # Zusaetzlich ist beim Start das CLI-Flag --i-know-this-is-live noetig.
+  allow_live_environment: false
+
+  # Access-Token wird so viele Sekunden VOR Ablauf erneuert.
+  token_refresh_margin_seconds: 300
+
+  # REST-Timeouts / Retries
+  request_timeout_seconds: 20
+  max_retries: 3
+
+  websocket:
+    # Heartbeat-Intervall des Tradovate-Protokolls (Server erwartet ~2.5s).
+    heartbeat_interval_seconds: 2.5
+    # Exponentieller Backoff fuer Reconnects.
+    reconnect_initial_delay_seconds: 2
+    reconnect_max_delay_seconds: 120
+    reconnect_backoff_factor: 2.0
+    # Wenn so lange kein einziger Tick/Frame ankommt, gilt die Verbindung als
+    # tot und wird aktiv neu aufgebaut (Schutz gegen "stilles Einfrieren").
+    stale_data_timeout_seconds: 90
+
+# ---------------------------------------------------------------------------
+# Markt / Instrument
+# ---------------------------------------------------------------------------
+market:
+  # Produkt-Symbol (Root). Der Frontmonat-Kontrakt wird beim Start automatisch
+  # ueber die Tradovate-Contract-API ermittelt (z.B. MNQ -> MNQZ5).
+  # Der Live-Bot streamt genau EIN Symbol; die Ideen-Protokollierung laeuft
+  # ausschliesslich darauf. Andere Instrumente holt der MCP-Server on-demand.
+  product: MNQ
+
+  # Optional: expliziten Kontrakt erzwingen statt Auto-Frontmonat, z.B. "NQZ5".
+  # Leer lassen (null) fuer Automatik.
+  contract_override: null
+
+  # Kerzengroesse in Minuten (1 oder 5 sind sinnvoll fuer NQ-Intraday).
+  candle_interval_minutes: 1
+
+  # Wie viele geschlossene Kerzen im rollierenden Puffer gehalten werden.
+  #
+  # WICHTIG: Vortageshoch/-tief brauchen die komplette Vorsession PLUS die
+  # laufende Session. Eine CME-Globex-Session dauert 23 Stunden, also
+  # 2 * 23 * 60 = 2760 Ein-Minuten-Kerzen. Ist der Puffer kleiner, bleiben
+  # die Vortagesmarken leer und die Alarme prev_day_high_cross /
+  # prev_day_low_cross loesen nie aus. Der Bot prueft das beim Start und
+  # verweigert dann den Dienst, statt still nichts zu melden.
+  # Bei 5-Minuten-Kerzen genuegen entsprechend 552 (-> z.B. 700).
+  candle_buffer_size: 3000
+
+  # Beim Start werden so viele historische Kerzen nachgeladen, damit die
+  # Indikatoren - und die Vortagesmarken - sofort belastbar sind.
+  warmup_bars: 2880
+
+  # Kontraktspezifikation (fuer Backtest-P&L und Alarm-Kontext).
+  # MUSS zum Eintrag in common/instruments.py passen - Config.validate()
+  # prueft das beim Start und bricht sonst mit klarer Meldung ab. Sonst
+  # waeren saemtliche USD-Angaben um den Faktor zwischen Mini und Micro
+  # daneben, ohne dass es irgendwo auffiele.
+  #   MNQ = 0.25 / 2.0    (Tick 0.50 USD)
+  #   NQ  = 0.25 / 20.0   (Tick 5.00 USD)
+  #   MGC = 0.10 / 10.0   (Tick 1.00 USD)
+  tick_size: 0.25
+  point_value: 2.0
+
+  session:
+    # Zeitzone der Boersensession.
+    timezone: America/New_York
+    # CME-Globex-Sessionstart. Alles ab dieser Uhrzeit zaehlt zum
+    # Handelstag des Folgetages (Standard fuer Index-Futures).
+    start_time: "18:00"
+    # Sessionende (nur informativ / fuer Reports).
+    end_time: "17:00"
+
+# ---------------------------------------------------------------------------
+# Indikatoren
+# ---------------------------------------------------------------------------
+indicators:
+  rsi_period: 14
+  sma_fast: 20
+  sma_slow: 50
+  atr_period: 14
+
+  # Konsolidierungs-/Flaggen-Heuristik.
+  # Idee: kraeftige Bewegung (Impuls), danach enge Range (Flagge),
+  # dann Ausbruch aus der Range in Impulsrichtung.
+  flag:
+    # Anzahl Kerzen, ueber die der vorausgehende Impuls gemessen wird.
+    impulse_lookback: 20
+    # Impuls muss mindestens so viele ATR gross sein.
+    impulse_min_atr: 2.5
+    # Anzahl Kerzen der Konsolidierungsphase.
+    consolidation_lookback: 10
+    # Range der Konsolidierung darf hoechstens so viele ATR betragen.
+    consolidation_max_atr: 1.2
+    # Ausbruch zaehlt erst ab diesem Puffer (in ATR) ueber/unter der Range.
+    breakout_buffer_atr: 0.1
+
+# ---------------------------------------------------------------------------
+# Alarm-Bedingungen
+# ---------------------------------------------------------------------------
+alerts:
+  # Globaler Cooldown-Fallback in Minuten, falls eine Bedingung keinen
+  # eigenen Wert definiert.
+  default_cooldown_minutes: 30
+
+  # Maximale Anzahl Alarme pro Handelstag (Schutz gegen Alarm-Fluten
+  # und gegen ungewollte Claude-API-Kosten). 0 = unbegrenzt.
+  max_alerts_per_session: 20
+
+  conditions:
+    prev_day_high_cross:
+      enabled: true
+      cooldown_minutes: 45
+      # Kurs muss das Vortageshoch um mindestens so viele Ticks ueberschreiten,
+      # damit ein Tick-Rauschen keinen Alarm ausloest.
+      buffer_ticks: 4
+
+    prev_day_low_cross:
+      enabled: true
+      cooldown_minutes: 45
+      buffer_ticks: 4
+
+    rsi_exit_overbought:
+      enabled: true
+      cooldown_minutes: 30
+      # Alarm, wenn RSI von >= level wieder darunter faellt.
+      level: 70
+
+    rsi_exit_oversold:
+      enabled: true
+      cooldown_minutes: 30
+      # Alarm, wenn RSI von <= level wieder darueber steigt.
+      level: 30
+
+    flag_breakout:
+      enabled: true
+      cooldown_minutes: 60
+
+# ---------------------------------------------------------------------------
+# Claude / Anthropic
+# ---------------------------------------------------------------------------
+claude:
+  model: claude-sonnet-5
+  # max_tokens deckelt Denk- UND Antworttokens zusammen. Claude Sonnet 5 denkt
+  # standardmaessig adaptiv - deshalb hier bewusst Luft lassen, sonst wird die
+  # Antwort mittendrin abgeschnitten (stop_reason "max_tokens").
+  max_tokens: 2000
+  # Anthropic-SDK: Timeout in Sekunden, Retries werden vom SDK selbst
+  # mit exponentiellem Backoff abgewickelt.
+  timeout_seconds: 45
+  max_retries: 2
+  # "low" | "medium" | "high" | "xhigh" | "max"
+  # Fuer eine kurze, sachliche Szenario-Beschreibung reicht "low" - das spart
+  # Tokens und Latenz.
+  effort: low
+
+  # Der On-Demand-Bericht (/analyse) ist deutlich umfangreicher als ein
+  # Alarm-Kommentar und bekommt deshalb eigene Werte.
+  report_max_tokens: 4000
+  report_effort: medium
+
+# ---------------------------------------------------------------------------
+# On-Demand-Bericht (Telegram-Befehl /analyse)
+# ---------------------------------------------------------------------------
+on_demand:
+  enabled: true
+
+  # Telegram-Long-Polling: der Bot fragt getUpdates mit diesem Timeout ab.
+  # Solange keine Nachricht kommt, haelt Telegram die Verbindung offen -
+  # das erzeugt keine Last und liefert trotzdem sofort.
+  long_poll_timeout_seconds: 25
+  # Pause nach einem Fehler, bevor erneut abgefragt wird.
+  poll_retry_delay_seconds: 5
+
+  # Rate-Limiting. Jeder Bericht ist genau ein Claude-Aufruf mit deutlich
+  # mehr Tokens als ein Alarm - diese beiden Werte deckeln die Kosten.
+  cooldown_seconds: 60
+  max_reports_per_day: 50
+
+  # Erlaubt "/analyse ES" zusaetzlich zum laufenden Symbol. Fuer ein anderes
+  # Symbol wird der Frontmonat aufgeloest und Historie nachgeladen.
+  allow_symbol_override: true
+  # Wie viele Kerzen dafuer geholt werden (nur bei abweichendem Symbol).
+  history_bars: 400
+
+  # Swing-Erkennung fuer Unterstuetzung/Widerstand
+  swing_strength: 3          # Kerzen links/rechts, die ein Extrem bestaetigen
+  swing_lookback: 120        # Fenster, in dem nach Swings gesucht wird
+  max_zones: 3               # maximale Anzahl Zonen je Seite
+  zone_merge_atr: 0.5        # Swings naeher als X*ATR werden zusammengefasst
+
+  # Trend-Einschaetzung
+  trend_slope_lookback: 10        # ueber wie viele Kerzen die SMA20-Steigung misst
+  trend_flat_threshold_atr: 0.02  # darunter gilt die Steigung als flach
+
+# ---------------------------------------------------------------------------
+# NinjaTrader-Bruecke (Datenquelle)
+# ---------------------------------------------------------------------------
+# Der Indikator ClaudeBridge.cs schickt abgeschlossene Kerzen hierher.
+# Dieser SQLite-Speicher ist zugleich der Bar-Cache: er waechst im Betrieb
+# und schaltet damit nach und nach die Felder unter "historienabhaengig"
+# im Snapshot frei.
+ntbridge:
+  enabled: true
+
+  # NUR lokal gebunden. Von aussen nicht erreichbar, auch nicht im LAN.
+  host: "127.0.0.1"
+  port: 8787
+
+  database: "data/ntbridge.sqlite3"
+
+  # Juengster Bar aelter als stale_factor * Bar-Laenge -> im Snapshot als
+  # veraltet markiert. Waehrend der Handelszeit heisst das fast immer:
+  # NinjaTrader laeuft nicht oder das Chart wurde geschlossen.
+  stale_factor: 2.0
+
+  # Nur noetig, wenn NinjaTrader/Lucid abweichende Instrumentnamen liefert.
+  # Beispiel:  symbol_map: { "MNQ": "MNQ" }
+  symbol_map: {}
+
+# ---------------------------------------------------------------------------
+# Wirtschaftskalender (MCP-Tool get_event_risk)
+# ---------------------------------------------------------------------------
+event_risk:
+  enabled: true
+
+  # Nur diese Waehrungen und Impact-Stufen werden beruecksichtigt.
+  currencies: ["USD"]
+  impacts: ["High"]
+
+  # Blackout-Fenster um einen hochwirksamen Termin herum.
+  blackout_minutes_before: 15
+  blackout_minutes_after: 15
+
+  # Caching. Termine aendern sich nicht im Minutentakt, FRED noch seltener.
+  schedule_cache_minutes: 30
+  actual_cache_hours: 6
+
+  upcoming_limit: 8
+
+  # Terminliste: Forex Factory (inoffizieller Wochenfeed, kein Key noetig).
+  # Liefert Impact, Minutengenauigkeit, Forecast und Previous - aber KEIN
+  # Actual. Die tatsaechlichen Werte kommen aus FRED (FRED_API_KEY in .env).
+  forex_factory_url: "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+
+# ---------------------------------------------------------------------------
+# Benachrichtigung
+# ---------------------------------------------------------------------------
+notify:
+  # true = Telegram nutzen, wenn Token+Chat-ID in der .env stehen.
+  # Fehlen sie oder schlaegt der Versand fehl, wird IMMER auf Konsole/Log
+  # zurueckgefallen - der Bot verliert also nie einen Alarm.
+  telegram_enabled: true
+  telegram_timeout_seconds: 15
+
+# ---------------------------------------------------------------------------
+# Logging
+# ---------------------------------------------------------------------------
+logging:
+  level: INFO
+  directory: logs
+  # Menschenlesbares Log
+  text_file: bot.log
+  # Strukturiertes Log (eine JSON-Zeile pro Event) - fuer spaetere Auswertung
+  json_file: events.jsonl
+  max_bytes: 10485760   # 10 MB
+  backup_count: 5
+  console: true
+
+# ---------------------------------------------------------------------------
+# Backtesting
+# ---------------------------------------------------------------------------
+backtest:
+  # Datenquelle: "csv" oder "tradovate"
+  provider: csv
+  csv:
+    directory: data
+  output_directory: backtest_results
+
+  # Kostenannahmen pro Trade-Seite (Round-Turn = 2x)
+  commission_per_side: 2.50      # USD
+  slippage_ticks_per_side: 1.0   # in Ticks
+
+  # In-Sample / Out-of-Sample Aufteilung.
+  # Optimieren ist NUR auf in_sample erlaubt; das Framework verweigert
+  # Parametersuchen auf dem Out-of-Sample-Zeitraum.
+  split:
+    mode: fraction        # "fraction" oder "date"
+    in_sample_fraction: 0.7
+    # Nur bei mode: date relevant (ISO-Datum, exklusiv fuer OOS-Start)
+    split_date: null

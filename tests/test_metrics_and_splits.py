@@ -1,0 +1,209 @@
+"""Tests der Kennzahlen und der In-Sample/Out-of-Sample-Trennung."""
+
+from __future__ import annotations
+
+import math
+from datetime import datetime, timezone
+
+import pandas as pd
+import pytest
+
+from backtest.engine import LONG, SHORT, BacktestResult, Trade
+from backtest.metrics import compute_metrics, max_consecutive_losses, max_drawdown
+from backtest.splits import OutOfSampleViolation, assert_in_sample_only, split_data, walk_forward_windows
+from common.config import SplitConfig
+from tests.conftest import make_ohlcv
+
+
+def make_trade(pnl: float, *, index: int = 0, bars: int = 10) -> Trade:
+    base = datetime(2025, 1, 2, 15, 0, tzinfo=timezone.utc)
+    return Trade(
+        direction=LONG if pnl >= 0 else SHORT,
+        entry_time=base,
+        entry_price=100.0,
+        exit_time=base,
+        exit_price=100.0 + pnl,
+        bars_held=bars,
+        exit_reason="signal",
+        gross_points=pnl,
+        commission=0.0,
+        pnl=pnl,
+    )
+
+
+def make_result(pnls: list[float]) -> BacktestResult:
+    index = pd.date_range("2025-01-02", periods=max(len(pnls), 2), freq="1D", tz="UTC")
+    equity = pd.Series(
+        pd.Series(pnls).cumsum().reindex(range(len(index))).ffill().fillna(0.0).values,
+        index=index,
+    )
+    return BacktestResult(
+        strategy_name="test",
+        strategy_description="test",
+        trades=[make_trade(pnl, index=i) for i, pnl in enumerate(pnls)],
+        equity=equity,
+        bars=len(index),
+        label="test",
+    )
+
+
+# ---------------------------------------------------------------------------
+# Kennzahlen
+# ---------------------------------------------------------------------------
+
+def test_trefferquote_und_profitfaktor():
+    metrics = compute_metrics(make_result([100.0, -50.0, 100.0, -50.0]))
+
+    assert metrics.trades == 4
+    assert metrics.wins == 2
+    assert metrics.losses == 2
+    assert metrics.win_rate == pytest.approx(0.5)
+    assert metrics.profit_factor == pytest.approx(2.0)   # 200 / 100
+    assert metrics.total_pnl == pytest.approx(100.0)
+    assert metrics.avg_win == pytest.approx(100.0)
+    assert metrics.avg_loss == pytest.approx(-50.0)
+
+
+def test_profitfaktor_ist_unendlich_ohne_verluste():
+    metrics = compute_metrics(make_result([10.0, 20.0, 30.0]))
+    assert math.isinf(metrics.profit_factor)
+
+
+def test_profitfaktor_ist_null_ohne_trades():
+    metrics = compute_metrics(make_result([]))
+    assert metrics.profit_factor == 0.0
+    assert metrics.trades == 0
+    assert metrics.win_rate == 0.0
+
+
+def test_max_drawdown_findet_den_groessten_rueckgang():
+    equity = pd.Series(
+        [0.0, 100.0, 250.0, 120.0, 180.0, 60.0, 300.0],
+        index=pd.date_range("2025-01-02", periods=7, freq="1D", tz="UTC"),
+    )
+    absolute, relative = max_drawdown(equity)
+
+    # Hoch 250 -> Tief 60 = 190
+    assert absolute == pytest.approx(190.0)
+    assert relative == pytest.approx(190.0 / 250.0)
+
+
+def test_max_drawdown_bei_leerer_kurve():
+    absolute, relative = max_drawdown(pd.Series(dtype=float))
+    assert absolute == 0.0
+    assert relative is None
+
+
+def test_laengste_verluststraehne():
+    assert max_consecutive_losses([1.0, -1.0, -1.0, -1.0, 1.0, -1.0]) == 3
+    assert max_consecutive_losses([1.0, 2.0]) == 0
+    assert max_consecutive_losses([]) == 0
+
+
+def test_sharpe_ist_none_bei_zu_wenigen_handelstagen():
+    metrics = compute_metrics(make_result([100.0]))
+    assert metrics.sharpe_pnl is None
+
+
+def test_sharpe_auf_kapital_wird_nur_mit_kapitalangabe_berechnet():
+    result = make_result([100.0, -40.0, 60.0, -20.0, 80.0])
+    ohne = compute_metrics(result)
+    mit = compute_metrics(result, initial_capital=50_000.0)
+
+    assert ohne.sharpe_on_capital is None
+    assert mit.sharpe_on_capital is not None
+
+
+# ---------------------------------------------------------------------------
+# In-Sample / Out-of-Sample
+# ---------------------------------------------------------------------------
+
+def test_split_nach_anteil_teilt_chronologisch():
+    frame = make_ohlcv(list(range(100)))
+    split = split_data(frame, SplitConfig(mode="fraction", in_sample_fraction=0.7))
+
+    assert len(split.in_sample) == 70
+    assert len(split.out_of_sample) == 30
+    # Keine Ueberschneidung, keine Luecke.
+    assert split.in_sample.index.max() < split.out_of_sample.index.min()
+    assert len(split.in_sample) + len(split.out_of_sample) == len(frame)
+
+
+def test_split_nach_datum():
+    frame = make_ohlcv(list(range(200)), start="2025-01-02 00:00", freq="1h")
+    boundary = frame.index[120].isoformat()
+    split = split_data(frame, SplitConfig(mode="date", split_date=boundary))
+
+    assert split.out_of_sample.index[0] == frame.index[120]
+    assert len(split.in_sample) == 120
+
+
+def test_split_wirft_bei_leerem_teil():
+    frame = make_ohlcv(list(range(10)))
+    with pytest.raises(ValueError, match="leeren Teil"):
+        split_data(frame, SplitConfig(mode="date", split_date="2099-01-01"))
+
+
+def test_optimierung_auf_out_of_sample_wird_verhindert():
+    frame = make_ohlcv(list(range(100)))
+    split = split_data(frame, SplitConfig(mode="fraction", in_sample_fraction=0.7))
+
+    # Der In-Sample-Teil ist erlaubt ...
+    assert_in_sample_only(split.in_sample, split)
+
+    # ... der volle Datensatz nicht.
+    with pytest.raises(OutOfSampleViolation, match="Out-of-Sample"):
+        assert_in_sample_only(frame, split)
+
+
+def test_puffer_muss_zwei_sessions_abdecken_wenn_vortagesalarme_aktiv_sind():
+    """Regressionstest fuer einen stillen Ausfall.
+
+    Mit zu kleinem Puffer bleiben prev_session_high/-low dauerhaft NaN und
+    die Vortages-Alarme feuern nie - ohne jede Fehlermeldung. Das muss beim
+    Start auffallen.
+    """
+    from common.config import Config, ConfigError
+
+    basis = Config.load("config.yaml")
+    from dataclasses import replace
+
+    zu_klein = replace(basis, market=replace(basis.market, candle_buffer_size=500))
+    with pytest.raises(ConfigError, match="Vortageshoch"):
+        zu_klein.validate()
+
+    # Sind die Bedingungen abgeschaltet, ist ein kleiner Puffer in Ordnung.
+    from common.config import AlertConfig, ConditionConfig
+
+    ohne_vortagesalarme = replace(
+        zu_klein,
+        alerts=AlertConfig(
+            conditions={
+                "prev_day_high_cross": ConditionConfig(enabled=False),
+                "prev_day_low_cross": ConditionConfig(enabled=False),
+            }
+        ),
+    )
+    ohne_vortagesalarme.validate()
+
+
+def test_bars_per_session_skaliert_mit_dem_kerzenintervall(market_cfg):
+    from dataclasses import replace
+
+    minuetlich = replace(market_cfg, candle_interval_minutes=1)
+    fuenf_minuten = replace(market_cfg, candle_interval_minutes=5)
+
+    assert minuetlich.bars_per_session == 23 * 60
+    assert fuenf_minuten.bars_per_session == 23 * 60 // 5
+    assert minuetlich.bars_for_previous_session == 2 * minuetlich.bars_per_session
+
+
+def test_walk_forward_fenster_ueberlappen_nicht_zwischen_train_und_test():
+    frame = make_ohlcv(list(range(1000)))
+    windows = walk_forward_windows(frame, train_bars=200, test_bars=100)
+
+    assert len(windows) > 1
+    for train, test in windows:
+        assert len(train) == 200
+        assert len(test) == 100
+        assert train.index.max() < test.index.min()
