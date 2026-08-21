@@ -26,6 +26,7 @@ from __future__ import annotations
 
 import json
 import logging
+import sys
 import threading
 from datetime import datetime, timezone
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
@@ -194,6 +195,27 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         }
 
 
+class _ExklusiverServer(ThreadingHTTPServer):
+    """HTTP-Server, der einen belegten Port NICHT uebernimmt.
+
+    Der Standard setzt ``allow_reuse_address = 1``. Unter Linux betrifft das
+    nur Sockets im Zustand TIME_WAIT und ist dort erwuenscht. Unter **Windows**
+    hat SO_REUSEADDR eine andere Bedeutung: es erlaubt, sich auf einen Port zu
+    binden, den ein anderer Prozess bereits **aktiv** bedient.
+
+    Praktische Folge, die dieses Projekt bereits getroffen hat: Ein zweiter
+    ``python -m ntbridge`` startete ohne Fehler, meldete "Empfaenger laeuft"
+    und bekam nie eine Kerze - der erste Prozess bediente weiter. Wer nach
+    einer Konfigurationsaenderung "neu startet", arbeitet dann stillschweigend
+    mit den alten Einstellungen weiter.
+
+    Deshalb unter Windows aus. Der Bind schlaegt dann mit ``OSError`` fehl,
+    was der Aufrufer sauber melden kann.
+    """
+
+    allow_reuse_address = not sys.platform.startswith("win")
+
+
 def make_server(
     store: BarStore,
     *,
@@ -212,9 +234,34 @@ def make_server(
     )
 
     handler = type("BoundHandler", (BridgeRequestHandler,), {"state": state})
-    server = ThreadingHTTPServer((host, port), handler)
+    server = _ExklusiverServer((host, port), handler)
     server.daemon_threads = True
     return server, state
+
+
+def laeuft_bereits(host: str, port: int, *, timeout: float = 1.5) -> dict[str, Any] | None:
+    """Fragt, ob auf ``host:port`` bereits ein Empfaenger antwortet.
+
+    Rueckgabe ist dessen ``/status``-Antwort oder ``None``.
+
+    Warum zusaetzlich zur Bind-Sperre: Der Bind-Fehler sagt nur "Port belegt".
+    Diese Probe kann sagen, **seit wann** der andere laeuft und wie viele
+    Kerzen er hat - damit ist sofort klar, ob man den falschen Prozess vor
+    sich hat oder den richtigen bereits laufen laesst.
+    """
+    import json
+    import urllib.error
+    import urllib.request
+
+    ziel = f"http://{host}:{port}/status"
+    try:
+        with urllib.request.urlopen(ziel, timeout=timeout) as antwort:
+            geladen = json.loads(antwort.read().decode("utf-8"))
+    except (urllib.error.URLError, OSError, ValueError, TimeoutError):
+        # Nicht erreichbar, kein HTTP, kaputtes JSON: dann laeuft dort
+        # jedenfalls kein funktionierender Empfaenger.
+        return None
+    return geladen if isinstance(geladen, dict) else None
 
 
 __all__ = ["MAX_BODY_BYTES", "BridgeRequestHandler", "ReceiverState", "make_server"]

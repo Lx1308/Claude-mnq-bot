@@ -15,7 +15,7 @@ from pathlib import Path
 
 from common.config import Config, ConfigError
 from common.logging_setup import log_event, setup_logging
-from ntbridge.receiver import make_server
+from ntbridge.receiver import laeuft_bereits, make_server
 from ntbridge.store import BarStore
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -70,6 +70,33 @@ def main(argv: list[str] | None = None) -> int:
         )
         return 2
 
+    # Startpruefung: laeuft dort schon ein Empfaenger?
+    #
+    # Zwei Riegel, weil einer nicht reicht. Unter Windows erlaubt SO_REUSEADDR
+    # das Binden auf einen bereits aktiv bedienten Port - ein zweiter Start
+    # meldete frueher "Empfaenger laeuft" und bekam nie eine Kerze. Wer nach
+    # einer Konfigurationsaenderung "neu startet", arbeitete dann still mit
+    # den alten Einstellungen weiter.
+    #
+    # Riegel 1 ist die Probe hier: sie kann sagen, WER da laeuft.
+    # Riegel 2 ist _ExklusiverServer, der den Bind ueberhaupt scheitern laesst.
+    laufender = laeuft_bereits(host, port)
+    if laufender is not None:
+        empfaenger = laufender.get("empfaenger", {})
+        print(
+            f"Auf {host}:{port} antwortet bereits ein Empfaenger - dieser Start "
+            "wird abgebrochen.\n"
+            f"  Laeuft seit      : {empfaenger.get('laeuft_seit_utc', 'unbekannt')}\n"
+            f"  Kerzen angenommen: {empfaenger.get('kerzen_angenommen', '?')}\n"
+            f"  Datenbank        : {laufender.get('datenbank', 'unbekannt')}\n"
+            "\n"
+            "Das ist meistens richtig so - dann ist nichts zu tun.\n"
+            "Willst du mit geaenderter Konfiguration neu starten, beende erst\n"
+            "den laufenden Prozess (Strg+C in seinem Fenster).",
+            file=sys.stderr,
+        )
+        return 3
+
     store = BarStore(database)
 
     try:
@@ -82,7 +109,8 @@ def main(argv: list[str] | None = None) -> int:
     except OSError as exc:
         print(
             f"Port {port} konnte nicht belegt werden: {exc}\n"
-            "Laeuft bereits ein zweiter Empfaenger?",
+            "Dort laeuft ein anderer Prozess. Belegt ihn kein Empfaenger, "
+            "waehle mit --port einen freien Port.",
             file=sys.stderr,
         )
         store.close()

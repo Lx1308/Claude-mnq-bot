@@ -13,7 +13,7 @@ import pytest
 
 from common.instruments import MGC, MNQ
 from mcp_server.bars import DAILY, BarSourceError, NTBridgeBarSource
-from ntbridge.receiver import make_server
+from ntbridge.receiver import laeuft_bereits, make_server
 from ntbridge.store import BarRejected, BarStore, validate_bar
 
 UTC = timezone.utc
@@ -445,3 +445,86 @@ def test_kein_delta_ohne_order_flow(store):
     loaded = asyncio.run(source.load("MNQ", ["1m"]))
     assert loaded.sets["1m"].has_flow is False
     assert "bid_volume" not in loaded.sets["1m"].frame.columns
+
+
+# ---------------------------------------------------------------------------
+# Ein zweiter Empfaenger darf nicht still danebenlaufen
+# ---------------------------------------------------------------------------
+#
+#  Unter Windows erlaubt SO_REUSEADDR das Binden auf einen Port, den ein
+#  anderer Prozess bereits aktiv bedient. Ein zweiter "python -m ntbridge"
+#  meldete deshalb "Empfaenger laeuft" und bekam nie eine Kerze - wer nach
+#  einer Konfigurationsaenderung neu startete, arbeitete still mit den alten
+#  Einstellungen weiter.
+
+def test_laeuft_bereits_meldet_niemanden_auf_freiem_port():
+    """Auf einem unbenutzten Port darf nichts gemeldet werden."""
+    import socket
+
+    with socket.socket() as sonde:
+        sonde.bind(("127.0.0.1", 0))
+        freier_port = sonde.getsockname()[1]
+    # Socket ist wieder zu - dort hoert jetzt niemand.
+
+    assert laeuft_bereits("127.0.0.1", freier_port, timeout=1.0) is None
+
+
+def test_laeuft_bereits_erkennt_laufenden_empfaenger(running_server):
+    url, _state = running_server
+    port = int(url.rsplit(":", 1)[1])
+
+    antwort = laeuft_bereits("127.0.0.1", port, timeout=3.0)
+
+    assert antwort is not None
+    assert antwort["status"] == "ok"
+    # Die Auskunft muss reichen, um den laufenden Prozess zu identifizieren.
+    assert "laeuft_seit_utc" in antwort["empfaenger"]
+    assert "datenbank" in antwort
+
+
+def test_zweiter_start_bricht_ab_statt_still_danebenzulaufen(
+    running_server, tmp_path, monkeypatch, capsys
+):
+    """Der eigentliche Regressionstest: Exitcode statt falscher Erfolgsmeldung.
+
+    HINWEIS FUER SPAETER: Faellt der Riegel weg, schlaegt dieser Test nicht
+    fehl, sondern **haengt** - ``main()`` bindet den Port dann erfolgreich und
+    geht in ``serve_forever()``. Ein Haenger an dieser Stelle bedeutet also
+    nicht "Test kaputt", sondern "der zweite Empfaenger laeuft wieder still
+    daneben".
+    """
+    import yaml
+
+    from ntbridge.__main__ import main
+
+    url, _state = running_server
+    port = int(url.rsplit(":", 1)[1])
+
+    config = {
+        "tradovate": {"environment": "demo"},
+        "market": {"product": "MNQ", "tick_size": 0.25, "point_value": 2.0},
+        "indicators": {},
+        "alerts": {"conditions": {}},
+        "ntbridge": {
+            "enabled": True,
+            "host": "127.0.0.1",
+            "port": port,
+            "database": str(tmp_path / "zweite.sqlite3"),
+        },
+        "logging": {"directory": str(tmp_path / "logs"), "console": False},
+    }
+    config_datei = tmp_path / "config.yaml"
+    config_datei.write_text(yaml.safe_dump(config), encoding="utf-8")
+
+    code = main(["--config", str(config_datei)])
+
+    assert code == 3, "Ein zweiter Start muss abbrechen, nicht 'laeuft' melden"
+
+    ausgabe = capsys.readouterr()
+    text = ausgabe.err + ausgabe.out
+    assert "antwortet bereits ein Empfaenger" in text
+    assert "Empfaenger laeuft auf" not in ausgabe.out, (
+        "Die Erfolgsmeldung darf nicht erscheinen - genau sie war der Fehler."
+    )
+    # Die zweite Datenbank darf gar nicht erst angelegt worden sein.
+    assert not (tmp_path / "zweite.sqlite3").exists()
