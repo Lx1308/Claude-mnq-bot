@@ -4,6 +4,8 @@
 Für künftige Claude-Chat-Sessions ohne Zugriff auf den alten Verlauf.
 
 **Stand: 21. August 2026** — gegen den tatsächlichen Code verifiziert.
+**Ergänzt 21. August 2026 (nachts): Etappe A und B erstmals mit echten
+NT8-Live-Marktdaten verifiziert (siehe Abschnitt 17).**
 
 > **Schwesterdatei:** `CODE_CHAT_KONTEXT.md` enthält die technische Seite —
 > Architektur, Module, Implementierungsstand, Bugs mit Fundstelle im Code, Tests.
@@ -100,7 +102,15 @@ Fünf Ansätze wurden geprüft. Alle Ablehnungen haben konkrete Gründe:
 | TradingView MCP (Chrome DevTools) | VERWORFEN | Community-Projekt auf undokumentierten internen APIs; braucht zusätzlich bezahltes TV-Abo; mehr Fragilität ohne Gewinn |
 | Tradovate API | VERWORFEN | Verlangt LIVE-Konto mit 1.000 USD plus kostenpflichtiges Add-on. Mit Prop-Firm-Sim-Kapital nicht erfüllbar. Fiel erst auf, als der mcp_server größtenteils darauf gebaut war. |
 | yfinance | VERWORFEN | Kostenlos, aber 15+ Minuten Verzögerung bei Futures. Vom Nutzer abgelehnt. |
-| **NinjaTrader 8 / NinjaScript** | **AKTIV** | Offizielle dokumentierte API, kein Reverse Engineering. Echtzeitdaten laufen ohnehin durch den Chart. Keine Zusatzkosten. Lokal. Lucid unterstützt NT8 ausdrücklich. |
+| **NinjaTrader 8 / NinjaScript** | **AKTIV, seit 21.08.2026 live bewiesen** | Offizielle dokumentierte API, kein Reverse Engineering. Echtzeitdaten laufen ohnehin durch den Chart. Keine Zusatzkosten. Lokal. Lucid unterstützt NT8 ausdrücklich. |
+
+**Nachtrag 21.08.2026:** Die Entscheidung für NinjaTrader hat sich bestätigt.
+Der Live-Test lieferte MNQ-Kerzen mit unter 2 Sekunden Verzögerung in die
+Datenbank — also echte Echtzeitdaten, nicht die 15-Minuten-Verzögerung, an der
+yfinance gescheitert war. Die offene Frage, ob der kostenlose
+NT8-Simulationsfeed verzögert liefert, ist damit **praktisch beantwortet: er
+liefert zeitnah.** Ein Gegencheck gegen TradingView zur endgültigen Bestätigung
+wäre trotzdem sinnvoll, wurde aber noch nicht gemacht.
 
 **Lehre daraus, die in künftigen Sessions gilt:** Bei jeder neuen Datenquelle
 ZUERST prüfen, welche Konto- und Kostenvoraussetzungen sie hat. Der
@@ -235,23 +245,25 @@ Schwelle" gekennzeichnet. Aktuell nur MNQ. Unter 20 Ideen pro Kategorie gilt
 
 Nicht umbenennen, nicht zusammenlegen, nicht überspringen.
 
-| Etappe | Inhalt | Status (21.08.2026, gegen Code geprüft) |
+| Etappe | Inhalt | Status (21.08.2026, gegen Code und Live-Test geprüft) |
 |---|---|---|
-| **A** | NinjaScript-Bridge (`ClaudeBridge.cs`), Indikator, HTTP POST an `localhost:8787` | Code fertig, v1.0.1, installiert — **noch nicht in NT8 kompiliert** |
-| **B** | Empfänger (`ntbridge/receiver.py`), SQLite-Speicher, `NTBridgeBarSource` | **Code fertig, Tests grün** — aber nie mit echten Daten gelaufen |
-| **C** | Ideen-Protokollierung, regelbasiert, MNQ | offen, kein Code vorhanden |
+| **A** | NinjaScript-Bridge (`ClaudeBridge.cs`), Indikator, HTTP POST an `localhost:8787` | **ABGESCHLOSSEN** — kompiliert, auf zwei Charts angewandt, live verifiziert |
+| **B** | Empfänger (`ntbridge/receiver.py`), SQLite-Speicher, `NTBridgeBarSource` | **ABGESCHLOSSEN** — Code fertig, Tests grün, **mit echten Daten verifiziert** |
+| **C** | Ideen-Protokollierung, regelbasiert, MNQ | **offen, kein Code vorhanden — jetzt der nächste Schritt** |
 | **D** | Auswertung: `evaluate_past_ideas`, `get_performance_report` | offen, kein Code vorhanden |
 | **E** | Dauerbetrieb-Härtung | offen |
 | **F** | Liefergegenstände (Anleitungen, Configs, Startbefehle) | teilweise erledigt |
 
-> **Korrektur gegenüber älteren Fassungen dieser Datei:** Etappe B stand dort als
-> "offen". Das war der Stand **vor** dem Bau. Der Empfänger existiert inzwischen
-> vollständig. Die verbleibende Lücke ist nicht der Code, sondern der Nachweis
-> mit echten Daten.
+> **Korrektur gegenüber älteren Fassungen dieser Datei:** Etappe B stand dort
+> zuerst als "offen", dann als "Code fertig, aber nie mit echten Daten
+> gelaufen". Beides ist überholt. Seit dem Live-Test am 21.08.2026 sind
+> **Etappe A und B beide vollständig abgeschlossen** — inklusive Nachweis mit
+> echten MNQ-Marktdaten. Details in `CODE_CHAT_KONTEXT.md` Abschnitt 9.
 
 Der SQLite-Speicher aus Etappe B **ist** der ursprünglich verschobene Bar-Cache.
 Damit füllen sich ATR-Perzentil, relatives Volumen, Volume Profile und Wochen-H/L
-mit der Zeit von selbst.
+mit der Zeit von selbst — **das läuft jetzt tatsächlich an**, solange der
+Empfänger mitläuft.
 
 ---
 
@@ -270,10 +282,10 @@ common/patterns.py      Flagge, Dreieck, Doppeltop/-boden, Range-Kompression
 mcp_server/             Tool 1 (get_market_snapshot), Tool 2 (get_event_risk),
                         list_instruments, cli.py (Terminal-Dump),
                         calendar_provider.py (Forex Factory + FRED)
-ntbridge/               Empfänger + SQLite-Speicher (Etappe B)
+ntbridge/               Empfänger + SQLite-Speicher (Etappe B) — LIVE VERIFIZIERT
 live_bot/               Alert-System, Telegram, on_demand_report (Legacy)
 backtest/               Eigene Event-Engine, Strategien, Metriken, Splits
-ninjatrader/            ClaudeBridge.cs (v1.0.1)
+ninjatrader/            ClaudeBridge.cs (v1.0.1) — KOMPILIERT UND LIVE VERIFIZIERT
 ```
 
 **Testzahl-Historie:** 124 → 171 → 199 → 221 → 260 → 286 → 292 → **326**.
@@ -287,10 +299,10 @@ zum noch unbekannten Einstieg) schwer debugbar. `vectorbt` bleibt als spätere
 Screening-Schicht für große Parameter-Sweeps sinnvoll.
 Ausführlich in `docs/BACKTESTING_ENTSCHEIDUNG.md`.
 
-> **Wichtig:** Es wurde **nie ein Backtest auf echten Marktdaten gerechnet**.
-> Die einzige Datendatei ist `data/DEMO_1m.csv`, ein synthetischer Zufallspfad
-> zum Ausprobieren der CLI. Daraus dürfen **keine** Aussagen über Strategiegüte
-> abgeleitet werden.
+> **Wichtig, weiterhin gültig:** Es wurde **nie ein Backtest auf echten
+> Marktdaten gerechnet**. Seit 21.08.2026 liegen zwar erstmals echte Daten in
+> der produktiven Datenbank, aber es ist **kein Backtest darauf gelaufen**.
+> Daraus dürfen **keine** Aussagen über Strategiegüte abgeleitet werden.
 
 ---
 
@@ -330,6 +342,13 @@ Kurzfassung — **die technische Fassung mit Fundstelle im Code steht in
     `timestampUtc`) und ließ den Umschlag `{"bars":[…]}` weg. Jede Kerze wäre
     abgelehnt worden — kein Compiler meldet so etwas.
 
+**Bestätigung dieser Vorsichtsmaßnahmen (21.08.2026):** Im ersten echten
+Live-Lauf wurden **5669 Kerzen angenommen und 0 abgelehnt**. Kein einziger der
+Ablehnungsgründe aus `validate_bar()` trat auf — weder Kommazahlen
+(InvariantCulture), noch falsche Feldnamen, noch Zeitzonen-Versatz. Die aus den
+Lehren 10 und 11 abgeleiteten Schutzmaßnahmen haben also im Realbetrieb
+gehalten.
+
 ---
 
 ## 13. BEKANNTE EINSCHRÄNKUNGEN
@@ -337,6 +356,8 @@ Kurzfassung — **die technische Fassung mit Fundstelle im Code steht in
 - **Antwortzeit 10–30 Sekunden.** Für den Auslöser eines 1-Minuten-Einstiegs zu
   langsam. Der Nutzen liegt in der Vorbereitung und in der späteren Auswertung.
   Das wurde dem Nutzer mehrfach gesagt und ist akzeptiert.
+  *(Betrifft den MCP-Roundtrip, nicht die Datenlieferung — die Bars selbst
+  kommen mit unter 2 Sekunden an, wie der Live-Test zeigte.)*
 - **Volume Profile ist eine Näherung.** Echtes Volume-at-Price bräuchte Tickdaten.
 - **Kumulatives Delta bleibt null.** Braucht das kostenpflichtige NT8-Add-on
   "Order Flow +". Nicht lizenziert. Nachrüststelle im Code markiert. Wird
@@ -344,10 +365,14 @@ Kurzfassung — **die technische Fassung mit Fundstelle im Code steht in
 - **Sekundärserien erben den Ladezeitraum des Charts.** Ein 1m-Chart mit wenigen
   Tagen liefert einer Tagesserie entsprechend wenige Tageskerzen. Tages- und
   Stundenebene gehören auf ein eigenes Chart mit großem Ladezeitraum. Daraus
-  folgt zwingend **zwei Charts je Instrument**.
+  folgt zwingend **zwei Charts je Instrument** — seit 21.08.2026 genau so
+  eingerichtet und in Betrieb.
 - **Historienabhängige Kennzahlen brauchen Zeit:** Wochen-H/L 5 Sessions,
   Volume Profile 2, relatives Volumen 10, ATR-Perzentil 20. Bis dahin liefert das
   Feld `null` mit Begründung und Fortschrittsangabe — nie eine Schätzung.
+  **Praktische Folge:** Der Empfänger sollte ab jetzt möglichst durchgehend
+  mitlaufen, sonst dauert es entsprechend länger, bis diese Felder belastbar
+  sind.
 - **ISM/PMI und Fed-Reden ohne Actual-Wert.** ISM hat die FRED-Lizenz zurückgezogen.
 - **Forex Factory ist ein inoffizieller Endpunkt** und kann brechen. Hat zudem
   **kein `actual`-Feld** — daher die Aufteilung: FF liefert Termine, FRED die
@@ -375,6 +400,8 @@ Wartungspause 16:00–17:00 CT. Eine Session = 23 Stunden = 1380 Minutenkerzen.
 Der Handelstag rollt um **18:00 ET** — ein Tick um 19:30 ET am Montag gehört zum
 Handelstag Dienstag.
 
+**Aktuell laufender Kontrakt (Stand 21.08.2026):** MNQ SEP26.
+
 ---
 
 ## 15. UMGEBUNG
@@ -384,9 +411,15 @@ Handelstag Dienstag.
   (Energiesparmodus aus, am Netzteil). Entscheidung gegen den PC, weil der
   Familienrechner ist und wochenweise wegfallen kann — **Datenlücken zerstören
   die Statistik**.
+  **Ab 21.08.2026 ist das keine Theorie mehr:** Die Datensammlung läuft
+  tatsächlich, jede Unterbrechung kostet jetzt echte Historie.
 - Python 3.14.6 (Python Install Manager), venv im Projekt.
   `python` im PATH ist nur der Microsoft-Store-Platzhalter — immer
   `.venv\Scripts\python.exe` verwenden.
+  **PowerShell-Hinweis:** Der Projektpfad enthält Leerzeichen, daher
+  `cd "C:\Users\lm130\Desktop\Claude chart bot"` mit Anführungszeichen; ein Pfad
+  ohne `cd` davor wird von PowerShell als Programmname interpretiert und
+  scheitert.
 - Claude Code als Desktop-App und als CLI installiert
 - Git for Windows vorhanden, **das Projekt ist aber kein Git-Repository**
 - NinjaTrader 8 mit eigenem Simulationskonto
@@ -412,77 +445,97 @@ und knifflige Stellen. Für Boilerplate und Tests reicht Sonnet.
 Berechtigungsmodus), sonst fragt Claude Code alle zwei Minuten nach. Bei
 Limit-Erreichung nach dem Reset `continue` tippen — der Kontext bleibt erhalten.
 
+**Warnung zu unbeaufsichtigten Läufen:** Das Projekt hat **keine
+Versionskontrolle**, und `ClaudeBridge.cs` wurde bereits zweimal von außen
+zerstört (siehe Bug-Lehre 11). Solange kein Git-Repo existiert, gibt es bei
+einem längeren unbeaufsichtigten Claude-Code-Lauf **kein Netz**, um eine
+fehlerhafte Änderung zurückzunehmen. Ein Git-Repo anzulegen ist deshalb die
+sinnvollste Voraussetzung für jede Arbeit ohne Aufsicht.
+
 ---
 
 ## 17. AKTUELLER STAND
 
-> Der **technische** Detailstand steht in `CODE_CHAT_KONTEXT.md` Abschnitt 1.
-> Hier nur die Planungssicht.
+> Der **technische** Detailstand steht in `CODE_CHAT_KONTEXT.md` Abschnitt 1
+> und 9. Hier nur die Planungssicht.
+
+### MEILENSTEIN 21.08.2026: Echte Marktdaten sind im System
+
+Die zentrale offene Frage des gesamten bisherigen Projekts — *"kommen jemals
+echte NT8-Daten an?"* — ist beantwortet. **Ja.**
+
+Kurzfassung des Nachweises:
+- `ClaudeBridge.cs` in NT8 kompiliert, fehlerfrei.
+- Zwei Charts für MNQ SEP26 eingerichtet (1m mit 5m/15m, Day 1 mit 1h).
+- Empfänger gestartet, Retry-Puffer lieferte die zwischengespeicherten Kerzen
+  automatisch nach.
+- **5669 Kerzen angenommen, 0 abgelehnt.** 4369 Bars in der produktiven
+  Datenbank über alle 5 Zeitebenen.
+- Live-Bars kamen mit **unter 2 Sekunden** Verzögerung an.
+- Zeitzone stimmt ohne Versatz (`W. Europe Standard Time` = Europe/Berlin).
+
+Damit sind **Etappe A und B abgeschlossen**. Ab hier sammelt das System
+kontinuierlich Historie, solange der Empfänger läuft.
 
 ### Projektziel gerade
 
-Etappe A abschließen (Bridge läuft in NT8), dann Etappe B mit echten Daten
-verifizieren — damit erstmals echte Marktdaten im System landen.
+Etappe C beginnen: die regelbasierte Ideen-Protokollierung. Erst damit entsteht
+das, worum es dem Nutzer eigentlich geht — auswertbare Setups statt
+Bauchgefühl.
 
 ### Erledigt
 
 - Gesamte Rechenlogik in `common/` (**326 Tests grün**)
 - MCP-Server mit Tool 1 und Tool 2, Terminal-Dump
-- **Etappe B vollständig gebaut** (Empfänger, SQLite-Speicher, BarSource)
-- `ClaudeBridge.cs` geschrieben, v1.0.1, auf alle Korrekturpunkte geprüft:
-  InvariantCulture, kein stilles `catch{}`, Timeout via `CancellationTokenSource`,
-  `IsSuspendedWhileInactive`, `AddDataSeries` mit `BarsPeriodType.Day` für die
-  Tagesebene, `timestampUtc` + `timestampLocal` + `timeZoneId`, Retry-Puffer
+- **Etappe A abgeschlossen** (Bridge kompiliert, zwei Charts, live sendend)
+- **Etappe B abgeschlossen** (Empfänger, SQLite-Speicher, BarSource — mit
+  echten Daten verifiziert)
 
 ### Offen
 
-1. **HOCH:** `ClaudeBridge.cs` in NT8 kompilieren (F5 im NinjaScript-Editor)
-2. **HOCH:** Empfänger **zuerst** starten (`.venv\Scripts\python.exe -m ntbridge`),
-   dann den Indikator an das MNQ-1m-Chart hängen.
-   Parameter: "Zusätzliche Minuten-Timeframes" = `5,15`, "Tagesserie mitliefern" AUS,
-   Session Template `CME US Index Futures ETH`
-3. **HOCH:** Zweites Chart für die Tagesebene (Day 1, großer Ladezeitraum,
-   Zusatz-Timeframe `60`) — sonst bleiben 1h und 1d leer
-4. **HOCH:** Erfolgstest: Im NinjaScript-Output muss `ClaudeBridge 1.0.1 bereit`
-   stehen, danach müssen **Bars ankommen**. Zeitzone der Startmeldung mit
-   *Tools > Optionen > Allgemein* vergleichen.
-5. **HOCH:** Etappe B mit echten Daten verifizieren (`curl http://127.0.0.1:8787/status`)
-6. **MITTEL:** Profil-Logik demo/lucid; Lucid-Regeln als Simulationsmodell
-   inklusive EOD-Trailing-Drawdown über die Kontofolge
-7. **MITTEL:** Etappen C–F
-8. **MITTEL:** README aktualisieren — sie beschreibt noch ausschließlich den
-   Tradovate-Pfad und erwähnt weder MCP noch NinjaTrader
-9. **NIEDRIG:** Git-Repo anlegen, privates GitHub, `.gitignore` prüfen
-   (`.env`, `.venv/`, `*.sqlite3`, Logs)
+1. **HOCH:** Etappe C — regelbasierte Ideen-Protokollierung (MNQ). Der nächste
+   inhaltliche Schritt.
+2. **HOCH:** Empfänger dauerhaft mitlaufen lassen; Laptop nicht schlafen legen.
+   Jede Lücke kostet Historie, die historienabhängige Kennzahlen brauchen.
+3. **MITTEL:** Etappe D — `evaluate_past_ideas`, `get_performance_report`.
+4. **MITTEL:** Profil-Logik demo/lucid; Lucid-Regeln als Simulationsmodell
+   inklusive EOD-Trailing-Drawdown über die Kontofolge.
+5. **MITTEL:** Etappen E–F.
+6. **MITTEL:** README aktualisieren — sie beschreibt noch ausschließlich den
+   Tradovate-Pfad und erwähnt weder MCP noch NinjaTrader.
+7. **NIEDRIG, aber Voraussetzung für unbeaufsichtigtes Arbeiten:** Git-Repo
+   anlegen, privates GitHub, `.gitignore` prüfen (`.env`, `.venv/`, `*.sqlite3`,
+   Logs). Ohne das gibt es kein Rückholnetz für fehlerhafte Änderungen.
+8. **NIEDRIG:** Gegencheck, ob der NT8-Feed wirklich Echtzeit ist (Vergleich mit
+   TradingView). Nach dem Live-Test praktisch schon sehr wahrscheinlich.
+9. **NIEDRIG:** `laeuft_seit_utc` in `/status` zeigt nach frischem Start ein
+   altes Datum — vermutlich ein persistierter DB-Wert statt der echten
+   Prozesslaufzeit. Kosmetisch, aber irreführend.
 
-> **Korrektur gegenüber älteren Fassungen:** Dort stand, im Erfolgstest seien
-> **Zeitüberschreitungen** zu erwarten, weil der Empfänger noch nicht existiere.
-> Das ist überholt — der Empfänger ist gebaut. Erwartet werden jetzt erfolgreich
-> gespeicherte Bars.
+> **Korrektur gegenüber älteren Fassungen:** Die früheren Punkte 1–5 unter
+> "Offen" (kompilieren, Empfänger starten, Charts einrichten, Erfolgstest,
+> Etappe B verifizieren) sind **alle erledigt**.
 
 ### Blocker
 
-Keine harten. Der einzige echte Test steht noch aus: Der C#-Code wurde nie
-kompiliert, NinjaTrader ist der erste echte Compiler.
+**Keine.** Der einzige echte Test — ob der nie kompilierte C#-Code in
+NinjaTrader funktioniert — ist bestanden.
 
 ### Unsicherheiten
 
-- Ob `IsSuspendedWhileInactive = false` in NT8 kompiliert (im Code als
-  löschbare Zeile markiert)
-- Ob NT8 hier `System.Net.Http` standardmäßig referenziert — sonst Referenz im
-  NinjaScript-Editor nachtragen
-- Ob der kostenlose NT8-Simulationsfeed Echtzeit- oder verzögerte Futures-Daten
-  liefert. Prüfbar durch Vergleich mit TradingView. Falls verzögert, werden die
-  ~4 USD/Monat CME-Daten nötig.
-- Ob die Zeitzone in NT8 von der Windows-Zeitzone abweicht
-- Wie viele Tage "Days to load" tatsächlich nötig sind. Maßgeblich ist die
-  Zeile `WARNUNG: nur N von M Kerzen` im NinjaScript-Output.
+- Ob MNQ und MGC zwei getrennte CME-Datenpakete erfordern (CME Index vs. COMEX
+  Metals), falls MGC später dazukommen soll.
+- Ob der NT8-Feed formal als Echtzeit gilt (praktisch verhielt er sich so).
+
+> **Erledigte Unsicherheiten (21.08.2026):** `IsSuspendedWhileInactive`
+> kompiliert; `System.Net.Http` ist ohne Zusatzreferenz verfügbar; die NT8-
+> Zeitzone weicht nicht von Windows ab; "Days to load 7" reicht für die
+> 1m-Serie (3015 von 3000 Ziel-Kerzen erreicht).
 
 ### Nächster sinnvoller Schritt
 
-Kompilieren, Empfänger starten, an den Chart hängen, Output prüfen, Zeitzone
-abgleichen. Erst danach Etappe C — sonst sucht man Fehler auf zwei Ebenen
-gleichzeitig.
+Etappe C planen und bauen. Vorher, falls unbeaufsichtigt gearbeitet werden
+soll: Git-Repo anlegen (Abschnitt 16, Warnung).
 
 ---
 
@@ -508,3 +561,9 @@ aufgelöst.
 Sie aktualisiert sich **nicht** automatisch, wenn Claude Code die Datei auf der
 Festplatte fortschreibt. Nach Meilensteinen neu hochladen. Das Datum in der
 Kopfzeile verrät, ob die hochgeladene Fassung noch aktuell ist.
+
+**Hinweis zu diesem Update (21.08.2026):** Der Meilenstein-Eintrag in
+Abschnitt 17 wurde **im normalen Chat** auf Basis der vom Nutzer eingefügten
+NinjaTrader- und `/status`-Ausgaben geschrieben, nicht durch Prüfung gegen den
+Quellcode. Die Zahlen stammen direkt aus den Live-Ausgaben und sind insofern
+belastbar; die Rangfolge oben gilt trotzdem unverändert.

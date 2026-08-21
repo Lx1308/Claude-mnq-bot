@@ -38,8 +38,8 @@ alten Projekt-Kopie noch auftauchen: veraltet, nicht verwenden.
 |---|---|---|
 | `common/` (Indikatoren, Sessions, Level, Struktur, Muster, Instrumente, Config) | **fertig** | ja, umfangreich |
 | `mcp_server/` (3 Tools, Snapshot, Kalender, CLI) | **fertig** | ja |
-| `ntbridge/` (Empfänger + SQLite-Store) | **fertig** | ja, aber nur mit synthetischen Daten |
-| `ninjatrader/ClaudeBridge.cs` | **fertig, v1.0.1** | **nur statisch geprüft — nie kompiliert** |
+| `ntbridge/` (Empfänger + SQLite-Store) | **fertig** | ja, jetzt auch mit echten NT8-Live-Daten verifiziert (21.08.2026, siehe Abschnitt 9) |
+| `ninjatrader/ClaudeBridge.cs` | **fertig, v1.0.1** | **in NT8 kompiliert und live verifiziert (21.08.2026)** |
 | `backtest/` (Engine, Metriken, Splits, Strategien, CLI) | **fertig** | ja |
 | `live_bot/` (Alarme, Claude-Kommentar, Telegram, `/analyse`) | **fertig, Legacy** | ja |
 | Ideen-Protokollierung (Etappe C) | **existiert nicht** | — |
@@ -57,14 +57,20 @@ alten Projekt-Kopie noch auftauchen: veraltet, nicht verwenden.
 - Der Empfänger nimmt Bars an, validiert, speichert idempotent, liefert `/status`.
 - Der MCP-Server erzeugt einen vollständigen Snapshot mit Provenienz.
 - Backtest-Engine mit IS/OOS-Trennung und Lookahead-Schutz.
+- **NEU (21.08.2026): Der komplette Live-Pfad NinjaTrader → `ClaudeBridge.cs` →
+  `ntbridge`-Empfänger → SQLite läuft nachweislich mit echten MNQ-Marktdaten.**
+  Siehe Abschnitt 9 für den vollständigen Verifikationslauf mit Zahlen.
 
 ### Was nicht funktioniert bzw. nie lief
 
-- **`ClaudeBridge.cs` wurde nie in NinjaTrader kompiliert.**
-- **Es sind nie echte NT8-Marktdaten im System angekommen.**
-  Beleg: `data/ntbridge.sqlite3` enthält **0 Bars**; der letzte Empfängerstart
-  (`logs/ntbridge.log`, 2026-07-31) meldet `"bars_in_db": 0, "series": 0`.
 - **Es wurde nie ein Backtest auf echten Marktdaten gerechnet** (siehe Abschnitt 9).
+  Echte Daten liegen inzwischen in der produktiven Datenbank vor, ein Backtest
+  darauf wurde aber noch nicht ausgeführt.
+
+> **Korrektur gegenüber älteren Fassungen (21.08.2026):** Hier standen bis zu
+> diesem Update zwei Punkte, die nicht mehr zutreffen: *"`ClaudeBridge.cs` wurde
+> nie in NinjaTrader kompiliert"* und *"Es sind nie echte NT8-Marktdaten im
+> System angekommen"*. Beides ist überholt — siehe Abschnitt 9.
 
 ### Bekannte Probleme
 
@@ -77,29 +83,41 @@ alten Projekt-Kopie noch auftauchen: veraltet, nicht verwenden.
 3. **Startreihenfolge ist heikel:** Läuft der Empfänger beim Chartstart nicht,
    gehen von 3000 historischen Kerzen 2800 verloren (Retry-Puffer deckelt bei
    200, verwirft die ältesten). Abhilfe: Chart-F5 nach Empfängerstart.
+   **Praktisch entschärft (21.08.2026):** Der Retry-Puffer hat im realen Test
+   auch nach mehreren Minuten ohne laufenden Empfänger alle zwischengespeicherten
+   Kerzen beim Verbindungsaufbau nachgeliefert (0 Kerzen verloren, siehe
+   Abschnitt 9). Das Risiko besteht trotzdem bei sehr langen Ausfallzeiten
+   (Puffer deckelt bei 200) — Abhilfe bleibt gültig.
 
 ### Offene technische Aufgaben
 
-1. `ClaudeBridge.cs` in NT8 kompilieren (F5 im NinjaScript-Editor).
-2. Zwei Charts je Instrument einrichten, Ende-zu-Ende mit echten Daten verifizieren.
-3. Etappe C: regelbasierte Ideen-Protokollierung.
-4. Etappe D: `evaluate_past_ideas`, `get_performance_report`.
-5. Profil-Logik `demo`/`lucid` + Lucid-Regelsimulation.
-6. Etappe E: Dauerbetrieb-Härtung.
-7. README auf den NinjaTrader-Stand bringen (beschreibt noch den Tradovate-Pfad).
+1. Etappe C: regelbasierte Ideen-Protokollierung.
+2. Etappe D: `evaluate_past_ideas`, `get_performance_report`.
+3. Profil-Logik `demo`/`lucid` + Lucid-Regelsimulation.
+4. Etappe E: Dauerbetrieb-Härtung.
+5. README auf den NinjaTrader-Stand bringen (beschreibt noch den Tradovate-Pfad).
+6. Erster Backtest auf den jetzt vorhandenen echten Marktdaten (informativ, keine
+   Grundlage für Strategieentscheidungen, bis genug Historie/Sessions vorliegen).
+
+> **Korrektur gegenüber älteren Fassungen (21.08.2026):** Die früheren Punkte 1
+> ("`ClaudeBridge.cs` in NT8 kompilieren") und 2 ("Zwei Charts je Instrument
+> einrichten, Ende-zu-Ende mit echten Daten verifizieren") sind erledigt und
+> entfallen. Die Liste wurde entsprechend neu nummeriert.
 
 ### Relevante Unsicherheiten
 
-- **NICHT BEKANNT**, ob NT8 auf diesem Rechner `System.Net.Http` standardmäßig
-  referenziert. Falls nicht, meldet der Compiler
-  `The type or namespace name 'Http' does not exist in the namespace 'System.Net'`
-  → Referenz im NinjaScript-Editor nachtragen.
-- **NICHT BEKANNT**, ob die NT8-Anzeigezeitzone von der Windows-Zeitzone abweicht.
-  Die Bridge nutzt standardmäßig `TimeZoneInfo.Local`; bei Abweichung muss der
-  Parameter "Zeitzone (optional)" gesetzt werden. Der Empfänger meldet den Fall
-  als `zeitstempel_in_zukunft`.
 - **NICHT BEKANNT**, ob MNQ und MGC zwei getrennte CME-Datenpakete erfordern
   (CME Index vs. COMEX Metals).
+
+> **Korrektur gegenüber älteren Fassungen (21.08.2026):** Zwei frühere
+> Unsicherheiten sind durch den realen Kompilier- und Live-Test geklärt:
+> - `System.Net.Http` ist auf diesem Rechner ohne manuelle Referenz verfügbar —
+>   der Compile-Lauf in NT8 war fehlerfrei.
+> - Die NT8-Anzeigezeitzone weicht **nicht** von der Windows-Zeitzone ab.
+>   Gemeldete Zeitzone `W. Europe Standard Time` entspricht Europe/Berlin: die
+>   UTC-Zeitstempel in der Datenbank stimmten beim Test auf wenige Minuten genau
+>   mit der tatsächlichen Uhrzeit überein, kein Versatz. Kein Nacharbeiten am
+>   Zeitzonen-Parameter nötig.
 
 ---
 
@@ -178,6 +196,16 @@ eine Performance-Entscheidung, keine Zufälligkeit.
 ClaudeBridge-Zeitzonenparameter**), `preis_ungueltig`, `volumen_ungueltig`,
 `high_kleiner_low`, `ohlc_widerspruechlich`.
 
+**Beobachtung aus dem Live-Test (21.08.2026):** `/status` meldet ein Feld
+`laeuft_seit_utc`, das nach einem frischen Prozessstart trotzdem ein altes Datum
+(30.07./31.07.) zeigte statt der tatsächlichen Startzeit. Da beim Neustart kein
+"Port bereits belegt"-Fehler auftrat, lief kein zweiter Prozess im Hintergrund
+weiter — das Feld liest vermutlich einen in der SQLite-Datenbank persistierten
+Erst-Start-Zeitpunkt statt der echten Prozesslaufzeit. Funktional unkritisch,
+aber bei Gelegenheit im Code (`ReceiverState`/`store.py`) prüfen, ob das Feld
+umbenannt oder korrigiert werden sollte, damit es nicht als "Prozess läuft seit"
+missverstanden wird.
+
 ### `mcp_server/`
 
 | Datei | Inhalt |
@@ -255,6 +283,15 @@ Swing-Erkennung ab. Tageskerze wird mit 23*60 Minuten angesetzt, **nicht 24 h**.
 **Payload je Kerze:** `instrument, ntInstrument, timeframe, timestampUtc,
 timestampLocal, timeZoneId, open, high, low, close, volume, bidVolume:null,
 askVolume:null, source, bridgeVersion`. Umschlag **immer** `{"bars":[...]}`.
+
+**Live-Verifikation (21.08.2026):** In NT8 kompiliert (Reiter *Errors* leer),
+auf zwei Charts angewandt — 1m-Chart (Zusatz-TFs `5,15`, Session Template
+`CME US Index Futures ETH`) und Day-1-Chart (Zusatz-TF `60`). Output-Fenster
+zeigte korrekt `ClaudeBridge 1.0.1 bereit` mit den erwarteten Serien und
+Zielwerten. Ohne laufenden Empfänger griff der Timeout (1500 ms) und die
+Zwischenspeicherung sauber; nach Start des Empfängers lieferte der Retry-Puffer
+alle zwischengespeicherten Kerzen automatisch nach — 5669 angenommen, 0
+abgelehnt. Details siehe Abschnitt 9.
 
 ---
 
@@ -341,6 +378,9 @@ Tageskerzen. Daraus folgt zwingend das **Zwei-Charts-pro-Instrument-Layout**:
 |---|---|---|---|---|
 | Intraday | Minute, 1 | 7 | `5,15` | aus |
 | Tagesebene | Day, 1 | 400 | `60` | aus |
+
+**Live eingerichtet und verifiziert (21.08.2026):** Beide Charts wie oben
+angelegt, beide senden korrekt (siehe Abschnitt 9).
 
 ### 5.7 `BarsPeriodType.Day` statt 1440 Minuten
 
@@ -438,6 +478,11 @@ rechtfertigt eine Neubewertung.
   **ETH** kämen Vortagesmarken nur aus 08:30–15:15 CT statt aus dem vollen
   Globex-Tag, den `common/sessions.py` unterstellt. **Kein Fehler, keine Warnung —
   nur andere Zahlen.** MNQ → `CME US Index Futures ETH`, MGC → `COMEX Metals ETH`.
+
+**Alle diese Punkte im Live-Test (21.08.2026) implizit bestätigt:** fehlerfreie
+Kompilierung, `InvariantCulture` korrekt (0 Ablehnungen wegen Kommazahlen),
+Timeout-Handling griff sauber, kein UI-Einfrieren, `IsSuspendedWhileInactive`
+kompilierte ohne Probleme.
 
 ### 7.2 Der Empfänger-Vertrag ist Teil der Bridge
 
@@ -539,7 +584,9 @@ historisch wie in Echtzeit.
 **Daraus die Betriebsregel:** Die Repo-Fassung ist die Quelle der Wahrheit. Die
 Versionsnummer im NinjaScript-Output (**aktuell 1.0.1**, vorher 1.0.0) ist der
 einzige verlässliche Nachweis, welche Fassung wirklich läuft. Die Anhebung auf
-1.0.1 geschah genau deswegen.
+1.0.1 geschah genau deswegen. **Bestätigt im Live-Test (21.08.2026):** Der
+Output zeigte durchgehend `ClaudeBridge 1.0.1 bereit` — die richtige Fassung
+lief.
 
 ### 8.2 Fehler in selbst erzeugten Testdaten (wichtig für die Zukunft)
 
@@ -610,16 +657,19 @@ noch nicht, weil der Code nicht existiert.
 
 **Es wurde nie ein Backtest auf echten Marktdaten gerechnet.**
 
-- Die **einzige** Datendatei ist `data/DEMO_1m.csv` — ein **synthetischer
-  Zufallspfad**, ausdrücklich nur zum Ausprobieren der CLI ohne Zugangsdaten.
-  **Keine Grundlage für Aussagen über Strategien.**
+- Die **einzige** Datendatei zum Ausprobieren der CLI ist `data/DEMO_1m.csv` —
+  ein **synthetischer Zufallspfad**. **Keine Grundlage für Aussagen über
+  Strategien.**
 - Es existieren **keine gespeicherten Backtest-Ergebnisse**, keine Reports, keine
   Kennzahlen.
-- Damit gibt es **keine Backtest-Zeiträume, keine Instrumente, keine Parameter,
-  keine Ergebnisse und keine Schlussfolgerungen** zu dokumentieren.
+- **Seit 21.08.2026 liegen aber erstmals echte Marktdaten in der produktiven
+  Datenbank `data/ntbridge.sqlite3` vor** (siehe Verifikationslauf unten). Damit
+  ist die Datengrundlage für einen künftigen echten Backtest vorhanden — ein
+  solcher Backtest wurde bislang trotzdem **nicht** ausgeführt.
 
 **Das ist kein Versäumnis der Dokumentation, sondern der tatsächliche Zustand.**
-Ein zukünftiger Chat darf daraus keine Aussagen über Strategiegüte ableiten.
+Ein zukünftiger Chat darf daraus **weiterhin keine** Aussagen über Strategiegüte
+ableiten, bis ein Backtest tatsächlich gelaufen ist.
 
 **Verfügbare Backtest-Kommandos** (auf echten Daten noch nie ausgeführt):
 
@@ -629,7 +679,7 @@ Ein zukünftiger Chat darf daraus keine Aussagen über Strategiegüte ableiten.
 .venv\Scripts\python.exe -m backtest.cli optimize --symbol DEMO --csv data\DEMO_1m.csv --strategy vwap_trend --grid "stop_loss_atr=1.0,1.5,2.0"
 ```
 
-### Verifizierter Ende-zu-Ende-Lauf (synthetische Daten)
+### Verifizierter Ende-zu-Ende-Lauf (synthetische Daten, ältere Session)
 
 In einer früheren Session wurde die Kette einmal vollständig durchgespielt:
 Empfänger gestartet, **4450 synthetische Bars** über 5 Timeframes gepostet,
@@ -638,8 +688,90 @@ Beispielausgabe u. a. `week_high`, `week_low`, `volume_profile` (POC/VAH/VAL,
 als Näherung markiert), `relative_volume`, und `atr_percentile` als
 `noch nicht belastbar - 12/20 Sessions`.
 
-**Diese Bars sind nicht mehr in der produktiven Datenbank** — sie lag in einer
-temporären DB. Die produktive `data/ntbridge.sqlite3` ist leer.
+Diese Bars lagen in einer temporären DB, nicht in der produktiven.
+
+### Verifizierter Ende-zu-Ende-Lauf mit ECHTEN Daten (21.08.2026) — NEU
+
+**Ablauf:**
+1. `ClaudeBridge.cs` im NinjaScript-Editor kompiliert, Reiter *Errors* leer.
+2. Zwei Charts eingerichtet (MNQ SEP26): 1m-Chart mit Zusatz-TFs `5,15`,
+   Session Template `CME US Index Futures ETH`; Day-1-Chart mit Zusatz-TF `60`,
+   Days to load 400.
+3. Indikator zunächst **ohne laufenden Empfänger** angewandt (Empfänger war zu
+   dem Zeitpunkt noch nicht gestartet). NinjaScript-Output zeigte korrekt:
+   Startmeldung `ClaudeBridge 1.0.1 bereit`, korrekte Serienliste und
+   Zielwerte (1m→3000, 5m→600, 15m→250, 1h→250, 1d→250), danach für jede
+   Serie `Zeitueberschreitung nach 1500 ms ... Kerzen zwischengespeichert` —
+   erwartetes, korrektes Fail-Handling ohne Absturz.
+4. Empfänger gestartet: `.venv\Scripts\python.exe -m ntbridge`.
+5. **Ohne weiteres Zutun** lieferte der Retry-Puffer der Bridge die
+   zwischengespeicherten Kerzen beim nächsten Kontakt automatisch nach.
+   Empfänger-Startmeldung zeigte direkt danach bereits **4366–4369 Bars** in
+   der produktiven Datenbank, über alle 5 erwarteten Serien.
+6. `curl http://127.0.0.1:8787/status` bestätigte:
+   - `kerzen_angenommen: 5669`, `kerzen_abgelehnt: 0`, `ablehnungsgruende: {}`
+   - `kerzen_gesamt: 4369` in `data/ntbridge.sqlite3`
+   - Abdeckung je Serie: MNQ 1m (3015 Bars), 5m (603), 15m (251), 1h (250),
+     1d (250)
+   - `letzte_kerze_empfangen_utc` lag **~2 Minuten** hinter der tatsächlichen
+     Uhrzeit zum Prüfzeitpunkt (2026-08-21, 02:20 UTC empfangen vs. 02:22 UTC
+     real geprüft) — live, nicht nur historischer Backfill.
+   - `alter_sekunden` bei 1m/5m: **1,9 Sekunden** — Kerzen kamen buchstäblich
+     in dem Moment an, in dem geprüft wurde.
+7. Zeitzonen-Check: gemeldete Zeitzone `W. Europe Standard Time` entspricht
+   Europe/Berlin; UTC-Zeitstempel in der DB ohne Versatz zur echten Uhrzeit.
+   Keine Diskrepanz gefunden.
+
+**Ergebnis: Etappe A und Etappe B sind damit erstmals mit echten NT8-Live-
+Marktdaten (MNQ) vollständig verifiziert, nicht mehr nur mit synthetischen
+Daten.** Diese Bars liegen — anders als beim früheren synthetischen Lauf — in
+der **produktiven** Datenbank.
+
+**Offen geblieben, nicht Teil dieses Tests:** ob der bereits erwähnte
+`laeuft_seit_utc`-Wert in `/status` korrekt aus der tatsächlichen
+Prozesslaufzeit oder aus einem persistierten DB-Feld stammt (siehe Abschnitt 3,
+`ntbridge/`). Kein Blocker, nur eine offene Detailfrage für den nächsten
+Code-Zugriff.
+
+### Erster Snapshot auf echten Daten (21.08.2026, 02:40 UTC) — NEU
+
+Direkt nach dem Live-Test wurde erstmals
+`.venv\Scripts\python.exe -m mcp_server.cli snapshot --symbol MNQ` auf echten
+Daten ausgeführt. **Der Snapshot rendert vollständig und plausibel.**
+
+**Korrekt verifiziert:**
+- Zeitzonen-Umrechnung: 02:40 UTC → 22:40 ET (−4) → 21:40 CT (−5). Stimmt.
+- Session-Erkennung: `asia`, Globex offen, RTH nein, **"noch 650 Min bis
+  RTH-Eroeffnung"** — von 22:40 ET bis 09:30 ET sind exakt 10 h 50 min =
+  650 min. Die Session-Logik rechnet richtig.
+- Kontraktdaten: Tick 0,25 = 0,50 USD, Punktwert 2,0 USD — deckt sich mit dem
+  Instrument-Register.
+- `atr_percentile` meldet ehrlich `noch nicht belastbar - 11/20 Sessions`
+  statt einer Schätzung. Das Kernprinzip funktioniert im Realbetrieb.
+
+**Drei Beobachtungen, die beim nächsten Code-Zugriff zu prüfen sind
+(NICHT als Fehler bestätigt, nur auffällig):**
+
+1. **`relative_volume` meldete 0,02.** Das hieße 2 % des normalen Volumens.
+   Der Globex-Tag rollt um 18:00 ET, zum Messzeitpunkt (22:40 ET) waren also
+   erst ~4 h 40 min der 23-Stunden-Session vergangen — man würde grob 20 %
+   erwarten, nicht 2 %. **Verdacht: Es wird das bisher aufgelaufene
+   Teilsession-Volumen gegen ein Durchschnitts-VOLLsession-Volumen verglichen.**
+   Das wäre exakt derselbe Fehlertyp wie Bug-Lehre 5 (ungleich lange Fenster,
+   Abschnitt 8). Zu prüfen in `common/levels.py::history_dependent_metrics()`.
+   Falls bestätigt: entweder auf gleich lange Fenster normalisieren (Volumen
+   bis zur selben Session-Uhrzeit an den Vergleichstagen) oder das Feld
+   während einer laufenden Session als `null` mit Begründung ausweisen.
+2. **`volume_profile` meldete `VAL == POC` (beide 29314,2438),** bei
+   `VAH 29355,7188`. Normalerweise gilt VAL < POC < VAH. Ein Wertbereich, der
+   vollständig oberhalb des POC liegt, ist nicht unmöglich, aber ungewöhnlich
+   genug für einen Blick auf die Randbehandlung der Value-Area-Berechnung.
+   Feld ist ohnehin als `naeherung` markiert.
+3. **Die Tagesserie wurde mit `1d (120 Bars)` gerechnet,** obwohl 250
+   Tageskerzen in der Datenbank liegen und auch gesendet wurden. Vermutlich ein
+   konfigurierter Lookback (analog `1m (1500 Bars)` bei 3015 vorhandenen), also
+   wahrscheinlich Absicht — aber einmal bestätigen, damit nicht still
+   Historie verworfen wird.
 
 ---
 
@@ -659,15 +791,17 @@ temporären DB. Die produktive `data/ntbridge.sqlite3` ist leer.
 
 ## 11. Widersprüche zwischen Chat/Dokumentation und aktuellem Code
 
-### W1 — Etappe B: "offen" vs. vollständig gebaut
+### W1 — Etappe B: "offen" vs. vollständig gebaut vs. jetzt live verifiziert
 
 - **Übergabedatei `PROJEKTKONTEXT_UEBERGABE.md` sagt:** "Etappe B — STATUS: offen."
-- **Code zeigt:** `ntbridge/{__init__,__main__,receiver,store}.py`,
-  `tests/test_ntbridge.py`, `NTBridgeBarSource` — alles vorhanden, Tests grün.
-- **Erklärung:** Die Übergabedatei wurde **vor** dem Bau von Etappe B geschrieben.
-  Kein echter Konflikt, sondern veralteter Stand.
-- **Es gilt:** Etappe B ist **code-seitig fertig**, aber **nicht mit echten Daten
-  verifiziert**. Diese Unterscheidung darf nicht wegfallen.
+- **Stand bis 20.08.2026:** Code fertig, Tests grün, aber **nie mit echten Daten
+  gelaufen**.
+- **Stand seit 21.08.2026:** Code fertig **und** mit echten NT8-Live-Daten
+  verifiziert (siehe Abschnitt 9). Die Übergabedatei ist damit doppelt
+  überholt — sie beschreibt einen Stand von vor dem Bau von Etappe B.
+- **Es gilt:** Etappe B ist **vollständig verifiziert** (Code fertig, Tests
+  grün, echte Live-Daten bestätigt). Die einzige verbleibende Lücke betrifft
+  Etappe C/D, nicht mehr Etappe B selbst.
 
 ### W2 — "16:45 EST ist hart verdrahtet"
 
@@ -691,16 +825,20 @@ temporären DB. Die produktive `data/ntbridge.sqlite3` ist leer.
 - **Rechnung:** 3000 1-Minuten-Kerzen ≈ 50 Stunden ≈ 2,2 Globex-Sessions.
   "Days to load" zählt **Kalendertage**; über ein Wochenende reichen 5 knapp, ohne
   Reserve.
-- **Status:** **Nicht abschließend geklärt.** In dieser Session wurde **7**
-  empfohlen (hergeleitet, nicht gemessen). Maßgeblich ist ohnehin die
-  `WARNUNG: nur N von M Kerzen`-Zeile im NinjaScript-Output.
+- **Status:** In dieser Session wurde **7** verwendet und funktionierte im
+  Live-Test: die 1m-Serie erreichte mit 7 Tagen 3015 von 3000 Ziel-Kerzen, also
+  sogar leicht über Ziel. Damit praktisch bestätigt, dass 7 ausreicht — nicht
+  mehr nur hergeleitet. Maßgeblich bleibt weiterhin die
+  `WARNUNG: nur N von M Kerzen`-Zeile im NinjaScript-Output, falls sich das
+  Marktumfeld ändert.
 
 ### W4 — Erfolgstest der Übergabedatei ist überholt
 
 - **Übergabedatei sagt:** Im NinjaScript-Output müssen **Zeitüberschreitungen**
   erscheinen, weil der Empfänger noch nicht existiert.
-- **Es gilt:** Der Empfänger **ist gebaut**. Erwartet werden jetzt **erfolgreich
-  gespeicherte Bars**, keine Timeouts.
+- **Es gilt:** Der Empfänger **ist gebaut und live verifiziert**. Erwartet werden
+  jetzt **erfolgreich gespeicherte Bars** — im Test vom 21.08.2026 tatsächlich
+  beobachtet (0 Ablehnungen, Live-Bars mit unter 2 Sekunden Alter).
 
 ### W5 — README ist zwei Architekturen zurück
 
@@ -725,19 +863,24 @@ Siehe Abschnitt 4, "Namensfalle". Rein terminologisch, aber verwechslungsanfäll
 
 ## 12. Nächste technische Schritte
 
-1. **`ClaudeBridge.cs` in NT8 kompilieren** — `New > NinjaScript Editor` → **F5**,
-   Reiter *Errors* muss leer sein. Bei fehlender `System.Net.Http`-Referenz im
-   Editor Rechtsklick > `References…` > `Add`.
-2. **Empfänger ZUERST starten:**
-   `.venv\Scripts\python.exe -m ntbridge`
-3. **Chart 1 (MNQ, Minute 1, Days to load 7, Session Template
-   `CME US Index Futures ETH`, Zusatz-TFs `5,15`, Tagesserie aus).**
-4. **Chart 2 (MNQ, Day 1, Days to load 400, Zusatz-TFs `60`, Tagesserie aus).**
-5. **Erfolgstest:** Startmeldung muss `ClaudeBridge 1.0.1 bereit` zeigen;
-   `WARNUNG`-Zeilen beachten; Zeitzone der Startmeldung mit
-   *Tools > Optionen > Allgemein* vergleichen; dann
-   `curl http://127.0.0.1:8787/status`.
-6. **Etappe B mit echten Daten verifizieren**, danach **Etappe C**.
+1. **Empfänger dauerhaft mitlaufen lassen**, damit sich historienabhängige
+   Kennzahlen (Wochen-H/L, ATR-Perzentil usw.) über die Zeit füllen.
+2. **`relative_volume` prüfen** — meldete im ersten echten Snapshot 0,02,
+   möglicherweise Teilsession gegen Vollsession verglichen (Abschnitt 9,
+   Beobachtung 1). Wäre derselbe Fehlertyp wie Bug-Lehre 5. **Von den drei
+   Beobachtungen die einzige mit echtem Fehlerverdacht** — hat Vorrang.
+3. **`volume_profile` (VAL == POC) und Tagesserien-Lookback (120 statt 250)
+   prüfen** — Abschnitt 9, Beobachtungen 2 und 3. Vermutlich harmlos.
+4. **`laeuft_seit_utc` in `/status` prüfen** — vermutlich liest es einen
+   persistierten DB-Wert statt der echten Prozesslaufzeit (Abschnitt 3, 9).
+   Kein Blocker, aber klärungsbedürftig beim nächsten Code-Zugriff.
+5. **Etappe C beginnen:** regelbasierte Ideen-Protokollierung, MNQ.
+6. Danach **Etappe D**: `evaluate_past_ideas`, `get_performance_report`.
+
+> **Korrektur gegenüber älteren Fassungen (21.08.2026):** Die früheren Schritte
+> 1–6 dieser Liste (Kompilieren, Empfänger starten, zwei Charts einrichten,
+> Erfolgstest, Etappe B verifizieren) sind **erledigt** — siehe Abschnitt 9 für
+> den vollständigen Nachweis. Die Liste wurde entsprechend neu aufgesetzt.
 
 ### Vom Nutzer angeforderte, noch offene Arbeitspakete
 
@@ -797,3 +940,11 @@ zusätzlich `NORMALER_CHAT_KONTEXT.md` prüfen.
 aktualisiert sich **nicht** automatisch, wenn diese Datei auf der Festplatte
 fortgeschrieben wird. Nach Meilensteinen beide Dateien neu hochladen. Das Datum
 in der Kopfzeile verrät, ob die hochgeladene Fassung noch aktuell ist.
+
+**Hinweis zu diesem Update (21.08.2026):** Dieser Stand wurde **im normalen Chat**
+(nicht in Claude Code) auf Basis der vom Nutzer im Gespräch eingefügten
+NinjaTrader- und `/status`-Ausgaben aktualisiert, nicht durch erneute Prüfung
+gegen den tatsächlichen Quellcode. Inhaltlich ist das durch die zitierten
+Live-Ausgaben gut belegt, aber die übliche Rangfolge (Code vor dieser Datei)
+gilt weiterhin — bei nächster Gelegenheit gegen den echten Code abgleichen und
+diese Kopie ggf. korrigieren.

@@ -143,6 +143,64 @@ def overnight_mask(df: pd.DataFrame, instrument: Instrument) -> pd.Series:
     return (times >= globex_open) | (times < instrument.rth_start)
 
 
+def initial_balance_per_session(
+    df: pd.DataFrame,
+    instrument: Instrument,
+    session_cfg: SessionConfig,
+) -> pd.DataFrame:
+    """Initial-Balance-Hoch/-Tief je Handelstag, auf jede Kerze abgebildet.
+
+    ``compute_levels`` liefert die Initial Balance nur fuer den zuletzt
+    laufenden Handelstag. Die Ideen-Protokollierung braucht sie ueber eine
+    laengere Historie, also je Session.
+
+    Bewusst KEINE zweite Definition der Initial Balance: dieselbe Konstante
+    ``INITIAL_BALANCE_MINUTES``, dieselbe ``rth_mask``, derselbe
+    Minutenzaehler wie in ``compute_levels``.
+
+    LOOKAHEAD-SCHUTZ - der eigentliche Punkt dieser Funktion:
+    Die Werte stehen einer Kerze erst zur Verfuegung, wenn das IB-Fenster
+    **abgelaufen** ist. Waehrend der ersten 60 RTH-Minuten bleiben sie NaN.
+    Wuerde man den Tageswert einfach auf alle Kerzen des Tages verteilen,
+    kennte eine Kerze um 09:45 bereits das Hoch, das erst um 10:30 feststeht -
+    und jede darauf gebaute Auswertung waere wertlos.
+
+    Rueckgabe: Spalten ``ib_high``, ``ib_low`` (float, NaN bis das Fenster
+    abgelaufen ist).
+    """
+    leer = pd.DataFrame(
+        {"ib_high": np.nan, "ib_low": np.nan},
+        index=df.index,
+        dtype="float64",
+    )
+    if df.empty:
+        return leer
+
+    tage = session_dates(df.index, session_cfg)
+    innerhalb_rth = rth_mask(df, instrument)
+    verstrichen = _minutes_from_rth_open(df, instrument)
+
+    im_ib_fenster = innerhalb_rth & (verstrichen >= 0) & (verstrichen < INITIAL_BALANCE_MINUTES)
+    if not bool(im_ib_fenster.any()):
+        return leer
+
+    fenster = df[im_ib_fenster.values]
+    tage_im_fenster = tage[im_ib_fenster.values]
+
+    hoch_je_tag = fenster["high"].groupby(tage_im_fenster.values).max()
+    tief_je_tag = fenster["low"].groupby(tage_im_fenster.values).min()
+
+    ergebnis = leer.copy()
+    ergebnis["ib_high"] = tage.map(hoch_je_tag).astype("float64").values
+    ergebnis["ib_low"] = tage.map(tief_je_tag).astype("float64").values
+
+    # Erst nach Ablauf des Fensters sichtbar machen.
+    noch_nicht_bekannt = (verstrichen < INITIAL_BALANCE_MINUTES).values
+    ergebnis.loc[noch_nicht_bekannt, ["ib_high", "ib_low"]] = np.nan
+
+    return ergebnis
+
+
 def _minutes_from_rth_open(df: pd.DataFrame, instrument: Instrument) -> pd.Series:
     """Minuten seit RTH-Eroeffnung (negativ vor der Eroeffnung)."""
     local = df.index.tz_convert(ZoneInfo(instrument.timezone))
@@ -685,6 +743,7 @@ __all__ = [
     "LevelSet",
     "compute_levels",
     "history_dependent_metrics",
+    "initial_balance_per_session",
     "make_level",
     "overnight_mask",
     "rth_mask",

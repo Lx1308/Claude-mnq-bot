@@ -262,6 +262,80 @@ class NtBridgeConfig:
 
 
 @dataclass(frozen=True)
+class IdeenSetupConfig:
+    """Schwellenwerte der vier Setup-Erkenner (Etappe C)."""
+
+    # Wie weit ein Schlusskurs ueber die Marke hinaus muss, damit der Bruch
+    # zaehlt. In ATR, nicht in Punkten: sonst waere derselbe Wert bei MNQ
+    # und MGC nicht vergleichbar.
+    bruch_puffer_atr: float = 0.10
+    # Stop-Abstand hinter der gebrochenen Marke.
+    bruch_stop_atr: float = 1.0
+    # Zielabstand vom Einstieg.
+    bruch_ziel_atr: float = 2.0
+
+    # VWAP-Reversion: so weit muss der Kurs vom VWAP entfernt gewesen sein.
+    vwap_abweichung_atr: float = 1.5
+    vwap_stop_atr: float = 1.0
+
+    # Flaggen-Ausbruch: Stop auf die Gegenseite der Range, Ziel in ATR.
+    flagge_stop_puffer_atr: float = 0.25
+    flagge_ziel_atr: float = 2.0
+
+
+@dataclass(frozen=True)
+class IdeenFilterConfig:
+    """Filter, die eine erkannte Idee als nicht handelbar markieren."""
+
+    # Fortsetzungs-Setups brauchen Trend, Reversion braucht Range.
+    adx_aktiv: bool = True
+    adx_trend_min: float = 20.0
+    adx_range_max: float = 25.0
+
+    # Nur in liquiden Phasen protokollieren.
+    liquiditaet_aktiv: bool = True
+    # Duenne Mittagszone blockiert.
+    duennzone_aktiv: bool = True
+
+    # Blackout um Wirtschaftstermine. Ist der Kalender nicht erreichbar,
+    # wird die Idee NICHT stillschweigend durchgewinkt, sondern mit dem
+    # Grund "blackout_nicht_pruefbar" markiert - ein Ausfall darf nie wie
+    # Entwarnung aussehen.
+    blackout_aktiv: bool = True
+
+
+@dataclass(frozen=True)
+class IdeasConfig:
+    """Regelbasierte Ideen-Protokollierung (Etappe C)."""
+
+    enabled: bool = True
+    # Regelwerk, unter dem protokolliert wird. Landet als Feld an JEDER
+    # Idee - eine gemeinsame Datenbank, keine getrennten Logs.
+    profil: str = "demo"
+    datenbank: str = "data/ideas.sqlite3"
+    # Bewusst nur MNQ: ein Mehr-Instrument-Stream ist ausdruecklich nicht
+    # Bestandteil des Projekts.
+    instrumente: tuple[str, ...] = ("MNQ",)
+    # Zeitebene, auf der erkannt wird.
+    timeframe: str = "5m"
+    # Wie viele Kerzen fuer die Erkennung geladen werden.
+    bars: int = 1500
+
+    # Faellt das CRV darunter, wird die Idee als "unter Schwelle" markiert -
+    # aber trotzdem protokolliert.
+    crv_schwelle: float = 1.5
+    # Gefilterte Ideen mitspeichern (empfohlen: sonst laesst sich spaeter
+    # nicht pruefen, ob ein Filter zu scharf steht).
+    speichere_gefilterte: bool = True
+    # Unter dieser Zahl gilt eine Kategorie in der Auswertung als
+    # "zu wenig Daten" (Etappe D).
+    min_ideen_pro_kategorie: int = 20
+
+    setups: IdeenSetupConfig = field(default_factory=IdeenSetupConfig)
+    filter: IdeenFilterConfig = field(default_factory=IdeenFilterConfig)
+
+
+@dataclass(frozen=True)
 class EventRiskConfig:
     """Wirtschaftskalender (MCP-Tool ``get_event_risk``)."""
 
@@ -339,6 +413,7 @@ class Config:
     on_demand: OnDemandConfig = field(default_factory=OnDemandConfig)
     event_risk: EventRiskConfig = field(default_factory=EventRiskConfig)
     ntbridge: NtBridgeConfig = field(default_factory=NtBridgeConfig)
+    ideas: IdeasConfig = field(default_factory=IdeasConfig)
     notify: NotifyConfig = field(default_factory=NotifyConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
@@ -484,6 +559,40 @@ class Config:
             },
         )
 
+        id_ = dict(data.get("ideas", {}) or {})
+        id_setups = dict(id_.get("setups", {}) or {})
+        id_filter = dict(id_.get("filter", {}) or {})
+        ideas = IdeasConfig(
+            enabled=bool(id_.get("enabled", True)),
+            profil=str(id_.get("profil", "demo")).lower(),
+            datenbank=str(id_.get("datenbank", "data/ideas.sqlite3")),
+            instrumente=tuple(
+                str(symbol).upper() for symbol in (id_.get("instrumente", ["MNQ"]) or ["MNQ"])
+            ),
+            timeframe=str(id_.get("timeframe", "5m")).lower(),
+            bars=int(id_.get("bars", 1500)),
+            crv_schwelle=float(id_.get("crv_schwelle", 1.5)),
+            speichere_gefilterte=bool(id_.get("speichere_gefilterte", True)),
+            min_ideen_pro_kategorie=int(id_.get("min_ideen_pro_kategorie", 20)),
+            setups=IdeenSetupConfig(
+                bruch_puffer_atr=float(id_setups.get("bruch_puffer_atr", 0.10)),
+                bruch_stop_atr=float(id_setups.get("bruch_stop_atr", 1.0)),
+                bruch_ziel_atr=float(id_setups.get("bruch_ziel_atr", 2.0)),
+                vwap_abweichung_atr=float(id_setups.get("vwap_abweichung_atr", 1.5)),
+                vwap_stop_atr=float(id_setups.get("vwap_stop_atr", 1.0)),
+                flagge_stop_puffer_atr=float(id_setups.get("flagge_stop_puffer_atr", 0.25)),
+                flagge_ziel_atr=float(id_setups.get("flagge_ziel_atr", 2.0)),
+            ),
+            filter=IdeenFilterConfig(
+                adx_aktiv=bool(id_filter.get("adx_aktiv", True)),
+                adx_trend_min=float(id_filter.get("adx_trend_min", 20.0)),
+                adx_range_max=float(id_filter.get("adx_range_max", 25.0)),
+                liquiditaet_aktiv=bool(id_filter.get("liquiditaet_aktiv", True)),
+                duennzone_aktiv=bool(id_filter.get("duennzone_aktiv", True)),
+                blackout_aktiv=bool(id_filter.get("blackout_aktiv", True)),
+            ),
+        )
+
         nt = dict(data.get("notify", {}) or {})
         notify = NotifyConfig(
             telegram_enabled=bool(nt.get("telegram_enabled", True)),
@@ -525,6 +634,7 @@ class Config:
             on_demand=on_demand,
             event_risk=event_risk,
             ntbridge=ntbridge,
+            ideas=ideas,
             notify=notify,
             logging=logging_cfg,
             backtest=backtest,

@@ -236,6 +236,82 @@ ntbridge:
   symbol_map: {}
 
 # ---------------------------------------------------------------------------
+# Regelbasierte Ideen-Protokollierung (Etappe C)
+# ---------------------------------------------------------------------------
+# Protokolliert im Hintergrund, WANN eine Setup-Bedingung erfuellt war -
+# mit Einstieg, Stop, Ziel und CRV aus den Daten bis genau diesem Moment.
+# Keine Order, keine Empfehlung: Datengrundlage fuer die spaetere Frage,
+# welche Setups tatsaechlich einen Erwartungswert haben.
+ideas:
+  enabled: true
+
+  # Regelwerk, unter dem protokolliert wird: "demo" oder "lucid".
+  # Landet als Feld an JEDER Idee. Es gibt bewusst EINE gemeinsame
+  # Datenbank statt getrennter Logs - sonst liesse sich spaeter nicht mehr
+  # fragen, wie ein Setup unter dem jeweils anderen Regelwerk abgeschnitten
+  # haette.
+  #
+  # ACHTUNG: nicht zu verwechseln mit "tradovate.environment: demo" weiter
+  # oben. Das ist die Broker-Umgebung, nicht das Regelwerk.
+  profil: demo
+
+  # Eigene Datei, getrennt von den Kerzen. Der Kerzenspeicher wird im
+  # laufenden Betrieb vom Empfaenger beschrieben.
+  datenbank: "data/ideas.sqlite3"
+
+  # Nur MNQ. Ein Mehr-Instrument-Stream ist ausdruecklich nicht Teil des
+  # Projekts.
+  instrumente: ["MNQ"]
+
+  # Zeitebene der Erkennung und wie viele Kerzen dafuer geladen werden.
+  timeframe: "5m"
+  bars: 1500
+
+  # CRV darunter -> Idee wird als "unter Schwelle" markiert, aber trotzdem
+  # protokolliert. Wegzulassen hiesse, den Datensatz zugunsten der eigenen
+  # Erwartung zu beschneiden.
+  crv_schwelle: 1.5
+
+  # Auch von Filtern abgelehnte Ideen speichern. Empfohlen: sonst laesst
+  # sich spaeter weder pruefen, ob ein Filter zu scharf steht, noch die
+  # Frage beantworten, wie viele Ideen ein Regelwerk verhindert haette.
+  speichere_gefilterte: true
+
+  # Unter dieser Zahl gilt eine Kategorie in der Auswertung (Etappe D) als
+  # "zu wenig Daten".
+  min_ideen_pro_kategorie: 20
+
+  setups:
+    # Alle Abstaende in ATR, nicht in Punkten: derselbe Wert ist damit
+    # zwischen MNQ und MGC vergleichbar.
+    bruch_puffer_atr: 0.10      # so weit muss der Schluss ueber die Marke
+    bruch_stop_atr: 1.0         # Stop hinter der gebrochenen Marke
+    bruch_ziel_atr: 2.0         # Ziel ab Einstieg
+
+    vwap_abweichung_atr: 1.5    # so weit war der Kurs vom VWAP entfernt
+    vwap_stop_atr: 1.0
+
+    flagge_stop_puffer_atr: 0.25
+    flagge_ziel_atr: 2.0
+
+  filter:
+    # Fortsetzungs-Setups (Bruch, Flagge) brauchen Trend,
+    # Reversion braucht Range.
+    adx_aktiv: true
+    adx_trend_min: 20.0
+    adx_range_max: 25.0
+
+    # Nur in liquiden Phasen; duenne Mittagszone blockiert.
+    liquiditaet_aktiv: true
+    duennzone_aktiv: true
+
+    # Blackout um Wirtschaftstermine. Ist der Kalender nicht erreichbar,
+    # wird die Idee NICHT stillschweigend durchgewinkt, sondern mit dem
+    # Grund "blackout_nicht_pruefbar" markiert - ein Ausfall darf nie wie
+    # Entwarnung aussehen.
+    blackout_aktiv: true
+
+# ---------------------------------------------------------------------------
 # Wirtschaftskalender (MCP-Tool get_event_risk)
 # ---------------------------------------------------------------------------
 event_risk:
