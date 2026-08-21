@@ -226,6 +226,82 @@ class FlagBreakout(Rule):
         return f"Flaggen-Ausbruch nach {'oben' if self._direction == 'up' else 'unten'}"
 
 
+class Rising(Rule):
+    """Spalte steigt gegenueber der Vorkerze."""
+
+    def __init__(self, column: str) -> None:
+        self._column = column
+
+    def evaluate(self, ctx: BarContext) -> bool:
+        now, before = ctx.value(self._column), ctx.previous_value(self._column)
+        return _valid(now, before) and now > before
+
+    def describe(self) -> str:
+        return f"{self._column} steigt"
+
+
+class Falling(Rule):
+    """Spalte faellt gegenueber der Vorkerze."""
+
+    def __init__(self, column: str) -> None:
+        self._column = column
+
+    def evaluate(self, ctx: BarContext) -> bool:
+        now, before = ctx.value(self._column), ctx.previous_value(self._column)
+        return _valid(now, before) and now < before
+
+    def describe(self) -> str:
+        return f"{self._column} faellt"
+
+
+class PreviousDeviationExceeds(Rule):
+    """Die VORKERZE lag mindestens N x ATR von einer Referenz entfernt.
+
+    Bewusst auf der Vorkerze und mit deren ATR: die Abweichung ist die
+    Voraussetzung, die Umkehr auf der aktuellen Kerze das Signal. Wuerde man
+    beides auf derselben Kerze messen, waere die Bedingung entweder nie
+    oder immer erfuellt.
+
+    Abstaende in ATR statt in Punkten, weil derselbe Punktwert bei MNQ ein
+    Nichts und bei MGC eine Weltreise waere.
+    """
+
+    def __init__(
+        self,
+        column: str,
+        reference: str,
+        atr_multiple: float,
+        side: str,
+        atr_column: str = "atr",
+    ) -> None:
+        if side not in {"above", "below"}:
+            raise ValueError("side muss 'above' oder 'below' sein.")
+        self._column = column
+        self._reference = reference
+        self._multiple = atr_multiple
+        self._side = side
+        self._atr_column = atr_column
+
+    def evaluate(self, ctx: BarContext) -> bool:
+        value = ctx.previous_value(self._column)
+        reference = ctx.previous_value(self._reference)
+        atr_value = ctx.previous_value(self._atr_column)
+        if not _valid(value, reference, atr_value) or atr_value <= 0:
+            return False
+        deviation = value - reference
+        threshold = self._multiple * atr_value
+        if self._side == "above":
+            return deviation >= threshold
+        return deviation <= -threshold
+
+    def describe(self) -> str:
+        richtung = "ueber" if self._side == "above" else "unter"
+        return (
+            f"Vorkerze {self._multiple} x ATR {richtung} {self._reference} "
+            f"({self._column})"
+        )
+
+
 class SessionTimeWindow(Rule):
     """Nur innerhalb eines Zeitfensters der Boersenzeit handeln.
 

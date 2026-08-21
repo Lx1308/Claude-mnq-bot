@@ -46,6 +46,21 @@ def _parse_hhmm(value: str, where: str) -> dtime:
         raise ConfigError(f"'{where}' muss im Format HH:MM stehen, war: {value!r}") from exc
 
 
+def _lies_setup_parameter(werte: Any) -> "IdeenSetupParameter":
+    """Liest die Schwellenwerte einer Setup-Familie aus der YAML."""
+    daten = dict(werte or {})
+    vorgabe = IdeenSetupParameter()
+    return IdeenSetupParameter(
+        aktiv=bool(daten.get("aktiv", vorgabe.aktiv)),
+        stop_atr=float(daten.get("stop_atr", vorgabe.stop_atr)),
+        ziel_atr=float(daten.get("ziel_atr", vorgabe.ziel_atr)),
+        puffer_punkte=float(daten.get("puffer_punkte", vorgabe.puffer_punkte)),
+        abweichung_atr=float(daten.get("abweichung_atr", vorgabe.abweichung_atr)),
+        session_start=str(daten.get("session_start", vorgabe.session_start)),
+        session_end=str(daten.get("session_end", vorgabe.session_end)),
+    )
+
+
 # ---------------------------------------------------------------------------
 # Secrets (.env)
 # ---------------------------------------------------------------------------
@@ -262,25 +277,36 @@ class NtBridgeConfig:
 
 
 @dataclass(frozen=True)
-class IdeenSetupConfig:
-    """Schwellenwerte der vier Setup-Erkenner (Etappe C)."""
+class IdeenSetupParameter:
+    """Schwellenwerte EINER Setup-Familie (Etappe C).
 
-    # Wie weit ein Schlusskurs ueber die Marke hinaus muss, damit der Bruch
-    # zaehlt. In ATR, nicht in Punkten: sonst waere derselbe Wert bei MNQ
-    # und MGC nicht vergleichbar.
-    bruch_puffer_atr: float = 0.10
-    # Stop-Abstand hinter der gebrochenen Marke.
-    bruch_stop_atr: float = 1.0
-    # Zielabstand vom Einstieg.
-    bruch_ziel_atr: float = 2.0
+    Bewusst ein gemeinsamer Satz Felder statt einer Klasse je Familie: die
+    Familien unterscheiden sich in der Regel-Komposition, nicht in der Art
+    ihrer Parameter. Welche Felder eine Familie tatsaechlich auswertet,
+    legt ihre ``baue``-Funktion in ``ideas/setups.py`` fest.
+    """
 
-    # VWAP-Reversion: so weit muss der Kurs vom VWAP entfernt gewesen sein.
-    vwap_abweichung_atr: float = 1.5
-    vwap_stop_atr: float = 1.0
+    # Familie ganz abschalten, ohne sie aus der Bibliothek zu entfernen.
+    aktiv: bool = True
 
-    # Flaggen-Ausbruch: Stop auf die Gegenseite der Range, Ziel in ATR.
-    flagge_stop_puffer_atr: float = 0.25
-    flagge_ziel_atr: float = 2.0
+    # Stop- und Zielabstand in ATR-Vielfachen, gemessen ab dem Einstieg -
+    # dieselbe Bedeutung wie ``stop_loss_atr``/``take_profit_atr`` in der
+    # Backtest-Engine, damit Protokoll und Backtest dasselbe rechnen.
+    stop_atr: float = 1.5
+    ziel_atr: float = 3.0
+
+    # Bruch-Setups: wie weit der Schluss ueber die Marke hinaus muss.
+    # In Punkten, weil die bestehenden Kreuzungsregeln einen Punktpuffer
+    # erwarten; bei nur einem protokollierten Instrument (MNQ) ist das
+    # eindeutig. Kommt MGC dazu, gehoert hier ein ATR-Vielfaches hin.
+    puffer_punkte: float = 1.0
+
+    # VWAP-Reversion: so weit war der Kurs vom VWAP entfernt.
+    abweichung_atr: float = 1.5
+
+    # Handelsfenster in Boersenzeit des Instruments.
+    session_start: str = "09:30"
+    session_end: str = "15:45"
 
 
 @dataclass(frozen=True)
@@ -309,9 +335,16 @@ class IdeasConfig:
     """Regelbasierte Ideen-Protokollierung (Etappe C)."""
 
     enabled: bool = True
-    # Regelwerk, unter dem protokolliert wird. Landet als Feld an JEDER
-    # Idee - eine gemeinsame Datenbank, keine getrennten Logs.
-    profil: str = "demo"
+    # Tatsaechliche Kontoumgebung, in der die Idee entstanden ist. Landet
+    # als Feld an JEDER Idee - eine gemeinsame Datenbank, keine getrennten
+    # Logs. Reine Herkunftsdokumentation: die Auswertung rechnet spaeter
+    # alle Ideen durch beide Regelwerke und benutzt dieses Feld NICHT als
+    # Filter (Spezifikation Abschnitt 4).
+    #
+    # Bewusst nicht "demo": unter "tradovate:" steht bereits
+    # "environment: demo" fuer die Broker-Umgebung.
+    profil: str = "sim_frei"
+    profile_erlaubt: tuple[str, ...] = ("sim_frei", "lucid_challenge", "lucid_funded")
     datenbank: str = "data/ideas.sqlite3"
     # Bewusst nur MNQ: ein Mehr-Instrument-Stream ist ausdruecklich nicht
     # Bestandteil des Projekts.
@@ -331,8 +364,14 @@ class IdeasConfig:
     # "zu wenig Daten" (Etappe D).
     min_ideen_pro_kategorie: int = 20
 
-    setups: IdeenSetupConfig = field(default_factory=IdeenSetupConfig)
+    # Schwellenwerte je Setup-Familie, Schluessel wie in
+    # ``ideas.setups.SETUP_BIBLIOTHEK``. Fehlt eine Familie, gelten die
+    # Vorgabewerte aus ``IdeenSetupParameter``.
+    setups: dict[str, IdeenSetupParameter] = field(default_factory=dict)
     filter: IdeenFilterConfig = field(default_factory=IdeenFilterConfig)
+
+    def setup_parameter(self, schluessel: str) -> IdeenSetupParameter:
+        return self.setups.get(schluessel, IdeenSetupParameter())
 
 
 @dataclass(frozen=True)
@@ -564,7 +603,14 @@ class Config:
         id_filter = dict(id_.get("filter", {}) or {})
         ideas = IdeasConfig(
             enabled=bool(id_.get("enabled", True)),
-            profil=str(id_.get("profil", "demo")).lower(),
+            profil=str(id_.get("profil", "sim_frei")).lower(),
+            profile_erlaubt=tuple(
+                str(wert).lower()
+                for wert in (
+                    id_.get("profile_erlaubt")
+                    or ["sim_frei", "lucid_challenge", "lucid_funded"]
+                )
+            ),
             datenbank=str(id_.get("datenbank", "data/ideas.sqlite3")),
             instrumente=tuple(
                 str(symbol).upper() for symbol in (id_.get("instrumente", ["MNQ"]) or ["MNQ"])
@@ -574,15 +620,10 @@ class Config:
             crv_schwelle=float(id_.get("crv_schwelle", 1.5)),
             speichere_gefilterte=bool(id_.get("speichere_gefilterte", True)),
             min_ideen_pro_kategorie=int(id_.get("min_ideen_pro_kategorie", 20)),
-            setups=IdeenSetupConfig(
-                bruch_puffer_atr=float(id_setups.get("bruch_puffer_atr", 0.10)),
-                bruch_stop_atr=float(id_setups.get("bruch_stop_atr", 1.0)),
-                bruch_ziel_atr=float(id_setups.get("bruch_ziel_atr", 2.0)),
-                vwap_abweichung_atr=float(id_setups.get("vwap_abweichung_atr", 1.5)),
-                vwap_stop_atr=float(id_setups.get("vwap_stop_atr", 1.0)),
-                flagge_stop_puffer_atr=float(id_setups.get("flagge_stop_puffer_atr", 0.25)),
-                flagge_ziel_atr=float(id_setups.get("flagge_ziel_atr", 2.0)),
-            ),
+            setups={
+                str(schluessel): _lies_setup_parameter(werte)
+                for schluessel, werte in id_setups.items()
+            },
             filter=IdeenFilterConfig(
                 adx_aktiv=bool(id_filter.get("adx_aktiv", True)),
                 adx_trend_min=float(id_filter.get("adx_trend_min", 20.0)),
@@ -721,6 +762,39 @@ class Config:
                 f"on_demand.swing_lookback ({self.on_demand.swing_lookback}) - die Zonen "
                 "wuerden auf weniger Kerzen beruhen als konfiguriert."
             )
+        # Ideen-Protokollierung: ein Tippfehler im Profil oder ein unbekannter
+        # Setup-Schluessel wuerde nicht auffallen, sondern die spaetere
+        # Auswertung still in zwei Gruppen zerlegen bzw. eine Familie nie
+        # ausloesen lassen. Deshalb hier abbrechen statt akzeptieren.
+        if self.ideas.enabled:
+            if self.ideas.profil not in self.ideas.profile_erlaubt:
+                raise ConfigError(
+                    f"ideas.profil ({self.ideas.profil!r}) steht nicht in "
+                    f"ideas.profile_erlaubt ({', '.join(self.ideas.profile_erlaubt)}). "
+                    "Das Feld dokumentiert die tatsaechliche Kontoumgebung; ein "
+                    "Tippfehler wuerde die Auswertung unbemerkt in zwei Gruppen "
+                    "zerlegen. Hinweis: 'demo' ist hier bewusst KEIN gueltiger "
+                    "Wert - das ist die Tradovate-Umgebung unter tradovate.environment."
+                )
+            from ideas.setups import SETUP_BIBLIOTHEK
+
+            unbekannt = sorted(set(self.ideas.setups) - set(SETUP_BIBLIOTHEK))
+            if unbekannt:
+                raise ConfigError(
+                    f"ideas.setups enthaelt unbekannte Schluessel: {', '.join(unbekannt)}. "
+                    f"Verfuegbar: {', '.join(sorted(SETUP_BIBLIOTHEK))}. "
+                    "Ein unbekannter Schluessel wirkt sonst wie eine konfigurierte "
+                    "Familie, loest aber nie aus."
+                )
+            if not any(
+                self.ideas.setup_parameter(schluessel).aktiv
+                for schluessel in SETUP_BIBLIOTHEK
+            ):
+                raise ConfigError(
+                    "ideas.enabled ist true, aber keine einzige Setup-Familie ist "
+                    "aktiv. Die Protokollierung liefe dann dauerhaft ohne Ergebnis."
+                )
+
         if not 0.0 < self.backtest.split.in_sample_fraction < 1.0:
             raise ConfigError("backtest.split.in_sample_fraction muss zwischen 0 und 1 liegen.")
         if self.backtest.split.mode not in {"fraction", "date"}:

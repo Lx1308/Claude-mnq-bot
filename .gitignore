@@ -19,6 +19,9 @@ data/cache/
 backtest_results/
 *.log
 
+# Protokoll der taeglichen Datenluecken-Pruefung (rechnerspezifisch, waechst)
+datenluecken_log.txt
+
 # Marktdaten-Speicher (ntbridge)
 # Waechst dauerhaft, ist reproduzierbar (NinjaTrader liefert die Historie neu)
 # und wird im laufenden Betrieb beschrieben - gehoert nicht in die Versionierung.

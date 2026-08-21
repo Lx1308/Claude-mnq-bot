@@ -245,15 +245,29 @@ ntbridge:
 ideas:
   enabled: true
 
-  # Regelwerk, unter dem protokolliert wird: "demo" oder "lucid".
-  # Landet als Feld an JEDER Idee. Es gibt bewusst EINE gemeinsame
-  # Datenbank statt getrennter Logs - sonst liesse sich spaeter nicht mehr
-  # fragen, wie ein Setup unter dem jeweils anderen Regelwerk abgeschnitten
-  # haette.
+  # In welcher TATSAECHLICHEN Kontoumgebung die Idee entstanden ist.
+  # Reine Dokumentation der Herkunft, KEIN Steuerungsfeld.
   #
-  # ACHTUNG: nicht zu verwechseln mit "tradovate.environment: demo" weiter
-  # oben. Das ist die Broker-Umgebung, nicht das Regelwerk.
-  profil: demo
+  # Die tragende Unterscheidung (Spezifikation Abschnitt 4):
+  #   profil  = was tatsaechlich war   -> steht an der Idee
+  #   rules   = was gewesen waere      -> Parameter von evaluate_past_ideas
+  # Deshalb rechnet evaluate_past_ideas(rules="both") spaeter ALLE Ideen
+  # durch BEIDE Regelwerke, unabhaengig vom profil. Nur so laesst sich die
+  # eigentliche Frage beantworten, welche Setups auch unter Prop-Firm-Regeln
+  # tragen. Als optionaler Filter bleibt das Feld trotzdem abrufbar.
+  #
+  # ACHTUNG Namensfalle: NICHT "demo" verwenden. Unter "tradovate:" steht
+  # bereits "environment: demo" - das ist die Broker-Umgebung und hat hiermit
+  # nichts zu tun. Ein eigener Wertebereich vermeidet die Verwechslung.
+  profil: sim_frei
+
+  # Erlaubter Wertebereich. Ein Tippfehler im Profil wuerde die spaetere
+  # Auswertung still in zwei Gruppen zerlegen, ohne dass es auffiele -
+  # deshalb wird beim Start dagegen geprueft statt frei zu akzeptieren.
+  profile_erlaubt:
+    - sim_frei          # eigenes NinjaTrader-Simulationskonto, keine Prop-Regeln
+    - lucid_challenge   # laufende Lucid-Challenge
+    - lucid_funded      # bestandene Lucid-Challenge, Sim-Funded
 
   # Eigene Datei, getrennt von den Kerzen. Der Kerzenspeicher wird im
   # laufenden Betrieb vom Empfaenger beschrieben.
@@ -281,18 +295,37 @@ ideas:
   # "zu wenig Daten".
   min_ideen_pro_kategorie: 20
 
+  # Schwellenwerte je Setup-Familie. Die Schluessel entsprechen
+  # ideas/setups.py::SETUP_BIBLIOTHEK; jede Familie bildet auf eine
+  # Strategie aus backtest/strategies/library.py ab. Fehlt eine Familie
+  # hier, gelten die Vorgabewerte aus IdeenSetupParameter.
+  #
+  # stop_atr/ziel_atr sind ATR-Vielfache ab Einstieg - dieselbe Bedeutung
+  # wie stop_loss_atr/take_profit_atr in der Backtest-Engine, damit
+  # Protokoll und Backtest dasselbe rechnen.
   setups:
-    # Alle Abstaende in ATR, nicht in Punkten: derselbe Wert ist damit
-    # zwischen MNQ und MGC vergleichbar.
-    bruch_puffer_atr: 0.10      # so weit muss der Schluss ueber die Marke
-    bruch_stop_atr: 1.0         # Stop hinter der gebrochenen Marke
-    bruch_ziel_atr: 2.0         # Ziel ab Einstieg
+    pdh_pdl_bruch:
+      aktiv: true
+      puffer_punkte: 1.0
+      stop_atr: 1.5
+      ziel_atr: 3.0
 
-    vwap_abweichung_atr: 1.5    # so weit war der Kurs vom VWAP entfernt
-    vwap_stop_atr: 1.0
+    ib_bruch:
+      aktiv: true
+      puffer_punkte: 1.0
+      stop_atr: 1.5
+      ziel_atr: 3.0
 
-    flagge_stop_puffer_atr: 0.25
-    flagge_ziel_atr: 2.0
+    vwap_reversion:
+      aktiv: true
+      abweichung_atr: 1.5     # so weit war der Kurs vom VWAP entfernt
+      stop_atr: 1.5
+      ziel_atr: 2.0
+
+    flaggen_ausbruch:
+      aktiv: true
+      stop_atr: 1.2
+      ziel_atr: 2.5
 
   filter:
     # Fortsetzungs-Setups (Bruch, Flagge) brauchen Trend,

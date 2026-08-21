@@ -34,8 +34,7 @@ import pandas as pd
 from common.config import IdeenFilterConfig
 from common.instruments import Instrument
 from common.sessions import is_liquid_window, is_thin_window
-from ideas.detectors import Rohidee
-from ideas.model import SETUPS_FORTSETZUNG, SETUPS_REVERSION
+from ideas.setups import ART_FORTSETZUNG, ART_REVERSION
 
 
 @dataclass(frozen=True)
@@ -82,7 +81,7 @@ def _zahl(wert: Any) -> float | None:
 # ---------------------------------------------------------------------------
 
 def filter_adx(
-    idee: Rohidee, jetzt: pd.Series, cfg: IdeenFilterConfig
+    art: str, jetzt: pd.Series, cfg: IdeenFilterConfig
 ) -> Filterergebnis:
     """Fortsetzungs-Setups brauchen Trend, Reversion braucht Range.
 
@@ -99,11 +98,11 @@ def filter_adx(
         # Nicht ablehnen, aber auch nicht als geprueft ausgeben.
         return Filterergebnis.nicht_pruefbar("adx_noch_nicht_belastbar")
 
-    if idee.setup in SETUPS_FORTSETZUNG and adx < cfg.adx_trend_min:
+    if art == ART_FORTSETZUNG and adx < cfg.adx_trend_min:
         return Filterergebnis.ablehnen(
             f"adx_zu_niedrig_fuer_fortsetzung ({adx:.1f} < {cfg.adx_trend_min:.1f})"
         )
-    if idee.setup in SETUPS_REVERSION and adx > cfg.adx_range_max:
+    if art == ART_REVERSION and adx > cfg.adx_range_max:
         return Filterergebnis.ablehnen(
             f"adx_zu_hoch_fuer_reversion ({adx:.1f} > {cfg.adx_range_max:.1f})"
         )
@@ -198,7 +197,7 @@ class Filterbilanz:
 
 
 def pruefe_alle(
-    idee: Rohidee,
+    art: str,
     jetzt: pd.Series,
     zeitpunkt: datetime,
     instrument: Instrument,
@@ -212,7 +211,7 @@ def pruefe_alle(
     Filtern gescheitert waere.
     """
     ergebnisse = (
-        filter_adx(idee, jetzt, cfg),
+        filter_adx(art, jetzt, cfg),
         filter_liquiditaet(zeitpunkt, instrument, cfg),
         filter_duennzone(zeitpunkt, instrument, cfg),
         filter_blackout(zeitpunkt, cfg, blackout_pruefer),

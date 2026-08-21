@@ -17,7 +17,10 @@ from backtest.strategies.base import (
     ColumnBelow,
     CrossesAbove,
     CrossesBelow,
+    Falling,
     FlagBreakout,
+    PreviousDeviationExceeds,
+    Rising,
     RuleStrategy,
     SessionTimeWindow,
 )
@@ -209,11 +212,118 @@ def vwap_trend(
     )
 
 
+def ib_breakout(
+    *,
+    buffer_points: float = 1.0,
+    stop_loss_atr: float | None = 1.5,
+    take_profit_atr: float | None = 3.0,
+    max_bars_in_trade: int | None = 120,
+    trade_short: bool = True,
+    session_start: str = "09:30",
+    session_end: str = "15:45",
+    timezone: str = "America/New_York",
+) -> RuleStrategy:
+    """Bruch der Initial Balance (erste RTH-Stunde) nach oben bzw. unten.
+
+    Braucht die Spalten ``ib_high``/``ib_low`` aus
+    ``common.levels.initial_balance_per_session``. Die sind waehrend des
+    laufenden IB-Fensters NaN; damit kann diese Strategie konstruktions-
+    bedingt nicht ausloesen, bevor die Initial Balance ueberhaupt feststeht.
+
+    Die Kreuzungsregeln verwerfen NaN, also entsteht auch auf der ersten
+    Kerze nach Fensterende kein Scheinsignal aus dem Uebergang NaN -> Wert.
+    """
+    window = SessionTimeWindow(
+        _parse_time(session_start), _parse_time(session_end), timezone
+    )
+
+    long_entry = CrossesAbove("close", "ib_high", buffer=buffer_points) & window
+    short_entry = CrossesBelow("close", "ib_low", buffer=buffer_points) & window
+
+    return RuleStrategy(
+        name="ib_breakout",
+        long_entry=long_entry,
+        long_exit=CrossesBelow("close", "vwap"),
+        short_entry=short_entry if trade_short else None,
+        short_exit=CrossesAbove("close", "vwap") if trade_short else None,
+        stop_loss_atr=stop_loss_atr,
+        take_profit_atr=take_profit_atr,
+        max_bars_in_trade=max_bars_in_trade,
+        params={
+            "buffer_points": buffer_points,
+            "stop_loss_atr": stop_loss_atr,
+            "take_profit_atr": take_profit_atr,
+            "max_bars_in_trade": max_bars_in_trade,
+            "trade_short": trade_short,
+        },
+    )
+
+
+def vwap_reversion(
+    *,
+    deviation_atr: float = 1.5,
+    stop_loss_atr: float | None = 1.5,
+    take_profit_atr: float | None = 2.0,
+    max_bars_in_trade: int | None = 60,
+    trade_short: bool = True,
+    session_start: str = "09:30",
+    session_end: str = "15:45",
+    timezone: str = "America/New_York",
+) -> RuleStrategy:
+    """Rueckkehr zum VWAP nach weiter Abweichung.
+
+    Ausdruecklich NICHT dasselbe wie :func:`vwap_trend`: dort ist die
+    VWAP-Kreuzung in Trendrichtung das Signal, hier die Umkehr aus einer
+    Uebertreibung zurueck zum Anker. Beide Setups nutzen dieselbe
+    VWAP-Spalte, meinen aber gegenlaeufige Marktzustaende.
+
+    Bedingung in drei Teilen: die Vorkerze lag weit genug weg, die aktuelle
+    Kerze dreht zurueck, und der VWAP ist noch nicht erreicht - sonst waere
+    die Rueckkehr bereits gelaufen.
+    """
+    window = SessionTimeWindow(
+        _parse_time(session_start), _parse_time(session_end), timezone
+    )
+
+    long_entry = (
+        PreviousDeviationExceeds("close", "vwap", deviation_atr, "below")
+        & Rising("close")
+        & ColumnBelow("close", "vwap")
+        & window
+    )
+    short_entry = (
+        PreviousDeviationExceeds("close", "vwap", deviation_atr, "above")
+        & Falling("close")
+        & ColumnAbove("close", "vwap")
+        & window
+    )
+
+    return RuleStrategy(
+        name="vwap_reversion",
+        long_entry=long_entry,
+        long_exit=ColumnAbove("close", "vwap"),
+        short_entry=short_entry if trade_short else None,
+        short_exit=ColumnBelow("close", "vwap") if trade_short else None,
+        stop_loss_atr=stop_loss_atr,
+        take_profit_atr=take_profit_atr,
+        max_bars_in_trade=max_bars_in_trade,
+        params={
+            "deviation_atr": deviation_atr,
+            "stop_loss_atr": stop_loss_atr,
+            "take_profit_atr": take_profit_atr,
+            "max_bars_in_trade": max_bars_in_trade,
+            "trade_short": trade_short,
+        },
+    )
+
+
 STRATEGY_LIBRARY: dict[str, Callable[..., RuleStrategy]] = {
     "prev_day_breakout": prev_day_breakout,
     "rsi_mean_reversion": rsi_mean_reversion,
     "flag_breakout": flag_breakout,
     "vwap_trend": vwap_trend,
+    "ib_breakout": ib_breakout,
+    "vwap_reversion": vwap_reversion,
 }
 
 
