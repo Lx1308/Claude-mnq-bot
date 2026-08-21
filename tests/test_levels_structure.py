@@ -11,10 +11,12 @@ import pytest
 from common.config import SessionConfig
 from common.indicators import compute_indicators
 from common.instruments import MGC, MNQ
+from common.sessions import session_dates
 from common.levels import (
     SESSIONS_REQUIRED,
     compute_levels,
     history_dependent_metrics,
+    initial_balance_per_session,
     make_level,
     overnight_mask,
     rth_mask,
@@ -469,3 +471,128 @@ def test_divergenz_verlangt_rsi_spalte():
     frame = make_ohlcv([21000.0] * 100, spread=1.0)
     with pytest.raises(ValueError, match="rsi"):
         detect_rsi_divergence(frame)
+
+
+# ---------------------------------------------------------------------------
+# Initial Balance je Session - Lookahead-Sperre
+# ---------------------------------------------------------------------------
+#
+#  compute_levels() liefert die Initial Balance nur fuer den letzten
+#  Handelstag. initial_balance_per_session() liefert sie je Session, damit
+#  die Ideen-Protokollierung ueber Historie laufen kann.
+#
+#  Der heikle Teil ist nicht die Berechnung, sondern die VERFUEGBARKEIT:
+#  waehrend der ersten RTH-Stunde darf der Wert noch nicht bekannt sein.
+#  Sonst kennte eine Kerze um 09:45 ein Hoch, das erst um 10:30 feststeht -
+#  und jede darauf gebaute Auswertung waere wertlos.
+
+def _rth_frame(*, tage: int = 2, minutes: int = 5) -> pd.DataFrame:
+    """Minutenkerzen ueber mehrere Tage, jeweils 09:30-16:00 New Yorker Zeit."""
+    stuecke = []
+    for tag in range(tage):
+        start = pd.Timestamp("2025-06-09 09:30", tz="America/New_York") + pd.Timedelta(days=tag)
+        index = pd.date_range(start=start, periods=(6 * 60 + 30) // minutes, freq=f"{minutes}min")
+        basis = 21000.0 + tag * 50.0
+        # Erste Stunde bewusst eng, danach ein Ausbruch nach oben. Damit ist
+        # das IB-Hoch klar von spaeteren Hochs unterscheidbar.
+        werte = []
+        for i in range(len(index)):
+            verstrichen = i * minutes
+            werte.append(basis + (0.0 if verstrichen < 60 else 100.0))
+        stuecke.append(
+            pd.DataFrame(
+                {
+                    "open": werte,
+                    "high": [w + 5.0 for w in werte],
+                    "low": [w - 5.0 for w in werte],
+                    "close": werte,
+                    "volume": [100.0] * len(index),
+                },
+                index=index.tz_convert("UTC"),
+            )
+        )
+    return pd.concat(stuecke)
+
+
+def test_initial_balance_ist_waehrend_des_fensters_noch_nicht_bekannt(session_cfg):
+    """Der eigentliche Lookahead-Test."""
+    frame = _rth_frame()
+    ergebnis = initial_balance_per_session(frame, MNQ, session_cfg)
+
+    verstrichen = frame.index.tz_convert("America/New_York")
+    minuten_seit_open = verstrichen.hour * 60 + verstrichen.minute - (9 * 60 + 30)
+
+    im_fenster = ergebnis[(minuten_seit_open >= 0) & (minuten_seit_open < 60)]
+    assert im_fenster["ib_high"].isna().all(), (
+        "Waehrend der ersten RTH-Stunde darf die Initial Balance noch nicht "
+        "bekannt sein - sonst kennt eine Kerze ein Hoch, das erst spaeter feststeht."
+    )
+    assert im_fenster["ib_low"].isna().all()
+
+
+def test_initial_balance_steht_nach_ablauf_des_fensters_zur_verfuegung(session_cfg):
+    frame = _rth_frame()
+    ergebnis = initial_balance_per_session(frame, MNQ, session_cfg)
+
+    lokal = frame.index.tz_convert("America/New_York")
+    minuten_seit_open = lokal.hour * 60 + lokal.minute - (9 * 60 + 30)
+
+    danach = ergebnis[minuten_seit_open >= 60]
+    assert not danach.empty
+    assert danach["ib_high"].notna().all()
+    assert danach["ib_low"].notna().all()
+
+
+def test_initial_balance_misst_nur_die_erste_stunde(session_cfg):
+    """Der spaetere Ausbruch darf das IB-Hoch nicht mehr anheben."""
+    frame = _rth_frame()
+    ergebnis = initial_balance_per_session(frame, MNQ, session_cfg)
+
+    lokal = frame.index.tz_convert("America/New_York")
+    minuten_seit_open = lokal.hour * 60 + lokal.minute - (9 * 60 + 30)
+
+    erste_stunde = frame[(minuten_seit_open >= 0) & (minuten_seit_open < 60)]
+    erwartet = float(erste_stunde["high"].max())
+    tageshoch = float(frame["high"].max())
+
+    assert tageshoch > erwartet, "Testdaten taugen nicht: kein Ausbruch nach der IB"
+
+    letzter = ergebnis["ib_high"].dropna().iloc[-1]
+    assert letzter == pytest.approx(erwartet)
+
+
+def test_initial_balance_je_session_getrennt(session_cfg):
+    """Zwei Handelstage duerfen sich nicht vermischen."""
+    frame = _rth_frame(tage=2)
+    ergebnis = initial_balance_per_session(frame, MNQ, session_cfg)
+
+    tage = session_dates(frame.index, session_cfg)
+    werte = {
+        tag: ergebnis.loc[tage.values == tag, "ib_high"].dropna().unique()
+        for tag in sorted(set(tage.values))
+    }
+    gefuellt = {tag: v for tag, v in werte.items() if len(v)}
+    assert len(gefuellt) == 2, "Beide Sessions muessen einen eigenen IB-Wert haben"
+
+    hoehen = [float(v[0]) for v in gefuellt.values()]
+    assert hoehen[0] != hoehen[1], "Die Sessions liegen 50 Punkte auseinander"
+
+
+def test_initial_balance_ohne_rth_bars_bleibt_leer(session_cfg):
+    """Nur Nachtsitzung: es gibt keine Initial Balance, also NaN - kein Ratewert."""
+    index = pd.date_range(
+        start=pd.Timestamp("2025-06-09 20:00", tz="America/New_York"),
+        periods=60,
+        freq="5min",
+    ).tz_convert("UTC")
+    frame = pd.DataFrame(
+        {
+            "open": 21000.0, "high": 21005.0, "low": 20995.0,
+            "close": 21000.0, "volume": 100.0,
+        },
+        index=index,
+    )
+
+    ergebnis = initial_balance_per_session(frame, MNQ, session_cfg)
+    assert ergebnis["ib_high"].isna().all()
+    assert ergebnis["ib_low"].isna().all()
