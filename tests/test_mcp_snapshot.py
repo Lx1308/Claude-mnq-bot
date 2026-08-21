@@ -22,7 +22,7 @@ from common.config import (
     TradovateConfig,
 )
 from common.instruments import MGC, MNQ
-from live_bot.tradovate.contracts import Contract
+from common.contracts import Contract
 from mcp_server.bars import DAILY, BarSet, LoadedBars
 from common.sessions import session_dates
 from mcp_server.snapshot import _vorsession_vollstaendig, build_snapshot_payload
@@ -130,15 +130,20 @@ TIMEFRAMES = ["1m", "5m", "15m", "1h", DAILY]
 # Kein Anthropic-Aufruf im MCP-Pfad
 # ---------------------------------------------------------------------------
 
-MCP_MODULES = sorted((PROJECT_ROOT / "mcp_server").glob("*.py"))
+MCP_MODULES = sorted((PROJECT_ROOT / "mcp_server").rglob("*.py"))
 
-VERBOTENE_IMPORTE = {
-    "anthropic",
+# Pakete, deren Import im MCP-Pfad Kosten erzeugen wuerde.
+VERBOTENE_WURZELN = {"anthropic"}
+
+# Projektmodule, ueber die ein solcher Import hereinkommen koennte.
+VERBOTENE_PROJEKTMODULE = {
     "live_bot.ai.claude_client",
     "live_bot.ai",
     "live_bot.notify.notifier",
     "backtest.cli",
 }
+
+PROJEKT_PAKETE = {"common", "live_bot", "ntbridge", "backtest", "mcp_server", "ideas"}
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -152,16 +157,88 @@ def _imported_modules(path: Path) -> set[str]:
     return found
 
 
-@pytest.mark.parametrize("module_path", MCP_MODULES, ids=lambda p: p.name)
-def test_mcp_modul_ruft_keine_anthropic_api(module_path: Path):
+def _modul_zu_pfad(modul: str) -> Path | None:
+    datei = PROJECT_ROOT / (modul.replace(".", "/") + ".py")
+    if datei.exists():
+        return datei
+    paket = PROJECT_ROOT / modul.replace(".", "/") / "__init__.py"
+    return paket if paket.exists() else None
+
+
+def _transitive_huelle(start: list[Path]) -> tuple[set[str], dict[str, list[str]]]:
+    """Alle Projektmodule, die von ``start`` aus erreichbar sind.
+
+    Liefert zusaetzlich je Modul den Pfad, ueber den es erreicht wurde -
+    ohne den ist eine Verletzung kaum zu finden.
+    """
+    gesehen: set[Path] = set()
+    erreichbar: set[str] = set()
+    weg: dict[str, list[str]] = {}
+    rand: list[tuple[Path, list[str]]] = [(p, [p.name]) for p in start]
+
+    while rand:
+        datei, pfad = rand.pop()
+        if datei in gesehen:
+            continue
+        gesehen.add(datei)
+        for modul in _imported_modules(datei):
+            wurzel = modul.split(".")[0]
+            if wurzel not in PROJEKT_PAKETE and wurzel not in VERBOTENE_WURZELN:
+                continue
+            if modul not in erreichbar:
+                erreichbar.add(modul)
+                weg[modul] = pfad + [modul]
+            ziel = _modul_zu_pfad(modul)
+            if ziel is not None:
+                rand.append((ziel, pfad + [modul]))
+
+    return erreichbar, weg
+
+
+def test_mcp_pfad_erreicht_keine_anthropic_api():
     """Der Server liefert Daten - interpretiert wird in Claude Desktop.
 
-    Ein Claude-Aufruf im Serverpfad wuerde bei jedem Snapshot Kosten
-    erzeugen, die der Nutzer nicht sieht.
+    WARUM TRANSITIV UND NICHT NUR DIREKTE IMPORTE
+    ---------------------------------------------
+    Die fruehere Fassung pruefte je Datei unter ``mcp_server/`` nur deren
+    **eigene** Importzeilen gegen eine Verbotsliste. Die Zusage lautet aber
+    nicht "importiert nichts Verbotenes direkt", sondern "von hier aus ist
+    kein Anthropic-Aufruf erreichbar".
+
+    Der Unterschied war real: ``mcp_server/bars.py`` zog fuenf
+    ``live_bot``-Module herein. Ein einziger neuer Import in einem davon
+    haette die Kostengarantie gebrochen, und der Test waere gruen geblieben.
+
+    Ausserdem lief die alte Fassung ueber ``glob("*.py")`` - ein Unterpaket
+    unter ``mcp_server/`` waere gar nicht geprueft worden. Jetzt ``rglob``.
     """
-    imported = _imported_modules(module_path)
-    treffer = imported & VERBOTENE_IMPORTE
-    assert not treffer, f"{module_path.name} importiert {treffer}"
+    erreichbar, weg = _transitive_huelle(MCP_MODULES)
+
+    verboten = {
+        modul
+        for modul in erreichbar
+        if modul.split(".")[0] in VERBOTENE_WURZELN or modul in VERBOTENE_PROJEKTMODULE
+    }
+
+    assert not verboten, "Vom MCP-Pfad aus erreichbar: " + "; ".join(
+        f"{modul} ueber {' -> '.join(weg[modul])}" for modul in sorted(verboten)
+    )
+
+
+def test_mcp_pfad_zieht_kein_live_bot_mehr():
+    """Das Zielsystem haengt nicht mehr am Legacy-Pfad.
+
+    Kein Selbstzweck: ueber ``live_bot`` kaeme jede kuenftige Abhaengigkeit
+    des Alarm-Pfads in den Importweg des MCP-Servers und koennte ihn beim
+    Start mitreissen - bei einem Prozess, den Claude Desktop startet, sieht
+    man das nur im Log.
+    """
+    erreichbar, weg = _transitive_huelle(MCP_MODULES)
+    treffer = {m for m in erreichbar if m.split(".")[0] == "live_bot"}
+
+    assert not treffer, "live_bot ist wieder im MCP-Pfad: " + "; ".join(
+        f"{modul} ueber {' -> '.join(weg[modul])}" for modul in sorted(treffer)
+    )
 
 
 def _referenced_names(path: Path) -> set[str]:

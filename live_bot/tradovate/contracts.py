@@ -40,13 +40,9 @@ MONTH_CODES = MONTH_NUMBER_BY_CODE
 DEFAULT_ROLL_BUFFER_DAYS = 3
 
 
-@dataclass(frozen=True)
-class Contract:
-    """Ein aufgeloester Tradovate-Kontrakt."""
-
-    id: int
-    name: str
-    expiry: date | None = None
+# Contract liegt in common/, damit nicht jeder Nutzer eines aufgeloesten
+# Kontrakts den Tradovate-Stack mitzieht. Hier nur die Weiterleitung.
+from common.contracts import Contract  # noqa: E402,F401
 
 
 # Rueckwaertskompatible Weiterleitung - die Regel lebt im Instrument-Register.

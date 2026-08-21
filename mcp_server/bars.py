@@ -1,15 +1,21 @@
 """Bar-Beschaffung fuer den MCP-Server.
 
-AKTIV IST :class:`NTBridgeBarSource`.
-Sie liest die Kerzen aus der SQLite-Datei, die der ntbridge-Empfaenger mit
-den Daten aus NinjaTrader fuellt. Kein Netzaufruf, kein Login.
+Einzige Quelle ist :class:`NTBridgeBarSource`. Sie liest die Kerzen aus der
+SQLite-Datei, die der ntbridge-Empfaenger mit den Daten aus NinjaTrader
+fuellt. **Kein Netzaufruf, kein Login, keine Zugangsdaten.**
 
-:class:`TradovateBarSource` ist **Altlast** und wird vom Zielsystem nicht
-mehr verwendet. Tradovate wurde als Datenquelle verworfen: es verlangt ein
-Live-Konto mit Mindesteinlage plus ein kostenpflichtiges API-Add-on. Die
-Klasse steht noch hier, weil sie die Schnittstelle dokumentiert, an der sich
-die Abloesung bewaehrt hat - beide erfuellen dasselbe ``load()``-Protokoll,
-weshalb ``snapshot.py`` beim Wechsel strukturell unveraendert blieb.
+Historie: Hier stand bis 21.08.2026 zusaetzlich eine ``TradovateBarSource``,
+die Bars ueber ``md/getChart`` holte. Tradovate wurde als Datenquelle
+verworfen (Live-Konto mit Mindesteinlage plus kostenpflichtiges API-Add-on
+erforderlich) und die Klasse entfernt. Sie hatte einen Nebeneffekt, der
+teurer war als ihr Nutzen: ueber sie zog dieses Modul fuenf ``live_bot``-
+Module in den Importpfad des MCP-Servers, obwohl er sie nie brauchte. Jede
+Abhaengigkeit, die dort hinzugekommen waere, haette den Server beim Start
+mitreissen koennen.
+
+Die Schnittstelle :class:`BarSource` ist geblieben. Sie hat sich beim
+Wechsel bewaehrt: beide Quellen erfuellten dasselbe ``load()``-Protokoll,
+weshalb ``snapshot.py`` strukturell unveraendert blieb.
 
 Warum ein Satz Bars je Timeframe statt Hochsampeln aus 1m
 ---------------------------------------------------------
@@ -32,16 +38,13 @@ import pandas as pd
 from common.config import Config
 from common.instruments import Instrument, get_instrument
 from common.logging_setup import log_event
-from live_bot.market.candles import candles_from_tradovate_bars
-from live_bot.tradovate.auth import TokenManager
-from live_bot.tradovate.contracts import Contract, resolve_contract
-from live_bot.tradovate.md_socket import MarketDataSocket
-from live_bot.tradovate.rest import TradovateRestClient
+from common.contracts import Contract
 
 log = logging.getLogger(__name__)
 
 # Unterstuetzte Timeframes und ihre Laenge in Minuten. "1d" ist ein
-# Sonderfall und wird von Tradovate als DailyBar geliefert.
+# Sonderfall: NinjaTrader liefert Tageskerzen ueber BarsPeriodType.Day,
+# also gemaess Handelszeiten-Vorlage des Kontrakts - nicht als 1440 Minuten.
 TIMEFRAME_MINUTES: dict[str, int] = {"1m": 1, "5m": 5, "15m": 15, "1h": 60}
 DAILY = "1d"
 ALL_TIMEFRAMES = (*TIMEFRAME_MINUTES, DAILY)
@@ -162,132 +165,13 @@ class BarSource(Protocol):
         ...
 
 
-class TradovateBarSource:
-    """Holt Bars ueber ``md/getChart``.
-
-    Der :class:`TokenManager` ist langlebig und wird ueber mehrere Anfragen
-    wiederverwendet - jeder Aufruf einen neuen Login zu machen waere gegen
-    Tradovates Drosselung.
-    """
-
-    name = "tradovate/md.getChart"
-
-    def __init__(self, config: Config, tokens: TokenManager) -> None:
-        self._config = config
-        self._tokens = tokens
-        self._contract_cache: dict[str, Contract] = {}
-
-    async def resolve(self, symbol: str) -> tuple[Instrument, Contract]:
-        """Loest Produkt-Root oder Kontraktnamen zum aktiven Kontrakt auf."""
-        instrument = get_instrument(symbol)
-        key = symbol.upper()
-
-        cached = self._contract_cache.get(key)
-        if cached is not None:
-            return instrument, cached
-
-        rest = TradovateRestClient(self._config.tradovate, self._tokens)
-        looks_like_contract = (
-            len(key) > len(instrument.root)
-            and key[len(instrument.root):][:1].isalpha()
-            and key[len(instrument.root) + 1:].isdigit()
-        )
-        contract = await resolve_contract(
-            rest,
-            product=instrument.root,
-            override=key if looks_like_contract else None,
-        )
-        self._contract_cache[key] = contract
-        return instrument, contract
-
-    async def load(
-        self,
-        symbol: str,
-        timeframes: list[str],
-        *,
-        bar_counts: dict[str, int] | None = None,
-    ) -> LoadedBars:
-        counts = {**DEFAULT_BAR_COUNTS, **(bar_counts or {})}
-        instrument, contract = await self.resolve(symbol)
-
-        result = LoadedBars(symbol=symbol.upper(), contract=contract, instrument=instrument)
-
-        md_token = await self._tokens.get_md_access_token()
-        socket = MarketDataSocket(
-            self._config.tradovate.market_data_url,
-            md_token,
-            heartbeat_interval=self._config.tradovate.websocket.heartbeat_interval_seconds,
-        )
-
-        try:
-            await socket.connect()
-            for timeframe in timeframes:
-                if timeframe not in ALL_TIMEFRAMES:
-                    result.errors[timeframe] = f"Unbekannter Timeframe {timeframe!r}"
-                    continue
-                try:
-                    result.sets[timeframe] = await self._load_one(
-                        socket, contract.name, timeframe, counts[timeframe]
-                    )
-                except Exception as exc:  # noqa: BLE001 - ein TF darf den Rest nicht kippen
-                    log_event(
-                        log,
-                        "mcp.bars.timeframe_failed",
-                        f"Timeframe {timeframe} fuer {contract.name} fehlgeschlagen: {exc}",
-                        level=logging.WARNING,
-                        timeframe=timeframe,
-                        error=str(exc),
-                    )
-                    result.errors[timeframe] = str(exc)
-        finally:
-            await socket.close()
-
-        if not result.sets:
-            raise BarSourceError(
-                f"Keine Bars fuer {contract.name} erhalten. Fehler: {result.errors}"
-            )
-        return result
-
-    async def _load_one(
-        self, socket: MarketDataSocket, contract_name: str, timeframe: str, bars: int
-    ) -> BarSet:
-        if timeframe == DAILY:
-            raw = await socket.fetch_history(
-                contract_name, interval_minutes=1, bars=bars, chart_type="daily"
-            )
-            interval_minutes = 1440
-        else:
-            interval_minutes = TIMEFRAME_MINUTES[timeframe]
-            raw = await socket.fetch_history(
-                contract_name, interval_minutes=interval_minutes, bars=bars
-            )
-
-        candles = candles_from_tradovate_bars(raw, interval_minutes)
-        # Die letzte Kerze laeuft noch - fuer eine Analyse unbrauchbar.
-        candles = candles[:-1]
-        if not candles:
-            raise BarSourceError(f"Keine verwertbaren Bars fuer {timeframe}")
-
-        frame = pd.DataFrame(
-            [candle.as_row(include_flow=True) for candle in candles],
-            index=pd.DatetimeIndex([candle.start for candle in candles], tz="UTC"),
-        )
-        return BarSet(
-            timeframe=timeframe,
-            frame=frame,
-            source=self.name,
-            contract=contract_name,
-            requested_bars=bars,
-        )
-
-
 class NTBridgeBarSource:
     """Liest Kerzen aus dem SQLite-Speicher der NinjaScript-Bridge.
 
-    Erfuellt dieselbe Schnittstelle wie :class:`TradovateBarSource`; fuer
-    :mod:`mcp_server.snapshot` ist der Unterschied nicht sichtbar.
+    Erfuellt das :class:`BarSource`-Protokoll; fuer
+    :mod:`mcp_server.snapshot` ist die Herkunft der Kerzen nicht sichtbar.
 
-    Anders als bei Tradovate gibt es hier keine Kontraktaufloesung: welcher
+    Es gibt hier keine Kontraktaufloesung ueber einen Broker: welcher
     Kontrakt gehandelt wird, entscheidet der Chart in NinjaTrader. Die Bridge
     meldet den Namen mit (z.B. "MNQ 12-25"), er wird uebernommen und nicht
     nachgerechnet.
@@ -382,5 +266,4 @@ __all__ = [
     "BarStoreProtocol",
     "LoadedBars",
     "NTBridgeBarSource",
-    "TradovateBarSource",
 ]
