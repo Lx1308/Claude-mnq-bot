@@ -1,78 +1,78 @@
-﻿# Claude Chart Bot
+# Claude Chart Bot
 
-Live-Marktbeobachtung fuer CME-Index-Futures ueber Tradovate, mit
-Claude-Kommentar und Telegram-Alarm — plus ein getrenntes
-Backtesting-Framework.
+Lokales Analysewerkzeug für CME-Futures. Marktdaten kommen aus **NinjaTrader 8**,
+laufen über einen lokalen Empfänger in eine SQLite-Datenbank und werden von einem
+**MCP-Server** an **Claude Desktop** geliefert — Level, Indikatoren über mehrere
+Zeitebenen, Marktstruktur, Muster, Terminrisiko.
 
-> **Kein Handelssystem.** Das Projekt liest Marktdaten, rechnet Indikatoren,
-> loest Alarme aus und verschickt Nachrichten. Es gibt **keinen einzigen
-> Aufruf eines Order-Endpunkts** — bewusst nicht. Kein Bestandteil dieses
-> Projekts ist eine Anlageberatung.
+Dazu ein getrenntes Backtesting-Framework und ein älterer Telegram-/Alarm-Pfad.
+
+> **Kein Handelssystem.** Das Projekt liest Marktdaten, rechnet und stellt Zahlen
+> bereit. Es gibt **keinen einzigen Aufruf eines Order-Endpunkts** — bewusst
+> nicht, auch nicht als leere Schnittstelle. Der NinjaTrader-Teil ist ein
+> **Indikator**, keine Strategy; ein Indikator *kann* in NinjaTrader keine Orders
+> platzieren. Kein Bestandteil dieses Projekts ist eine Anlageberatung.
 
 ---
 
 ## Inhalt
 
-1. [Was der Bot macht](#1-was-der-bot-macht)
+1. [Wie das Ganze zusammenhängt](#1-wie-das-ganze-zusammenhängt)
 2. [Projektstruktur](#2-projektstruktur)
 3. [Installation](#3-installation)
-4. [Einrichtung](#4-einrichtung)
-5. [Live-Bot starten](#5-live-bot-starten)
-6. [Der Befehl /analyse](#6-der-befehl-analyse)
-7. [Backtesting](#7-backtesting)
-8. [Konfiguration im Detail](#8-konfiguration-im-detail)
-9. [Logging](#9-logging)
-10. [Tests](#10-tests)
-11. [Bekannte Grenzen](#11-bekannte-grenzen)
+4. [NinjaTrader einrichten](#4-ninjatrader-einrichten)
+5. [Empfänger starten](#5-empfänger-starten)
+6. [MCP-Server in Claude Desktop](#6-mcp-server-in-claude-desktop)
+7. [Terminal-Dump ohne Claude Desktop](#7-terminal-dump-ohne-claude-desktop)
+8. [Legacy: Telegram-Bot und /analyse](#8-legacy-telegram-bot-und-analyse)
+9. [Backtesting](#9-backtesting)
+10. [Konfiguration im Detail](#10-konfiguration-im-detail)
+11. [Logging](#11-logging)
+12. [Tests](#12-tests)
+13. [Bekannte Grenzen](#13-bekannte-grenzen)
 
 ---
 
-## 1. Was der Bot macht
+## 1. Wie das Ganze zusammenhängt
 
 ```
-Tradovate WebSocket ──► Tick-Aggregation ──► rollierender Kerzenpuffer
-                                                      │
-                                                      ▼
-                            RSI(14) · SMA(20/50) · Session-VWAP · ATR
-                            Vortageshoch/-tief · Flaggen-Heuristik
-                                                      │
-                    ┌─────────────────┬───────────────┴──────────────┐
-                    ▼                 ▼                              ▼
-          Alarm-Bedingungen    /analyse (Telegram)          strukturiertes Log
-          + Cooldown/Tageslimit  + Swings/Zonen/Trend        (logs/events.jsonl)
-                    │                 │
-                    └────────┬────────┘
-                             ▼
-                   Claude (nur Kennzahlen)
-                   kurzer Prompt | ausfuehrlicher Prompt
-                             │
-                             ▼
-                   Telegram ──(Fallback)──► Konsole + Log
+NinjaTrader 8 Chart
+  └─ ClaudeBridge.cs          Indikator, KEINE Strategy
+     │                        AddDataSeries → mehrere Timeframes aus EINER Instanz
+     │                        fire-and-forget, Timeout, Zwischenspeicher
+     └─ HTTP POST {"bars":[…]} ──► 127.0.0.1:8787/bars
+        └─ ntbridge/receiver.py     nur an localhost gebunden
+           └─ ntbridge/store.py     SQLite im WAL-Modus, idempotent
+              └─ mcp_server/        Level · Indikatoren · Struktur · Muster
+                 └─ Claude Desktop  ◄── die Deutung passiert hier
 ```
 
-Zwei Wege zum selben Kern: das **automatische** Alert-System reagiert auf
-Bedingungen, der **On-Demand-Befehl** `/analyse` fragt jederzeit ab. Beide
-nutzen dieselbe Indikator-Pipeline und denselben Claude-Client — sie
-unterscheiden sich nur im System-Prompt und im Token-Budget.
+**Warum die Deutung erst in Claude Desktop passiert:** Der MCP-Server ruft
+**niemals** die Anthropic-API auf. Er liefert ausschließlich Zahlen mit
+Einheiten. Interpretiert wird in der Unterhaltung, über das bestehende Abo — das
+hält den laufenden Betrieb kostenfrei. Ein Test hält das fest
+(`test_mcp_modul_ruft_keine_anthropic_api`, AST-basiert über jedes Modul unter
+`mcp_server/`).
 
-**Alarm-Bedingungen** (alle in `config.yaml` an-/abschaltbar und mit
-eigenem Cooldown):
+### Die drei MCP-Werkzeuge
 
-| Schluessel | Ausloeser |
+| Werkzeug | Liefert |
 |---|---|
-| `prev_day_high_cross` | Schlusskurs kreuzt das Vortageshoch von unten (mit Tick-Puffer) |
-| `prev_day_low_cross` | Schlusskurs kreuzt das Vortagestief von oben |
-| `rsi_exit_overbought` | RSI faellt von ≥ 70 wieder darunter |
-| `rsi_exit_oversold` | RSI steigt von ≤ 30 wieder darueber |
-| `flag_breakout` | Impuls → enge Range → Schlusskurs ausserhalb der Range |
+| `get_market_snapshot` | Level (PDH/PDL/PDC, Overnight, Initial Balance, Opening Ranges, Gap), Indikatoren je Timeframe, Marktstruktur, Muster, Datenherkunft |
+| `get_event_risk` | Wirtschaftstermine und Blackout-Fenster |
+| `list_instruments` | Welche Instrumente das Register kennt |
 
-Alle Bedingungen sind **Flankenerkennungen**: sie feuern beim Uebergang,
-nicht dauerhaft, solange ein Zustand anhaelt.
+### Zwei getrennte Wege
 
-**An Claude gehen ausschliesslich berechnete Kennzahlen** — keine Rohdaten,
-keine Tickstroeme, keine Bilder. Was genau uebertragen wird, steht an einer
-Stelle: `build_metrics_payload()` in `live_bot/ai/claude_client.py`
-(mit Test).
+Das Projekt ist über die Zeit gewachsen und hat deshalb **zwei** Pfade:
+
+| Pfad | Zustand | Kosten |
+|---|---|---|
+| **NinjaTrader → ntbridge → MCP → Claude Desktop** | **Zielsystem** | keine laufenden |
+| Tradovate → live_bot → Anthropic-API → Telegram | Legacy, lauffähig | Token je Alarm |
+
+Der Legacy-Pfad ist absichtlich erhalten geblieben, ist aber nicht mehr das Ziel.
+Abschnitt 8 beschreibt ihn.
 
 ---
 
@@ -81,93 +81,99 @@ Stelle: `build_metrics_payload()` in `live_bot/ai/claude_client.py`
 ```
 Claude chart bot/
 ├── config.yaml                  Alle Schwellenwerte und Schalter
-├── .env.example                 Vorlage fuer Secrets (nach .env kopieren)
+├── .env.example                 Vorlage für Secrets (nach .env kopieren)
 ├── requirements.txt
 ├── pytest.ini
+├── CODE_CHAT_KONTEXT.md         Technisches Projektgedächtnis
+├── NORMALER_CHAT_KONTEXT.md     Ziele, Anforderungen, Entscheidungen
 │
-├── common/                      Von Live-Bot UND Backtest genutzt
+├── ninjatrader/
+│   └── ClaudeBridge.cs          NT8-Indikator (Quelle der Wahrheit)
+│
+├── ntbridge/                    Empfänger und Speicher
+│   ├── receiver.py              HTTP-Server auf 127.0.0.1:8787
+│   ├── store.py                 SQLite (WAL), idempotent, Bar-Validierung
+│   └── __main__.py              python -m ntbridge
+│
+├── mcp_server/                  Für Claude Desktop — NIE ein Anthropic-Aufruf
+│   ├── server.py                Die drei Werkzeuge
+│   ├── snapshot.py              Baut die Momentaufnahme zusammen
+│   ├── bars.py                  NTBridgeBarSource, Veraltet-Erkennung
+│   ├── calendar_provider.py     Forex Factory (Termine) + FRED (Ist-Werte)
+│   ├── context.py               Langlebiger Zustand des Dauerprozesses
+│   └── cli.py                   Terminal-Dump ohne Claude Desktop
+│
+├── common/                      Von ALLEN Pfaden genutzt
 │   ├── config.py                config.yaml + .env laden und validieren
 │   ├── logging_setup.py         Textlog + JSON-Lines-Log
+│   ├── instruments.py           Register: Ticksize, Punktwert, Verfallsregel
 │   ├── sessions.py              CME-Handelstag (18:00-ET-Rollover)
-│   ├── indicators.py            RSI, SMA, ATR, VWAP, Vortagesmarken, Flagge
-│   └── structure.py             Swing-Punkte, S/R-Zonen, Trend-Einschaetzung
+│   ├── indicators.py            RSI/ATR/VWAP im Hot-Path; MACD, Stochastik,
+│   │                            ADX, Bollinger/Keltner, EMA-Stack daneben
+│   ├── levels.py                PDH/PDL/PDC, Overnight, IB, Opening Range, Gap
+│   ├── structure.py             Swings, S/R-Zonen, BOS/CHoCH, RSI-Divergenz
+│   └── patterns.py              Flagge, Dreieck, Doppeltop/-boden, Kompression
 │
-├── live_bot/
+├── live_bot/                    Legacy: Tradovate + Telegram + Anthropic
 │   ├── main.py                  Einstiegspunkt + CLI
 │   ├── on_demand_report.py      /analyse: Bericht auf Zuruf
-│   ├── tradovate/
-│   │   ├── auth.py              Login, Token-Refresh, Penalty-Handling
-│   │   ├── rest.py              Authentifizierter REST-Wrapper mit Retries
-│   │   ├── contracts.py         Frontmonat-Aufloesung (NQ -> NQZ5)
-│   │   └── md_socket.py         Market-Data-WebSocket (eine Verbindung)
-│   ├── market/
-│   │   ├── candles.py           Tick -> Kerze, rollierender Puffer
-│   │   ├── feed.py              Reconnect mit Backoff + Historien-Nachladen
-│   │   └── state.py             Kerzenpuffer -> MarketSnapshot
-│   ├── alerts/
-│   │   ├── conditions.py        Die fuenf Alarm-Bedingungen
-│   │   └── cooldown.py          Cooldown je Bedingung + Tageslimit
-│   ├── ai/claude_client.py      Anthropic Messages API (Alarm + Bericht)
-│   └── notify/
-│       ├── notifier.py          Telegram senden, mit Konsolen-Fallback
-│       └── telegram_commands.py Telegram-Befehle empfangen (Long-Polling)
+│   ├── tradovate/               auth, rest, contracts, md_socket
+│   ├── market/                  candles, feed, state
+│   ├── alerts/                  conditions, cooldown
+│   ├── ai/claude_client.py      Anthropic Messages API
+│   └── notify/                  notifier, telegram_commands
 │
 ├── backtest/
 │   ├── cli.py                   list / run / compare / optimize / fetch
-│   ├── engine.py                Event-Engine (Ausfuehrung zur Folgekerze)
+│   ├── engine.py                Event-Engine (Ausführung zur Folgekerze)
 │   ├── metrics.py               Trefferquote, Profit-Faktor, DD, Sharpe
 │   ├── splits.py                IS/OOS-Trennung + Overfitting-Schutzriegel
 │   ├── compare.py               Strategievergleich, Export, Parametersuche
 │   ├── data/                    Austauschbare Datenquellen
-│   │   ├── base.py              DataProvider-Schnittstelle
-│   │   ├── csv_provider.py
-│   │   └── tradovate_provider.py
-│   └── strategies/
-│       ├── base.py              Regel-Objekte (Rule, AllOf, CrossesAbove, ...)
-│       └── library.py           Fertige Strategien
+│   └── strategies/              Regel-Objekte + Bibliothek
 │
 ├── docs/
-│   └── BACKTESTING_ENTSCHEIDUNG.md   backtesting.py vs. vectorbt vs. eigen
+│   └── BACKTESTING_ENTSCHEIDUNG.md
 │
 └── tests/
 ```
 
-**Der wichtigste Baustein ist `common/indicators.py`.** Live-Bot und
-Backtest rufen dieselbe Funktion auf. Damit ist ausgeschlossen, dass der
-Backtest andere Zahlen sieht als der laufende Bot — der teuerste Fehler in
-Projekten dieser Art.
+**Der wichtigste Baustein ist `common/indicators.py`.** Live-Bot, MCP-Server und
+Backtest rufen dieselbe Funktion auf. Damit ist ausgeschlossen, dass der Backtest
+andere Zahlen sieht als der laufende Betrieb — der teuerste Fehler in Projekten
+dieser Art.
 
 ---
 
 ## 3. Installation
 
 Auf diesem Rechner liegt Python 3.14 unter dem Python Install Manager:
-`C:\Users\lm130\AppData\Local\Python\bin\python.exe`. Der Name `python` ist
-in der PATH-Variable nur der Microsoft-Store-Platzhalter — deshalb einmal
-den vollen Pfad verwenden:
+`C:\Users\lm130\AppData\Local\Python\bin\python.exe`. Der Name `python` ist in
+der PATH-Variable nur der Microsoft-Store-Platzhalter — deshalb einmal den vollen
+Pfad verwenden:
 
 ```bash
 C:\Users\lm130\AppData\Local\Python\bin\python.exe -m venv .venv
-.venv\Scripts\activate
-pip install -r requirements.txt
+.venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Danach reicht im aktivierten venv wieder `python`.
-
-Das venv ist bereits angelegt und die Abhaengigkeiten sind installiert
-(pandas 3.0.5, numpy 2.5.1, anthropic 0.120.2, websockets 17.0, …). Pruefen:
+Prüfen:
 
 ```bash
 .venv\Scripts\python.exe -m pytest
-# -> 124 passed
 ```
 
-### Sofort ausprobieren, ohne Zugangsdaten
+Erwartet: **326 passed**.
 
-Unter `data/DEMO_1m.csv` liegt ein **synthetischer** Datensatz
-(25 Handelstage NQ-aehnlicher 1-Minuten-Bars, Zufallspfad). Er ist nur zum
-Ausprobieren der Backtest-CLI da — aus den Ergebnissen darf man
-selbstverstaendlich nichts ueber echte Strategien ableiten:
+Es gibt **kein** `pip install -e .`. Skripte außerhalb der mitgelieferten CLIs
+brauchen deshalb `$env:PYTHONPATH = (Get-Location).Path`. In den Tests erledigt
+das `tests/conftest.py`.
+
+### Sofort ausprobieren, ohne alles andere
+
+Unter `data/DEMO_1m.csv` liegt ein **synthetischer** Datensatz (Zufallspfad).
+Er ist nur zum Ausprobieren der Backtest-CLI da — aus den Ergebnissen darf man
+nichts über echte Strategien ableiten:
 
 ```bash
 .venv\Scripts\python.exe -m backtest.cli compare --symbol DEMO --csv data\DEMO_1m.csv
@@ -175,235 +181,319 @@ selbstverstaendlich nichts ueber echte Strategien ableiten:
 
 ---
 
-## 4. Einrichtung
+## 4. NinjaTrader einrichten
 
-### 4.1 Secrets
+### 4.1 Indikator installieren und kompilieren
+
+`ninjatrader/ClaudeBridge.cs` nach
+`C:\Users\<Benutzer>\Documents\NinjaTrader 8\bin\Custom\Indicators\` kopieren.
+
+Dann in NinjaTrader: **Control Center → New → NinjaScript Editor → F5**.
+Der Reiter *Errors* muss leer bleiben.
+
+> Meldet der Compiler `The type or namespace name 'Http' does not exist in the
+> namespace 'System.Net'`, fehlt eine Referenz: im Editor Rechtsklick →
+> `References…` → `Add` → `System.Net.Http`, dann erneut F5.
+
+**Die Datei im Projektordner ist die Quelle der Wahrheit.** Die Kopie im
+NinjaTrader-Ordner wird daraus erzeugt, nie umgekehrt. Die Versionsnummer
+erscheint beim Start im NinjaScript-Output und ist der einzige verlässliche
+Nachweis, welche Fassung tatsächlich läuft.
+
+### 4.2 Zwei Charts je Instrument
+
+Sekundärserien aus `AddDataSeries` **erben den Ladezeitraum des Charts**
+("Days to load"). Ein 1-Minuten-Chart mit 7 Tagen liefert einer Tagesserie also
+nur 7 Tageskerzen. Deshalb braucht es zwei Charts:
+
+**Chart 1 — Intraday (liefert 1m, 5m, 15m)**
+
+| Einstellung | Wert |
+|---|---|
+| Chart-Typ / Periode | Minute, 1 |
+| Days to load | 7 |
+| **Session Template** | **`CME US Index Futures ETH`** (MNQ) |
+| Zusaetzliche Minuten-Timeframes | `5,15` |
+| Tagesserie mitliefern | aus |
+
+**Chart 2 — Tagesebene (liefert 1d, 1h)**
+
+| Einstellung | Wert |
+|---|---|
+| Chart-Typ / Periode | Day, 1 |
+| Days to load | 400 |
+| Session Template | `CME US Index Futures ETH` |
+| Zusaetzliche Minuten-Timeframes | `60` |
+| Tagesserie mitliefern | aus (das Chart *ist* die Tagesserie) |
+
+Für MGC dieselbe Struktur mit Session Template `COMEX Metals ETH`.
+
+> **Das Session Template ist die kritischste Einstellung.** Mit **RTH** statt
+> **ETH** kämen Vortageshoch und -tief nur aus 08:30–15:15 CT statt aus dem
+> vollen Globex-Tag, den `common/sessions.py` unterstellt. **Kein Fehler, keine
+> Warnung — nur andere Zahlen.**
+
+### 4.3 Parameter des Indikators
+
+| Gruppe | Name | Vorbelegung |
+|---|---|---|
+| Verbindung | Empfaenger-URL | `http://127.0.0.1:8787/bars` |
+| Verbindung | Timeout (ms) | 1500 |
+| Verbindung | Zwischenspeicher (Kerzen) | 200 |
+| Daten | Historische Kerzen (Basis 1-Minuten-Ebene) | 3000 |
+| Daten | Untergrenze historische Kerzen | 250 |
+| Daten | Zusaetzliche Minuten-Timeframes | `5,15` |
+| Daten | Tagesserie mitliefern | aus |
+| Daten | Zeitzone (optional) | leer |
+| Diagnose | Ausfuehrliches Log | beim Einrichten an |
+
+**Warum 3000 historische Kerzen:** Eine Globex-Session dauert 23 Stunden, also
+1380 Minutenkerzen. Vortageshoch, -tief und -schluss brauchen die Vorsession
+**komplett plus** die laufende — mindestens 2760. Die gröberen Timeframes
+bekommen automatisch anteilig weniger (5m→600, 15m→250, 1h→250, 1d→250).
+
+**Warum die Tagesebene über `BarsPeriodType.Day` läuft und nicht über 1440
+Minuten:** 1440-Minuten-Bars zählen schlicht Uhrzeit ab einem beliebigen Anker
+und folgen **nicht** der Handelszeiten-Vorlage des Kontrakts. Die beiden liegen
+um Stunden auseinander. Da genau aus dieser Session-Abgrenzung die
+Vortagesmarken entstehen, wäre die Minutenvariante lautlos falsch. Der Indikator
+lehnt `1440` in der Timeframe-Liste aktiv ab und schreibt eine Meldung.
+
+---
+
+## 5. Empfänger starten
+
+**Immer zuerst den Empfänger, dann den Indikator an den Chart hängen.** Sonst
+laufen die historischen Kerzen in den Zwischenspeicher, der bei 200 deckelt —
+von 3000 blieben 200 übrig (protokolliert, aber verworfen). Passiert das doch:
+Chart anklicken und **F5** (Reload Historical Data).
+
+```bash
+.venv\Scripts\python.exe -m ntbridge
+```
+
+Der Start gibt Datenbankpfad, Kerzenzahl und eine Abdeckungstabelle aus. Der
+Server bindet **ausschließlich an 127.0.0.1** und ist auch im LAN nicht
+erreichbar; ein anderer Host wird beim Start abgewiesen.
+
+### Kontrolle
+
+Im NinjaScript-Output (`New > NinjaScript Output`) muss stehen:
+
+```
+[ClaudeBridge hh:mm:ss] ClaudeBridge 1.0.1 bereit. Instrument MNQ, 3 Datenserie(n), Zeitzone …
+  Serie 0: 1m - Ziel 3000 historische Kerzen
+  Serie 1: 5m - Ziel 600 historische Kerzen
+  Serie 2: 15m - Ziel 250 historische Kerzen
+```
+
+Erscheint `WARNUNG: nur N von M Kerzen für … vorhanden`, ist "Days to load" zu
+klein. Diese Zeile ist maßgeblich — ohne sie blieben die Vortagesmarken einfach
+leer.
+
+Auf der Python-Seite:
+
+```bash
+curl http://127.0.0.1:8787/status
+```
+
+Die Antwort nennt angenommene und abgelehnte Kerzen, die Ablehnungsgründe und
+je Instrument/Timeframe die Abdeckung samt Alter des jüngsten Bars.
+
+### Wenn Kerzen abgelehnt werden
+
+Jede Ablehnung hat einen benannten Grund — nichts wird still verworfen:
+
+| Grund | Bedeutung |
+|---|---|
+| `zeitstempel_in_zukunft` | Die NinjaTrader-Zeitzone weicht von der Windows-Zeitzone ab. Parameter "Zeitzone (optional)" setzen, z.B. `US Eastern Standard Time` |
+| `zeitstempel_unlesbar` | Feldname oder Format passt nicht |
+| `timeframe_unbekannt` | z.B. Tick- oder Range-Chart; nicht unterstützt |
+| `high_kleiner_low`, `ohlc_widerspruechlich` | Kerze in sich unstimmig |
+| `preis_ungueltig`, `volumen_ungueltig` | negative oder nicht-numerische Werte |
+
+---
+
+## 6. MCP-Server in Claude Desktop
+
+In `claude_desktop_config.json` eintragen:
+
+```json
+{
+  "mcpServers": {
+    "claude-chart-bot": {
+      "command": "C:\\Users\\lm130\\Desktop\\Claude chart bot\\.venv\\Scripts\\python.exe",
+      "args": ["-m", "mcp_server"],
+      "cwd": "C:\\Users\\lm130\\Desktop\\Claude chart bot"
+    }
+  }
+}
+```
+
+`cwd` ist nicht optional: `python -m` stellt das Arbeitsverzeichnis in den
+Suchpfad, und ohne das findet der Server die Pakete `common` und `ntbridge`
+nicht.
+
+Danach Claude Desktop neu starten. Der Server läuft als Dauerprozess; Zustand
+und Kontraktauflösung werden **einmal** beim Aufbau erzeugt, nicht je Aufruf.
+
+### Was in der Momentaufnahme steht
+
+| Block | Inhalt |
+|---|---|
+| `meta` | Zeitstempel, Version |
+| `instrument` | Ticksize, Punktwert, Kontraktmonat, Verfall |
+| `session` | RTH ja/nein, liquide Phase, dünne Mittagszone, Minuten bis RTH-Schluss/Globex-Schluss |
+| `datenherkunft` | Je Timeframe: Anzahl Bars, Alter, `veraltet` mit Hinweis |
+| `levels` | PDH/PDL/PDC, Overnight, IB, Opening Ranges, Gap, Cash Open — in Punkten, Ticks und ATR |
+| `historienabhaengig` | Wochenhoch/-tief, Volume Profile, relatives Volumen, ATR-Perzentil |
+| `timeframes` | Indikatoren, Struktur und Muster je Zeitebene |
+
+### Felder, die erst mit der Zeit belastbar werden
+
+Einige Kennzahlen brauchen abgeschlossene Sessions. Bis dahin liefert das Feld
+`null` **mit Begründung und Fortschrittsangabe** — nie eine Schätzung:
+
+| Feld | Benötigte Sessions |
+|---|---|
+| `week_high` / `week_low` | 5 |
+| `volume_profile` | 2 |
+| `relative_volume` | 10 |
+| `atr_percentile` | 20 |
+
+Beispielausgabe: `noch nicht belastbar - 12/20 Sessions`.
+
+---
+
+## 7. Terminal-Dump ohne Claude Desktop
+
+Dieselben Zahlen, direkt im Terminal — nützlich zum Prüfen, ob die Kette steht:
+
+```bash
+.venv\Scripts\python.exe -m mcp_server.cli snapshot --symbol MNQ
+.venv\Scripts\python.exe -m mcp_server.cli levels --symbol MNQ
+```
+
+Optionen: `--timeframes 1m,5m,15m` · `--bars N` · `--no-bars` · `--json` ·
+`--config` · `--env-file`.
+
+### .env-Checkliste
 
 ```bash
 copy .env.example .env
 ```
 
-Dann `.env` ausfuellen. Die Datei steht in `.gitignore` und darf niemals
-committet werden.
+Für das **Zielsystem** wird davon nur eine Variable gebraucht:
 
-| Variable | Woher |
+| Variable | Wofür | Nötig für |
+|---|---|---|
+| `FRED_API_KEY` | Ist-Werte der Wirtschaftstermine | `get_event_risk` |
+| `ANTHROPIC_API_KEY` | nur Legacy-Telegram-Pfad | Abschnitt 8 |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | nur Legacy | Abschnitt 8 |
+| `TRADOVATE_*` | nur Legacy | Abschnitt 8 |
+
+Ohne `FRED_API_KEY` läuft alles weiter — `get_event_risk` weist die Ist-Werte
+dann als nicht verfügbar aus, statt so zu tun, als gäbe es keine Termine.
+
+---
+
+## 8. Legacy: Telegram-Bot und /analyse
+
+Der ursprüngliche Pfad: Tradovate-WebSocket → Alarm-Bedingungen → Anthropic-API →
+Telegram. Er ist lauffähig und bleibt erhalten, **kostet aber Token je Alarm**
+und ist nicht mehr das Ziel.
+
+```bash
+.venv\Scripts\python.exe -m live_bot.main --test-notification   # nur Zustellweg prüfen
+.venv\Scripts\python.exe -m live_bot.main                        # Demo-Umgebung
+```
+
+**Alarm-Bedingungen** (in `config.yaml` einzeln schaltbar, mit eigenem Cooldown):
+
+| Schlüssel | Auslöser |
 |---|---|
-| `TRADOVATE_USERNAME` / `TRADOVATE_PASSWORD` | Dein Tradovate-Login |
-| `TRADOVATE_CID` / `TRADOVATE_SECRET` | Tradovate API Access Portal (`Application Access`) |
-| `TRADOVATE_DEVICE_ID` | Frei waehlbar, aber **stabil lassen** — Tradovate bindet Tokens daran |
-| `ANTHROPIC_API_KEY` | console.anthropic.com |
-| `TELEGRAM_BOT_TOKEN` | Von `@BotFather` in Telegram |
-| `TELEGRAM_CHAT_ID` | `https://api.telegram.org/bot<TOKEN>/getUpdates` aufrufen, nachdem du dem Bot geschrieben hast |
+| `prev_day_high_cross` | Schlusskurs kreuzt das Vortageshoch von unten (mit Tick-Puffer) |
+| `prev_day_low_cross` | Schlusskurs kreuzt das Vortagestief von oben |
+| `rsi_exit_overbought` | RSI fällt von ≥ 70 wieder darunter |
+| `rsi_exit_oversold` | RSI steigt von ≤ 30 wieder darüber |
+| `flag_breakout` | Impuls → enge Range → Schlusskurs außerhalb der Range |
 
-### 4.2 Benachrichtigungsweg testen
+Alle Bedingungen sind **Flankenerkennungen**: sie feuern beim Übergang, nicht
+dauerhaft.
 
-Ohne Tradovate-Verbindung, kostet nichts:
+**An Claude gehen ausschließlich berechnete Kennzahlen** — keine Rohdaten, keine
+Tickströme, keine Bilder. Was genau übertragen wird, steht an genau zwei Stellen:
+`build_metrics_payload()` und `build_report_payload()` in
+`live_bot/ai/claude_client.py`, beide mit Test.
 
-```bash
-python -m live_bot.main --test-notification
-```
-
-Kommt die Nachricht in Telegram an, ist der Weg frei. Fehlen die
-Telegram-Variablen, landet sie auf der Konsole — das ist der eingebaute
-Fallback, kein Fehler.
-
-### 4.3 Demo zuerst
-
-`config.yaml` steht ab Werk auf:
-
-```yaml
-tradovate:
-  environment: demo
-  allow_live_environment: false
-```
-
-Die Live-Umgebung ist **doppelt** gesichert: `allow_live_environment: true`
-in der `config.yaml` **und** das Flag `--i-know-this-is-live` beim Start.
-Beides fehlt absichtlich in der Standardkonfiguration.
-
----
-
-## 5. Live-Bot starten
-
-```bash
-# Demo-Umgebung, Frontmonat-NQ wird automatisch ermittelt
-python -m live_bot.main
-
-# anderes Symbol/Intervall: in config.yaml unter "market" setzen
-
-# Live-Umgebung (erst nach ausdruecklicher Freigabe in der config.yaml)
-python -m live_bot.main --environment live --i-know-this-is-live
-```
-
-Beenden mit `Strg+C`.
-
-**Was beim Start passiert**
-
-1. Login bei Tradovate, Token merken (wird 5 Minuten vor Ablauf erneuert).
-2. Frontmonat-Kontrakt aufloesen (`NQ` → z.B. `NQZ5`). Feste Vorgabe ueber
-   `market.contract_override`.
-3. Market-Data-WebSocket oeffnen, letzte 300 Kerzen als Historie laden
-   (damit RSI/SMA sofort belastbar sind), Quotes abonnieren.
-4. Ticks zu Kerzen aggregieren; bei jedem Kerzenschluss Indikatoren neu
-   rechnen und Bedingungen pruefen.
-
-**Wenn die Verbindung abbricht**
-
-Der Feed verbindet mit exponentiellem Backoff (2s → 4s → 8s … max 120s,
-mit Jitter) neu, laedt die Historie nach — womit die entstandene Luecke
-geschlossen wird — und abonniert erneut. Zusaetzlich gilt: kommen laenger
-als `stale_data_timeout_seconds` (Standard 90s) gar keine Daten an, wird
-die Verbindung aktiv verworfen und neu aufgebaut. Ein stiller Stillstand
-ist damit ausgeschlossen.
-
----
-
-## 6. Der Befehl /analyse
-
-Jederzeit per Telegram abrufbar — unabhaengig davon, ob gerade eine
-Alarm-Bedingung erfuellt ist:
+### /analyse
 
 ```
 /analyse            Bericht zum laufenden Symbol
 /analyse NQ         Bericht zu einem anderen Produkt (Frontmonat)
 /analyse ESZ5       Bericht zu einem konkreten Kontrakt
-/help               Kurze Befehlsuebersicht
+/help               Kurze Befehlsübersicht
 ```
 
-### Was passiert dabei
+Der Bericht liefert `LAGE`, `STRUKTUR`, zwei gegenläufige Szenarien, `MARKEN`
+(Einstiegszone, Stop mit Herleitung, Ziel, Risiko in Punkten **und** USD je
+Kontrakt, CRV) und eine als Szenario formulierte `EINSCHAETZUNG`.
 
-1. **Indikatoren neu rechnen** — dieselbe `compute_indicators`-Funktion wie
-   im Alert-System und im Backtest. RSI(14), SMA20/50, Session-VWAP,
-   Vortageshoch/-tief, Konsolidierungs-Heuristik.
-2. **Zusaetzlich** (`common/structure.py`):
-   - **ATR(14)** als Volatilitaetsmass — dient zugleich als Bezugsgroesse
-     fuer Stop-Abstaende und Zonenbreiten
-   - **Unterstuetzungs-/Widerstandszonen** aus bestaetigten Swing-Punkten
-     der letzten `swing_lookback` Kerzen. Nahe beieinanderliegende Swings
-     werden zu einer Zone zusammengefasst, mit Anzahl der Beruehrungen.
-   - **Trend-Einschaetzung** aus Lage zur SMA50 und Steigung der SMA20.
-     Die Steigung wird in ATR pro Kerze normiert — sonst waere derselbe
-     Schwellwert fuer NQ und ES nicht sinnvoll.
-3. **Claude-Aufruf** mit ausfuehrlicherem System-Prompt und groesserem
-   Token-Budget (`claude.report_max_tokens`, Standard 4000).
-4. **Antwort** als Telegram-Nachricht, bei Bedarf automatisch in mehrere
-   Teile aufgeteilt (Telegram-Limit sind 4096 Zeichen).
+**Der Prompt verbietet ausdrücklich:** direkte Handlungsanweisungen, Empfehlungen
+zur Kontraktanzahl, sowie Prozentangaben zu Wahrscheinlichkeiten, welche die
+Daten nicht hergeben. Ergibt sich kein CRV von mindestens 1:1.5, soll der Bericht
+das sagen, statt Marken zu erzwingen. Am Ende steht immer ein Disclaimer; fehlt
+er in der Antwort, ergänzt ihn der Code.
 
-### Aufbau des Berichts
-
-Der Prompt fordert genau diese Abschnitte an:
-
-| Abschnitt | Inhalt |
-|---|---|
-| `LAGE` | Trend oder Seitwaerts, Lage zu VWAP/SMA20/SMA50, RSI, Position in der Tagesspanne |
-| `STRUKTUR` | Naechste Zonen mit Zahlen, Abstand und Anzahl der Tests |
-| `SZENARIO A` / `B` | Zwei gegenlaeufige Wenn-Dann-Szenarien mit Invalidierungspunkt |
-| `MARKEN` | Einstiegszone (Spanne), Stop mit Herleitung, Ziel, Risiko/Chance in Punkten **und** USD je Kontrakt, CRV |
-| `EINSCHAETZUNG` | Welche Richtung die Struktur eher stuetzt — als Szenario formuliert |
-
-**Was der Prompt ausdruecklich verbietet:** direkte Handlungsanweisungen
-("kaufe", "verkaufe", "du solltest"), Empfehlungen zur Kontraktanzahl oder
-Positionsgroesse, sowie Prozentangaben zu Wahrscheinlichkeiten, die die
-Daten nicht hergeben. Der Punktwert wird mitgeschickt, damit das Risiko in
-USD **je einzelnem Kontrakt** beziffert werden kann — die Stueckzahl bleibt
-deine Entscheidung. Ergibt sich kein CRV von mindestens 1:1.5, soll der
-Bericht das sagen statt Marken zu erzwingen.
-
-Am Ende steht immer: *"Dies ist keine Anlageberatung. Marktbedingungen
-koennen sich schnell aendern — pruefe alle Marken selbst am Chart."* Fehlt
-der Satz in der Antwort, ergaenzt ihn der Code.
-
-### Datenherkunft
-
-| Anfrage | Quelle | Dauer |
-|---|---|---|
-| `/analyse` oder `/analyse NQ` bei laufendem NQZ5 | Live-Puffer im Speicher | sofort, kein Netzaufruf |
-| `/analyse ES` bei laufendem NQZ5 | Frontmonat aufloesen + `md/getChart` | einige Sekunden |
-
-Der Kopf der Nachricht weist aus, welche Quelle verwendet wurde.
-
-### Kostenbremse
-
-Jeder Bericht ist genau ein Claude-Aufruf mit deutlich mehr Tokens als ein
-Alarm. Zwei getrennte Bremsen (`on_demand` in der `config.yaml`):
-
-- `cooldown_seconds` (Standard 60) — Mindestabstand zwischen zwei Berichten
-- `max_reports_per_day` (Standard 50) — Tageslimit
-
-Beide sind **unabhaengig** vom Alarm-Kontingent: ein Schwung `/analyse`
-kann das Tageslimit der automatischen Alarme nicht aufbrauchen, und
-umgekehrt.
-
-### Sicherheit
-
-Es werden ausschliesslich Nachrichten aus der konfigurierten
-`TELEGRAM_CHAT_ID` verarbeitet. Jeder, der den Bot-Namen kennt, kann ihm
-schreiben — solche Nachrichten werden verworfen und mit dem Event
-`telegram.listener.rejected` protokolliert.
-
-Beim Start wird der Telegram-Rueckstau uebersprungen. Sonst wuerde ein
-Neustart alle waehrend der Downtime gesendeten `/analyse` auf einmal
-abarbeiten, inklusive der zugehoerigen Claude-Aufrufe.
-
-Faellt Claude aus (Timeout, Rate-Limit), kommt die Nachricht trotzdem — mit
-dem berechneten Zahlenkopf und einem Hinweis, dass die Analyse fehlt.
+**Live-Umgebung ist doppelt gesichert:** `allow_live_environment: true` in der
+`config.yaml` **und** `--i-know-this-is-live` beim Start. Beides fehlt absichtlich
+in der Standardkonfiguration.
 
 ---
 
-## 7. Backtesting
+## 9. Backtesting
 
-### 7.1 Daten besorgen
-
-```bash
-# Von Tradovate in eine CSV ziehen (einmalig, schont das API-Kontingent)
-python -m backtest.cli fetch --symbol NQZ5 --bars 5000
-```
-
-Alternativ eine eigene CSV nach `data/NQZ5_1m.csv` legen. Erwartete
-Spalten: `timestamp,open,high,low,close,volume` (Zeitstempel ohne Zeitzone
-werden als UTC gelesen).
-
-### 7.2 Strategien ansehen und testen
+### 9.1 Strategien ansehen und testen
 
 ```bash
-# Welche Strategien gibt es?
-python -m backtest.cli list
+.venv\Scripts\python.exe -m backtest.cli list
 
-# Eine Strategie, getrennt nach In-Sample und Out-of-Sample
-python -m backtest.cli run --symbol NQZ5 --strategy prev_day_breakout
+.venv\Scripts\python.exe -m backtest.cli run --symbol NQZ5 --strategy prev_day_breakout
 
-# Mit anderen Parametern
-python -m backtest.cli run --symbol NQZ5 --strategy prev_day_breakout \
-    --param rsi_max=65 --param stop_loss_atr=1.0
-
-# Mehrere Strategien nebeneinander (Tabelle + Equity-Chart + Trade-CSVs)
-python -m backtest.cli compare --symbol NQZ5 \
+.venv\Scripts\python.exe -m backtest.cli compare --symbol NQZ5 \
     --strategy prev_day_breakout --strategy vwap_trend --strategy flag_breakout
 ```
 
-`compare` schreibt nach `backtest_results/`:
-`vergleich.csv`, `equity.png` und je Strategie/Zeitraum eine Trade-Liste.
+`compare` schreibt nach `backtest_results/`: `vergleich.csv`, `equity.png` und je
+Strategie/Zeitraum eine Trade-Liste.
 
-### 7.3 Parametersuche — mit Schutzriegel
+Eigene CSV nach `data/<SYMBOL>_1m.csv` legen. Erwartete Spalten:
+`timestamp,open,high,low,close,volume` (Zeitstempel ohne Zeitzone werden als UTC
+gelesen).
+
+### 9.2 Parametersuche — mit Schutzriegel
 
 ```bash
-python -m backtest.cli optimize --symbol NQZ5 --strategy prev_day_breakout \
+.venv\Scripts\python.exe -m backtest.cli optimize --symbol NQZ5 \
+    --strategy prev_day_breakout \
     --grid "rsi_max=60,65,70,75" --grid "stop_loss_atr=1.0,1.5,2.0" \
     --objective pnl_per_drawdown
 ```
 
-Die Suche laeuft **ausschliesslich auf dem In-Sample-Zeitraum**. Danach
-wird die beste Variante **einmal** out-of-sample geprueft und das
-Verhaeltnis Ø-Trade OOS/IS ausgewiesen. Faellt es unter 0.5, gibt es eine
-Overfitting-Warnung.
+Die Suche läuft **ausschließlich auf dem In-Sample-Zeitraum**. Danach wird die
+beste Variante **einmal** out-of-sample geprüft und das Verhältnis Ø-Trade OOS/IS
+ausgewiesen. Fällt es unter 0.5, gibt es eine Overfitting-Warnung.
 
 Der Schutz ist kein guter Vorsatz, sondern Code: jede Optimierung ruft
-`assert_in_sample_only()` auf und bricht mit `OutOfSampleViolation` ab,
-sobald auch nur eine Out-of-Sample-Kerze im Datensatz liegt.
+`assert_in_sample_only()` auf und bricht mit `OutOfSampleViolation` ab, sobald
+auch nur eine Out-of-Sample-Kerze im Datensatz liegt.
 
-### 7.4 Eigene Strategie schreiben
+Die Indikatoren werden dabei **einmal über die Gesamthistorie** gerechnet und
+erst danach geschnitten. Würde man den OOS-Block isoliert vorbereiten, hätten
+dessen erste ~50 Kerzen keinen gültigen SMA(50) und die Strategie bliebe dort
+stumm — ein stiller Verlust an OOS-Zeitraum.
 
-Strategien sind Kompositionen kleiner Regel-Objekte:
+### 9.3 Eigene Strategie schreiben
 
 ```python
 from backtest.strategies.base import ColumnAbove, CrossesAbove, CrossesBelow, RuleStrategy
@@ -418,210 +508,189 @@ meine_strategie = RuleStrategy(
 )
 ```
 
-Als Spaltennamen sind alle Indikatoren aus `common/indicators.py`
-verfuegbar: `close`, `rsi`, `sma_fast`, `sma_slow`, `vwap`, `atr`,
-`prev_session_high`, `prev_session_low`, `prev_session_close`,
-`flag_breakout_up`, `flag_breakout_down`, …
+In `backtest/strategies/library.py` unter `STRATEGY_LIBRARY` eintragen.
+`BarContext` gibt bewusst nur die aktuelle und die vorherige Zeile frei —
+Look-ahead ist damit strukturell ausgeschlossen.
 
-Fuer die CLI in `backtest/strategies/library.py` unter `STRATEGY_LIBRARY`
-eintragen.
+### 9.4 Ausführungsmodell
 
-### 7.5 Berechnete Kennzahlen
-
-Trefferquote · Profit-Faktor · Netto-P&L · Ø Gewinn/Verlust je Trade ·
-Erwartungswert · Anzahl Trades · max. Drawdown (absolut und relativ) ·
-laengste Verluststraehne · Ø Haltedauer · Marktexposition · Sharpe Ratio.
+- Regeln werden auf dem **Schlusskurs** ausgewertet, ausgeführt wird zur
+  **Eröffnung der Folgekerze**.
+- Stop und Ziel greifen **innerhalb** der Kerze über High/Low.
+- Werden beide in derselben Kerze berührt, gilt der **Stop** — aus OHLC lässt
+  sich nicht rekonstruieren, was zuerst kam.
+- Immer höchstens **eine** Position; Zwangsschluss am Sessionende.
+- Kosten über `CostModel` mit echtem Punktwert und Ticksize. **P&L ist USD, keine
+  Punktzahl.**
 
 **Zur Sharpe Ratio bei Intraday-Futures:** Die klassische Formel setzt eine
-Rendite auf eingesetztes Kapital voraus. Bei Futures ist das eingesetzte
-Kapital eine Margin-Entscheidung, keine Eigenschaft der Strategie —
-dieselben Trades ergeben je nach Kontogroesse voellig verschiedene
-"Renditen". Deshalb wird standardmaessig `sharpe_pnl` ausgewiesen (auf
-taegliche P&L in USD, kapitalunabhaengig). `sharpe_on_capital` gibt es nur,
-wenn du ein Startkapital angibst. Bei wenigen Trades sind beide wenig
-aussagekraeftig — `trades`, `profit_factor` und `max_drawdown` sind hier die
-belastbareren Groessen.
-
-### 7.6 Ausfuehrungsmodell
-
-- Regeln werden auf dem **Schlusskurs** ausgewertet, ausgefuehrt wird zur
-  **Eroeffnung der Folgekerze**. Look-ahead ist damit strukturell
-  ausgeschlossen (dafuer gibt es einen Test).
-- Stop und Ziel greifen **innerhalb** der Kerze ueber High/Low.
-- Werden beide in derselben Kerze beruehrt, gilt der **Stop** — aus OHLC
-  laesst sich nicht rekonstruieren, was zuerst kam.
-- Immer hoechstens **eine** Position.
-- Kosten: Kommission je Seite plus Slippage je Seite in Ticks.
+Rendite auf eingesetztes Kapital voraus. Bei Futures ist das eingesetzte Kapital
+eine Margin-Entscheidung, keine Eigenschaft der Strategie. Deshalb wird
+standardmäßig `sharpe_pnl` ausgewiesen (tägliche P&L in USD, kapitalunabhängig).
+Bei wenigen Trades sind `trades`, `profit_factor` und `max_drawdown` die
+belastbareren Größen.
 
 Warum eine eigene Engine statt `backtesting.py` oder `vectorbt`:
 siehe [`docs/BACKTESTING_ENTSCHEIDUNG.md`](docs/BACKTESTING_ENTSCHEIDUNG.md).
 
 ---
 
-## 8. Konfiguration im Detail
+## 10. Konfiguration im Detail
 
-Alles Wesentliche steckt in `config.yaml`. Die wichtigsten Stellschrauben:
+Alles Wesentliche steckt in `config.yaml`, Secrets ausschließlich in `.env`.
+Vorrang: **CLI > .env > YAML**.
 
 ```yaml
+ntbridge:
+  enabled: true
+  host: "127.0.0.1"              # NUR lokal. Anderes wird beim Start abgewiesen.
+  port: 8787
+  database: "data/ntbridge.sqlite3"
+  stale_factor: 2.0              # Jüngster Bar älter als factor * Bar-Länge
+  symbol_map: {}                 # nur nötig bei abweichenden NT-Namen
+
 market:
-  product: NQ                    # Root-Symbol; Frontmonat wird ermittelt
-  contract_override: null        # z.B. "NQZ5" fuer festen Kontrakt
-  candle_interval_minutes: 1     # 1 oder 5
-  candle_buffer_size: 3000       # siehe Kasten unten - nicht blind verkleinern
+  product: MNQ
+  candle_buffer_size: 3000       # siehe Kasten - nicht blind verkleinern
   warmup_bars: 2880
   tick_size: 0.25
-  point_value: 20.0              # NQ = 20, ES = 50
+  point_value: 2.0               # MNQ = 2, NQ = 20, ES = 50
 
 indicators:
-  flag:                          # Konsolidierungs-/Flaggen-Heuristik
-    impulse_lookback: 20         # Kerzen, ueber die der Impuls gemessen wird
-    impulse_min_atr: 2.5         # Impuls muss so viele ATR gross sein
-    consolidation_lookback: 10   # Laenge der engen Range
-    consolidation_max_atr: 1.2   # Range darf hoechstens so viele ATR sein
-    breakout_buffer_atr: 0.1     # Puffer fuer den Ausbruch
-
-alerts:
-  default_cooldown_minutes: 30
-  max_alerts_per_session: 20     # Tageslimit; 0 = unbegrenzt
-
-claude:
-  model: claude-sonnet-5
-  max_tokens: 2000               # deckelt Denk- UND Antworttokens (Alarm)
-  effort: low
-  report_max_tokens: 4000        # /analyse braucht mehr Raum
-  report_effort: medium
-
-on_demand:
-  cooldown_seconds: 60           # Mindestabstand zwischen zwei /analyse
-  max_reports_per_day: 50        # eigenes Kontingent, getrennt vom Alarm
-  swing_strength: 3              # Kerzen links/rechts fuer ein Swing-Extrem
-  swing_lookback: 120            # Fenster fuer die Zonensuche
-  max_zones: 3                   # Zonen je Seite
-  zone_merge_atr: 0.5            # Swings naeher als X*ATR = eine Zone
+  flag:
+    impulse_lookback: 20
+    impulse_min_atr: 2.5
+    consolidation_lookback: 10
+    consolidation_max_atr: 1.2
+    breakout_buffer_atr: 0.1
 ```
 
 > **`candle_buffer_size` nicht blind verkleinern.**
-> Vortageshoch und -tief brauchen die komplette Vorsession **plus** die
-> laufende. Eine CME-Globex-Session dauert 23 Stunden, also 2 × 23 × 60 =
-> **2760 Ein-Minuten-Kerzen**. Ist der Puffer kleiner, bleiben die
-> Vortagesmarken dauerhaft leer und die Alarme `prev_day_high_cross` /
-> `prev_day_low_cross` loesen **nie** aus — ohne jede Fehlermeldung.
-> Der Bot prueft das beim Start und verweigert den Dienst mit einer
-> erklaerenden Meldung, statt still nichts zu melden. Bei 5-Minuten-Kerzen
-> genuegen 552 Kerzen (z.B. 700).
-> Kosten: die Indikatorberechnung ueber 3000 Kerzen dauert rund **35 ms**
-> und laeuft einmal pro Kerzenschluss — das faellt nicht ins Gewicht.
+> Vortageshoch und -tief brauchen die komplette Vorsession **plus** die laufende.
+> Eine CME-Globex-Session dauert 23 Stunden, also 2 × 23 × 60 = **2760
+> Ein-Minuten-Kerzen**. Ist der Puffer kleiner, bleiben die Vortagesmarken
+> dauerhaft leer und die Alarme `prev_day_high_cross` / `prev_day_low_cross`
+> lösen **nie** aus — ohne jede Fehlermeldung. `Config.validate()` bricht deshalb
+> beim Start ab, statt still nichts zu melden.
 
-**Zu `max_tokens`:** Claude Sonnet 5 denkt standardmaessig adaptiv, und
-`max_tokens` begrenzt Denk- und Antworttokens zusammen. Zu knapp gesetzt
-wird die Antwort mittendrin abgeschnitten. 2000 ist bei `effort: low`
-komfortabel; der Bot erkennt eine Abschneidung und protokolliert sie.
+`Config.validate()` prüft beim Start außerdem, ob `tick_size` und `point_value`
+zum Instrument-Register passen (fängt "Produkt MNQ mit NQ-Werten" ab) und ob der
+Swing-Lookback mindestens `2*strength+1` beträgt.
 
-**Zum Tageslimit:** `max_alerts_per_session` bremst nicht nur die
-Benachrichtigungsflut, sondern deckelt auch die Claude-API-Kosten. Jeder
-Alarm ist genau ein API-Aufruf.
+**Zu `max_tokens` im Legacy-Pfad:** Claude Sonnet 5 denkt standardmäßig adaptiv,
+und `max_tokens` begrenzt Denk- und Antworttokens **zusammen**. Zu knapp gesetzt
+wird die Antwort mittendrin abgeschnitten. Sampling-Parameter wie `temperature`
+sind auf diesem Modell nicht erlaubt.
 
 ---
 
-## 9. Logging
+## 11. Logging
 
-Zwei Dateien parallel in `logs/` (rotierend, je 10 MB, 5 Generationen):
+Zwei Dateien parallel in `logs/` (rotierend), je Prozess ein Paar:
 
 | Datei | Zweck |
 |---|---|
-| `bot.log` | Menschenlesbar, fuer den Blick zwischendurch |
-| `events.jsonl` | Eine JSON-Zeile je Ereignis, maschinell auswertbar |
+| `bot.log` / `ntbridge.log` | Menschenlesbar |
+| `events.jsonl` / `ntbridge_events.jsonl` | Eine JSON-Zeile je Ereignis |
 
-Jedes Ereignis hat einen Typ (`event`) und einen strukturierten Payload.
-Wichtige Typen: `alert.triggered`, `alert.suppressed.cooldown`,
-`claude.response`, `claude.error`, `notify.telegram.sent`,
-`notify.telegram.failed`, `feed.reconnect_scheduled`, `md.disconnected`.
-
-Auswertung, z.B. alle Trigger eines Tages:
+Jedes Ereignis hat einen Typ im Schema `bereich.aktion` und einen strukturierten
+Payload. Wichtige Typen: `ntbridge.started`, `ntbridge.bars.accepted`,
+`ntbridge.bars.rejected`, `alert.triggered`, `claude.response`,
+`notify.telegram.failed`, `feed.reconnect_scheduled`.
 
 ```bash
-python -c "import json;[print(json.loads(l)['payload']) for l in open('logs/events.jsonl',encoding='utf-8') if '\"alert.triggered\"' in l]"
+.venv\Scripts\python.exe -c "import json;[print(json.loads(l)['payload']) for l in open('logs/ntbridge_events.jsonl',encoding='utf-8') if 'rejected' in l]"
 ```
-
-Claude-Antworten stehen im Volltext im Log (`claude.response` →
-`response_text`) — damit laesst sich im Nachhinein nachvollziehen, was zu
-welchem Zeitpunkt gemeldet wurde.
 
 ---
 
-## 10. Tests
+## 12. Tests
 
 ```bash
-python -m pytest              # alles
-python -m pytest -v           # ausfuehrlich
-python -m pytest tests/test_engine.py
+.venv\Scripts\python.exe -m pytest              # alles (326)
+.venv\Scripts\python.exe -m pytest -v
+.venv\Scripts\python.exe -m pytest tests/test_ntbridge.py
+.venv\Scripts\python.exe -m pytest -k lookahead -v
 ```
+
+Tests laufen **immer gegen temporäre Datenbanken**, nie gegen
+`data/ntbridge.sqlite3` — die wird im Betrieb beschrieben.
 
 Abgedeckt sind unter anderem:
 
-- RSI/SMA/ATR gegen bekannte Randfaelle, VWAP-Reset zum Sessionwechsel,
-  Vortagesmarken ueber den 18:00-ET-Rollover
-- Flaggen-Heuristik: erkennt den konstruierten Ausbruch, meldet auf reinem
-  Seitwaerts nichts
-- Engine: kein Look-ahead, Ausfuehrung zur Folgekerze, Stop vor Ziel,
-  Zeitstop, Sessionende, nur eine Position
-- Kennzahlen: Profit-Faktor inkl. Randfaellen, Drawdown, Verluststraehne
+- RSI/SMA/ATR gegen bekannte Randfälle, VWAP-Reset zum Sessionwechsel,
+  Vortagesmarken über den 18:00-ET-Rollover
+- Empfänger: Bar-Validierung mit jedem einzelnen Ablehnungsgrund, Idempotenz des
+  Upserts, Abweisung von Nicht-localhost-Hosts
+- Engine: kein Look-ahead, Ausführung zur Folgekerze, Stop vor Ziel, Zeitstop,
+  Sessionende, nur eine Position
 - IS/OOS: chronologische Teilung, `OutOfSampleViolation` beim Fehlgriff
-- Alarme: Flankenerkennung, Tick-Puffer, Cooldown, Tageslimit
-- Claude-Payload: enthaelt nur Kennzahlen, System-Prompt verbietet
-  Handelsempfehlungen und verlangt den Disclaimer
-- Marktstruktur: Swing-Erkennung (auch der Randfall "letzte Kerzen koennen
-  noch kein bestaetigtes Extrem sein"), Zonen-Zusammenfassung, Trend
-- `/analyse`: Befehls-Parsing inkl. `/analyse@BotName`, Rate-Limiting,
-  kompletter Berichtspfad ohne Netz, Aufteilung langer Nachrichten
+- Marktstruktur: Swing-Erkennung inkl. des Randfalls "letzte Kerzen können noch
+  kein bestätigtes Extrem sein", Zonen-Zusammenfassung, BOS/CHoCH
+- MCP: **kein Anthropic-Aufruf** in `mcp_server/` (AST-basiert), kein Umbiegen
+  von `sys.stdout`, Schlüsselmenge der Payloads
 - Konfiguration: zu kleiner Kerzenpuffer wird beim Start abgefangen
 
-Die Netzwerkschichten (WebSocket, REST, Telegram, Anthropic) sind bewusst
-nicht mit Mocks nachgebaut — dort testet man sonst vor allem die eigenen
-Mocks. Sie sind stattdessen so gebaut, dass jeder Fehler abgefangen wird
-und protokolliert statt eskaliert.
+Die Netzwerkschichten (WebSocket, REST, Telegram, Anthropic) sind bewusst nicht
+mit Mocks nachgebaut — dort testet man sonst vor allem die eigenen Mocks. Sie
+sind stattdessen so gebaut, dass jeder Fehler abgefangen und protokolliert statt
+eskaliert wird.
 
 ---
 
-## 11. Bekannte Grenzen
+## 13. Bekannte Grenzen
 
-**Tradovate als Datenquelle.** Tradovate ist ein Broker-Feed, kein
-Datenanbieter. Wie weit die Historie zurueckreicht, haengt am Datenabo, und
-`md/getChart` liefert pro Anfrage eine begrenzte Anzahl Bars. Fuer
-mehrjaehrige Minutenhistorie ist ein spezialisierter Anbieter besser —
-genau deshalb ist die Datenquelle ueber `DataProvider` austauschbar.
+**Antwortzeit 10–30 Sekunden.** Für den Auslöser eines 1-Minuten-Einstiegs zu
+langsam. Der Nutzen liegt in der Vorbereitung und in der späteren Auswertung.
 
-**Kontraktrollover.** Ein zusammengesetzter Frontmonat-Chart hat an den
-Rolltagen Preissprunge. Wer ueber Rollover hinweg backtestet, sollte
-back-adjusted Daten verwenden. Der Live-Bot rollt automatisch drei Tage vor
-Verfall (`DEFAULT_ROLL_BUFFER_DAYS` in `contracts.py`).
+**Volume Profile ist eine Näherung.** Echtes Volume-at-Price bräuchte Tickdaten.
+Aus 1m-Bars lässt sich Volumen nur über die High-Low-Spanne verteilen. Das Feld
+ist als `naeherung: true` gekennzeichnet.
 
-**Frontmonat-Heuristik.** Der Kontrakt wird aus dem Namen abgeleitet
-(CME-Monatscode + 3. Freitag). Fuer NQ/ES ist das korrekt; bei Produkten
-mit abweichendem Verfallskalender bitte `market.contract_override` setzen.
+**Kumulatives Delta bleibt null.** Bid-/Ask-Volumen je Kerze gibt es in NT8 nur
+mit dem kostenpflichtigen Add-on "Order Flow +" — nicht lizenziert. Es wird
+**bewusst nicht geschätzt**: eine Schätzung aus Auf- und Abwärtskerzen sähe aus
+wie eine Messung und wäre keine. Die Nachrüststelle ist in `ClaudeBridge.cs`
+markiert.
 
-**Volumen ausserhalb aktiver Phasen.** Liefert ein Quote keinen Trade,
-sondern nur Bid/Ask, wird der Mittelkurs mit Volumen 0 verwendet. Die
-Kerzen bleiben damit lueckenlos, ohne dass Volumen erfunden wird — der
-VWAP ignoriert solche Bars entsprechend.
+**Sekundärserien erben den Ladezeitraum des Charts.** Daraus folgt zwingend das
+Zwei-Charts-Layout aus Abschnitt 4.2.
 
-**Die Flaggen-Heuristik ist eine Heuristik.** "Impuls, dann enge Range,
-dann Ausbruch" ist kein bestaetigtes Chartmuster. Die Schwellenwerte sind
-Startwerte, keine Empfehlung; sie gehoeren auf deinen Daten kalibriert.
+**Der Empfänger-Vertrag hat keinen Compiler.** Ändert man in `ClaudeBridge.cs`
+einen Feldnamen oder den Umschlag, meldet **nichts** einen Fehler — die Kerzen
+werden schlicht abgelehnt. Bei jeder Änderung an der Bridge gegen
+`ntbridge/store.py` und `ntbridge/receiver.py` gegenprüfen. Feld heißt
+`timestampUtc`, Umschlag ist `{"bars":[…]}`.
 
-**Prop-Firm-Regeln sind nicht abgebildet.** Tageslimits, maximaler
-Drawdown, Konsistenzregeln von Lucid Trading pruefft dieses Projekt nicht.
-Es beobachtet den Markt, nicht dein Konto.
+**ISM/PMI und Fed-Reden bleiben ohne Ist-Wert.** ISM hat die FRED-Lizenz
+zurückgezogen, es gibt keine brauchbare Gratisquelle.
 
-**Zonen sind Swing-Punkte, keine geprueften Niveaus.** Die Unterstuetzungs-
-und Widerstandszonen entstehen rein mechanisch aus lokalen Extrema der
-letzten `swing_lookback` Kerzen. Sie kennen weder Volumenprofile noch
-runde Marken, Eroeffnungspreise oder uebergeordnete Zeitebenen. Eine Zone
-mit einer einzigen Beruehrung ist kaum mehr als ein Zufallshoch — die
-Anzahl der Beruehrungen steht deshalb in jedem Bericht mit dabei.
+**Forex Factory ist ein inoffizieller Endpunkt** und kann brechen. Er hat zudem
+kein `actual`-Feld — daher die Aufteilung: Forex Factory liefert den Terminplan,
+FRED die Ist-Werte. Ist der Kalender nicht erreichbar, steht
+`calendar_available: false` mit Begründung da — **niemals** "keine Termine". Ein
+Ausfall darf nie wie Entwarnung aussehen.
 
-**`warmup_bars: 2880` ist eine grosse Historienanfrage.** Ob Tradovate sie
-in einem Stueck beantwortet, haengt am Datenabo. Kommt weniger zurueck,
-laeuft der Bot trotzdem weiter — die Vortagesmarken stehen dann erst zur
-Verfuegung, wenn der Puffer im laufenden Betrieb voll ist. Das Log zeigt
-unter `md.history.loaded`, wie viele Bars tatsaechlich ankamen.
+**Kontraktrollover.** Ein zusammengesetzter Frontmonat-Chart hat an den Rolltagen
+Preissprünge. Wer über Rollover hinweg backtestet, sollte back-adjusted Daten
+verwenden.
+
+**Verfallsregeln sind instrumentspezifisch.** MNQ rollt zum 3. Freitag, MGC zum
+**drittletzten Geschäftstag des Liefermonats** (Kontraktmonate G/J/M/Q/V/Z). Die
+Regel liegt im Instrument-Register, nicht als Annahme im Code.
+
+**Die Flaggen-Heuristik ist eine Heuristik.** "Impuls, dann enge Range, dann
+Ausbruch" ist kein bestätigtes Chartmuster. Die Schwellenwerte sind Startwerte,
+keine Empfehlung.
+
+**Zonen sind Swing-Punkte, keine geprüften Niveaus.** Sie entstehen rein
+mechanisch aus lokalen Extrema. Eine Zone mit einer einzigen Berührung ist kaum
+mehr als ein Zufallshoch — die Anzahl der Berührungen steht deshalb immer dabei.
+
+**Prop-Firm-Regeln sind nicht abgebildet.** Zwangsschluss, Trailing Drawdown und
+Konsistenzregeln prüft dieses Projekt derzeit nicht. Es beobachtet den Markt,
+nicht dein Konto. Ein optionales Regelwerk dafür ist geplant.
+
+**LLM-Chartanalyse aus Screenshots ist ungenau.** Preise werden abgelesen, nicht
+gemessen. Bei MNQ mit 0,25-Punkte-Ticks kann das um Punkte danebenliegen — einer
+der Gründe, warum es dieses Projekt gibt.
