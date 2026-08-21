@@ -12,18 +12,20 @@ Setzt vollstaendig auf den bestehenden Bausteinen auf:
 Kein Anthropic-Aufruf, keine Prosa - nur Zahlen mit Einheiten. Die
 Interpretation passiert in der Claude-Desktop-Unterhaltung.
 
-Zu den Levels: Vortageshoch/-tief brauchen zwei Handelssessions im Fenster.
-Der 1m-Timeframe schafft das mit den geladenen Bars nicht, der 5m- oder
+Zu den Levels: Vortageshoch/-tief brauchen die **vollstaendige** vorherige
+Handelssession im Fenster - nicht nur irgendeinen Bar aus ihr. Der
+1m-Timeframe schafft das mit den geladenen Bars nicht, der 5m- oder
 15m-Timeframe schon. Deshalb wird der Levelblock EINMAL aus dem feinsten
-Timeframe berechnet, der tatsaechlich zwei Sessions abdeckt, und der
-verwendete Timeframe im Ergebnis ausgewiesen. Sonst haette derselbe PDH je
-nach Chart einen anderen Wert - was schlicht falsch waere.
+Timeframe berechnet, der die Vorsession wirklich komplett enthaelt
+(:func:`_vorsession_vollstaendig`), und der verwendete Timeframe im Ergebnis
+ausgewiesen. Sonst haette derselbe PDH je nach Chart einen anderen Wert -
+was schlicht falsch waere.
 """
 
 from __future__ import annotations
 
 import math
-from datetime import datetime, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any
 
 import pandas as pd
@@ -36,7 +38,7 @@ from common.indicators import (
 from common.instruments import Instrument
 from common.levels import LevelSet, compute_levels, history_dependent_metrics
 from common.patterns import detect_all_patterns
-from common.sessions import session_context, session_dates
+from common.sessions import session_bounds, session_context, session_dates
 from common.structure import (
     assess_trend,
     classify_market_structure,
@@ -68,10 +70,65 @@ def _round(value: Any, digits: int = 2) -> float | None:
     return round(cleaned, digits) if cleaned is not None else None
 
 
-def _spans_two_sessions(frame: pd.DataFrame, session_cfg: SessionConfig) -> bool:
+def _bar_abstand(frame: pd.DataFrame) -> timedelta:
+    """Typischer zeitlicher Abstand zwischen zwei Bars des Frames."""
+    if len(frame.index) < 2:
+        return timedelta(0)
+    abstaende = pd.Series(frame.index).diff().dropna()
+    if abstaende.empty:
+        return timedelta(0)
+    return abstaende.median().to_pytimedelta()
+
+
+def _vorsession_vollstaendig(frame: pd.DataFrame, session_cfg: SessionConfig) -> bool:
+    """Enthaelt der Frame die **komplette** vorherige Handelssession?
+
+    WARUM NICHT EINFACH ZWEI SESSIONS ZAEHLEN
+    -----------------------------------------
+    Die fruehere Fassung pruefte ``len(set(session_dates(...))) >= 2`` - also
+    die Anzahl verschiedener Session-*Daten*. Das war falsch, und zwar auf
+    die teuerste Art: lautlos.
+
+    Ein auf 1500 Bars gedeckelter 1-Minuten-Frame umfasst rund 25 Stunden.
+    Er beruehrt damit zwei Session-Daten, enthaelt die aeltere aber nur zu
+    einem Bruchteil. Die alte Pruefung sagte trotzdem "ja", ``compute_levels``
+    berechnete das Vortageshoch aus einem **angeschnittenen** Tag, und der
+    Snapshot wies das Ergebnis auch noch als geprueft aus.
+
+    Gemessen an echten MNQ-Daten (21.08.2026): der gedeckelte Frame lieferte
+    ein Vortageshoch von 29686.75, die vollstaendige Session 29688.50. Hier
+    waren es 1,75 Punkte. Der Fehler ist aber **nicht nach oben begrenzt** -
+    faellt das echte Hoch frueh in der Session, liegt der Wert beliebig weit
+    daneben. Genau die Fehlerklasse aus Bug-Lehre 1.
+
+    DIE PRUEFUNG
+    ------------
+    Die vorherige Session ist die zweitjuengste im Frame. Sie gilt als
+    vollstaendig, wenn der Frame mindestens einen Bar **an ihrem Beginn**
+    enthaelt. Das faengt beides ab: einen zu kurzen Frame und ein Loch in
+    den Daten am Sessionanfang.
+
+    Die Toleranz von zwei Bar-Abstaenden ist noetig, weil ein Bar den
+    Schluss seines Intervalls traegt: der erste 1-Minuten-Bar einer um 22:00
+    beginnenden Session steht auf 22:01. Faellt die Pruefung im Zweifel
+    negativ aus, waehlt der Aufrufer einen groberen, weiter zurueckreichenden
+    Timeframe - der Irrtum geht also in Richtung Korrektheit, nicht in
+    Richtung falscher Zahl.
+    """
     if frame.empty:
         return False
-    return len(set(session_dates(frame.index, session_cfg).values)) >= 2
+
+    tage = sorted(set(session_dates(frame.index, session_cfg).values))
+    if len(tage) < 2:
+        return False
+
+    vorsession_start, _ = session_bounds(tage[-2], session_cfg)
+    toleranz = 2 * _bar_abstand(frame)
+
+    beginn_abgedeckt = (frame.index >= vorsession_start) & (
+        frame.index <= vorsession_start + toleranz
+    )
+    return bool(beginn_abgedeckt.any())
 
 
 # ---------------------------------------------------------------------------
@@ -319,7 +376,8 @@ def build_snapshot_payload(
             **level_set.to_dict(),
             "berechnet_aus_timeframe": level_timeframe,
             "hinweis": "Levels sind timeframeunabhaengig und werden einmal aus dem "
-                       "feinsten Timeframe berechnet, der zwei Sessions abdeckt.",
+                       "feinsten Timeframe berechnet, der die vorherige Session "
+                       "vollstaendig enthaelt.",
         },
         # Kennzahlen, die mehrere Handelssessions Historie brauchen. Sie
         # fuellen sich im laufenden Betrieb von selbst, weil der
@@ -378,18 +436,18 @@ def _choose_level_frame(
     session_cfg: SessionConfig,
     instrument: Instrument,
 ) -> tuple[LevelSet, str]:
-    """Waehlt den feinsten Timeframe, der zwei Handelssessions abdeckt."""
+    """Waehlt den feinsten Timeframe, der die Vorsession VOLLSTAENDIG enthaelt."""
     preference = ["1m", "5m", "15m", "1h", DAILY]
 
     for timeframe in preference:
         frame = enriched_by_tf.get(timeframe)
         if frame is None or frame.empty:
             continue
-        if _spans_two_sessions(frame, session_cfg):
+        if _vorsession_vollstaendig(frame, session_cfg):
             return compute_levels(frame, instrument, session_cfg=session_cfg), timeframe
 
-    # Kein Timeframe deckt zwei Sessions ab - dann den feinsten nehmen und
-    # die fehlenden Vortagesmarken sauber als nicht verfuegbar ausweisen.
+    # Kein Timeframe enthaelt die Vorsession vollstaendig - dann den feinsten
+    # nehmen; die Vortagesmarken sind dann entsprechend gekennzeichnet.
     for timeframe in preference:
         frame = enriched_by_tf.get(timeframe)
         if frame is not None and not frame.empty:
@@ -446,7 +504,7 @@ def _provenance_block(
             "aeltester_bar_utc": bar_set.oldest.isoformat() if bar_set.oldest else None,
             "juengster_bar_utc": bar_set.newest.isoformat() if bar_set.newest else None,
             "alter_juengster_bar_sekunden": _round(bar_set.age_seconds(now), 0),
-            "deckt_zwei_sessions": _spans_two_sessions(bar_set.frame, session_cfg),
+            "vorsession_vollstaendig": _vorsession_vollstaendig(bar_set.frame, session_cfg),
             "bid_ask_volumen_vorhanden": bar_set.has_flow,
             # Deutliches Flag: laenger als zwei Bar-Laengen kein neuer Bar.
             # Waehrend der Handelszeit heisst das fast immer, dass in

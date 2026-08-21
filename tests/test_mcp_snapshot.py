@@ -24,7 +24,8 @@ from common.config import (
 from common.instruments import MGC, MNQ
 from live_bot.tradovate.contracts import Contract
 from mcp_server.bars import DAILY, BarSet, LoadedBars
-from mcp_server.snapshot import build_snapshot_payload
+from common.sessions import session_dates
+from mcp_server.snapshot import _vorsession_vollstaendig, build_snapshot_payload
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 
@@ -347,7 +348,7 @@ def test_datenherkunft_weist_alter_und_sessionabdeckung_aus(mcp_config):
         entry = provenance[timeframe]
         assert entry["verfuegbar"] is True
         assert "alter_juengster_bar_sekunden" in entry
-        assert "deckt_zwei_sessions" in entry
+        assert "vorsession_vollstaendig" in entry
         assert "bid_ask_volumen_vorhanden" in entry
 
 
@@ -419,3 +420,151 @@ def test_snapshot_enthaelt_keine_prosa_interpretation(mcp_config):
 
     for verboten in ("kaufe", "verkaufe", "einstieg jetzt", "du solltest"):
         assert verboten not in rendered
+
+
+# ---------------------------------------------------------------------------
+# Vollstaendigkeit der Vorsession (Regression)
+# ---------------------------------------------------------------------------
+#
+#  Die fruehere Pruefung zaehlte verschiedene Session-DATEN. Ein auf 1500
+#  Bars gedeckelter 1-Minuten-Frame beruehrt zwei Session-Daten, enthaelt
+#  die aeltere aber nur zu einem Bruchteil - und lieferte trotzdem ein
+#  "Vortageshoch" aus dem angeschnittenen Tag, ohne Fehlermeldung.
+#
+#  An echten MNQ-Daten (21.08.2026) waren das 29686.75 statt 29688.50.
+#  Der Fehler ist nicht nach oben begrenzt: faellt das echte Hoch frueh in
+#  die Session, liegt der Wert beliebig weit daneben.
+
+# Session-Modell 18:00-17:00 ET: die Session "2025-06-10" beginnt am
+# 2025-06-09 um 18:00 Ortszeit.
+VORSESSION_START = "2025-06-09 18:00"
+BARS_EINE_SESSION = 23 * 60
+
+
+def _frame_mit_vollstaendiger_vorsession() -> pd.DataFrame:
+    """Ganze Session 2025-06-10 plus ein Stueck der Folgesession."""
+    return synthetic_frame(bars=BARS_EINE_SESSION + 240, minutes=1, start=VORSESSION_START)
+
+
+def test_vollstaendige_vorsession_wird_erkannt(session_cfg):
+    frame = _frame_mit_vollstaendiger_vorsession()
+
+    tage = sorted(set(session_dates(frame.index, session_cfg).values))
+    assert len(tage) >= 2, "Testdaten muessen zwei Sessions beruehren"
+
+    assert _vorsession_vollstaendig(frame, session_cfg) is True
+
+
+def test_angeschnittene_vorsession_gilt_nicht_als_vollstaendig(session_cfg):
+    """Der eigentliche Regressionstest.
+
+    Der gedeckelte Frame beruehrt weiterhin ZWEI Session-Daten - genau
+    deshalb kam die alte Zaehlpruefung durch. Er enthaelt den Beginn der
+    Vorsession aber nicht mehr.
+    """
+    voll = _frame_mit_vollstaendiger_vorsession()
+    gedeckelt = voll.iloc[-600:]
+
+    tage = sorted(set(session_dates(gedeckelt.index, session_cfg).values))
+    assert len(tage) >= 2, (
+        "Der gedeckelte Frame muss weiterhin zwei Session-Daten beruehren - "
+        "sonst prueft dieser Test nicht den gemeldeten Fehler."
+    )
+
+    assert _vorsession_vollstaendig(gedeckelt, session_cfg) is False
+
+
+def test_loch_am_sessionanfang_gilt_nicht_als_vollstaendig(session_cfg):
+    """Auch eine Datenluecke am Sessionbeginn macht die Vorsession unbrauchbar."""
+    voll = _frame_mit_vollstaendiger_vorsession()
+    start = voll.index[0]
+    ohne_anfang = voll[voll.index > start + pd.Timedelta(minutes=30)]
+
+    assert _vorsession_vollstaendig(ohne_anfang, session_cfg) is False
+
+
+def test_einzelne_session_reicht_nicht(session_cfg):
+    nur_eine = synthetic_frame(bars=200, minutes=1, start=VORSESSION_START)
+    assert _vorsession_vollstaendig(nur_eine, session_cfg) is False
+
+
+def test_levelframe_ueberspringt_angeschnittenen_timeframe(mcp_config):
+    """Ende zu Ende: das Vortageshoch stammt aus der VOLLSTAENDIGEN Session.
+
+    Aufbau wie im echten Fehlerfall: der 1m-Frame ist gedeckelt und damit
+    angeschnitten, der 5m-Frame reicht weit genug zurueck. Beide beschreiben
+    denselben Kursverlauf.
+    """
+    voll_1m = _frame_mit_vollstaendiger_vorsession()
+    gedeckelt_1m = voll_1m.iloc[-600:]
+
+    # 5m-Frame aus demselben Verlauf aggregieren - so ist das wahre
+    # Vortageshoch in beiden Frames dasselbe, sofern man weit genug zurueckschaut.
+    voll_5m = voll_1m.resample("5min").agg(
+        {
+            "open": "first",
+            "high": "max",
+            "low": "min",
+            "close": "last",
+            "volume": "sum",
+            "bid_volume": "sum",
+            "ask_volume": "sum",
+        }
+    ).dropna()
+
+    tage = session_dates(voll_1m.index, mcp_config.market.session)
+    vorsession = sorted(set(tage.values))[-2]
+    wahres_hoch = float(voll_1m[tage.values == vorsession]["high"].max())
+    hoch_aus_stumpf = float(
+        gedeckelt_1m[
+            session_dates(gedeckelt_1m.index, mcp_config.market.session).values == vorsession
+        ]["high"].max()
+    )
+
+    assert hoch_aus_stumpf < wahres_hoch, (
+        "Testdaten taugen nicht: der angeschnittene Frame muesste ein zu "
+        "niedriges Vortageshoch ergeben, sonst zeigt der Test nichts."
+    )
+
+    geladen = make_loaded()
+    geladen.sets["1m"] = BarSet(
+        timeframe="1m", frame=gedeckelt_1m, source="test",
+        contract="MNQZ5", requested_bars=len(gedeckelt_1m),
+    )
+    geladen.sets["5m"] = BarSet(
+        timeframe="5m", frame=voll_5m, source="test",
+        contract="MNQZ5", requested_bars=len(voll_5m),
+    )
+
+    payload = build_snapshot_payload(geladen, mcp_config, timeframes=["1m", "5m"])
+
+    assert payload["levels"]["berechnet_aus_timeframe"] != "1m"
+
+    pdh = next(
+        level for level in payload["levels"]["levels"] if level["name"] == "prev_day_high"
+    )
+    assert pdh["price"] == pytest.approx(wahres_hoch, abs=0.01)
+
+
+def test_provenienz_meldet_angeschnittene_vorsession(mcp_config):
+    """Der Snapshot darf Vollstaendigkeit nicht faelschlich bestaetigen."""
+    voll_1m = _frame_mit_vollstaendiger_vorsession()
+
+    geladen = make_loaded()
+    geladen.sets["1m"] = BarSet(
+        timeframe="1m", frame=voll_1m.iloc[-600:], source="test",
+        contract="MNQZ5", requested_bars=600,
+    )
+    geladen.sets["5m"] = BarSet(
+        timeframe="5m", frame=voll_1m.resample("5min").agg(
+            {"open": "first", "high": "max", "low": "min", "close": "last",
+             "volume": "sum", "bid_volume": "sum", "ask_volume": "sum"}
+        ).dropna(),
+        source="test", contract="MNQZ5", requested_bars=400,
+    )
+
+    payload = build_snapshot_payload(geladen, mcp_config, timeframes=["1m", "5m"])
+    je_tf = payload["datenherkunft"]["je_timeframe"]
+
+    assert je_tf["1m"]["vorsession_vollstaendig"] is False
+    assert je_tf["5m"]["vorsession_vollstaendig"] is True
