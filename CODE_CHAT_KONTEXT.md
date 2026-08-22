@@ -227,7 +227,6 @@ Daneben liest `ideas/` denselben Speicher und protokolliert regelbasiert
 |---|---|
 | `setups.py` | **Setup-Bibliothek.** 4 Familien, jede auf eine `RuleStrategy` abgebildet. `pruefe_konfiguration()` bricht bei unbekanntem Schlüssel oder durchweg abgeschalteten Familien ab |
 | `__main__.py` | `python -m ideas` — ein Protokollierungslauf, `--probelauf`, `--kein-kalender` |
-| `kalender.py` | Abdeckungsgrenze vor dem Wirtschaftskalender (Abschnitt 8.17) |
 | `erkennung.py` | läuft über die Kerzen und wertet die Regel-Objekte über `BarContext` aus; `pruefe_spalten()`, `Erkennungsbericht` |
 | `filters.py` | vier Filter, **drei** Ausgänge (durch / abgelehnt / nicht prüfbar), `Filterbilanz.kontext` |
 | `model.py` | `TradeIdee` (Haupt-Log), `Beobachtung` (Exploration-Log), `berechne_crv` |
@@ -499,8 +498,13 @@ kaputt"**.
 | **11** | **Vortagesmarken aus angeschnittener Session** | **`_vorsession_vollstaendig()`** |
 | **12** | **Zweiter Empfänger lief still daneben** | **`laeuft_bereits()` + `_ExklusiverServer`** |
 | **13** | **Kostengarantie-Test prüfte nur direkte Importe** | **transitive Hülle** |
-| **14** | **Schichtumkehr zog `backtest` in die MCP-Importhülle** | **Prüfung nach `ideas.setups` verschoben** |
-| **15** | **UTF-8-BOM ließ den AST-Test scheitern** | **BOM entfernt, ASCII-Konvention** |
+| **15** | **Schichtumkehr zog `backtest` in die MCP-Importhülle** | **Prüfung nach `ideas.setups` verschoben** |
+| **16** | **UTF-8-BOM ließ den AST-Test scheitern** | **BOM entfernt, ASCII-Konvention** |
+| **17** | **`flaggen_ausbruch` kann nie auslösen** | **OFFEN — Schwellenwert gehört Laurin (8.17)** |
+| **18** | **Ein-Minuten-Versatz in der Dukascopy-Quelle** | **`label="right"`, Abschnitt 14.2** |
+
+Die Nummern folgen den Unterabschnitten; **14 fehlt in der Tabelle**, weil
+8.14 („Gegenprobe als Methode") kein Bug ist, sondern ein Arbeitsprinzip.
 
 ### 8.15 Schichtumkehr (behoben, `142fd11`)
 
@@ -536,6 +540,37 @@ Inhalt stimmte.
 
 Zweite Lehre: Ein Fehlschlag im Importhüllen-Test kann eine **Parse**-Ursache
 haben statt einer fachlichen. Erst die Fehlermeldung lesen, dann suchen.
+
+### 8.17 `flaggen_ausbruch` kann nie auslösen — OFFEN
+
+**Gemessen am 22.08.2026 an echten MNQ-5m-Daten:**
+
+| | Wert |
+|---|---|
+| schmalste Konsolidierung über 864 Kerzen | `Range/ATR = 1.39` |
+| Schwelle `indicators.flag.consolidation_max_atr` | `1.2` |
+| `flag_in_consolidation` | **0 von 864 Kerzen** |
+
+Die Bedingung ist auf dieser Zeitebene **nicht erfüllbar**. Der Impuls-Teil
+wäre erreichbar (Maximum 10,09 bei Schwelle 2,5); es scheitert allein an der
+Range-Breite. Die Schwelle stammt aus der 1m-Konfiguration, und über fünf
+Kerzen ist eine Range naturgemäß breiter im Verhältnis zum ATR.
+
+**Warum das schlimmer ist als „Setup feuert selten":** `flaggen_ausbruch` steht
+in `config.yaml` als `aktiv: true` und liefert garantiert nichts. Die
+Protokollierung meldet dafür 0 Signale — was aussieht wie „kein Setup
+aufgetreten", tatsächlich aber „Bedingung unerfüllbar" ist. Genau die Sorte
+stiller Ausfall, an der dieses Projekt schon mehrfach hing.
+
+**Bewusst nicht behoben.** Ein Setup-Schwellenwert ist Trading-Logik; die
+Spezifikation (Abschnitt 6) legt solche Zahlen ausdrücklich Laurin vor, nicht
+dem Code. Eine geratene Zahl wäre hier besonders schädlich, weil sie
+festlegte, wie oft das Setup künftig auslöst.
+
+Drei Wege stehen offen: die Schwelle für 5m anheben (müsste über 1,4 liegen,
+der Median ist 2,94), das Setup auf 1m protokollieren, oder es bis zur
+Klärung auf `aktiv: false` setzen. Steht auf der Rückfrage-Liste in
+Abschnitt 15.
 
 ### 8.11 Vortagesmarken (behoben, `cd5bcc6`)
 
