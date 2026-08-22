@@ -17,10 +17,8 @@ from backtest.strategies.base import (
     ColumnBelow,
     CrossesAbove,
     CrossesBelow,
-    Falling,
+    DeviationReentry,
     FlagBreakout,
-    PreviousDeviationExceeds,
-    Rising,
     RuleStrategy,
     SessionTimeWindow,
 )
@@ -277,26 +275,17 @@ def vwap_reversion(
     Uebertreibung zurueck zum Anker. Beide Setups nutzen dieselbe
     VWAP-Spalte, meinen aber gegenlaeufige Marktzustaende.
 
-    Bedingung in drei Teilen: die Vorkerze lag weit genug weg, die aktuelle
-    Kerze dreht zurueck, und der VWAP ist noch nicht erreicht - sonst waere
-    die Rueckkehr bereits gelaufen.
+    Das Signal ist der **Uebertritt** zurueck ins Band, nicht der Zustand
+    "unterwegs zurueck": sonst feuerte es auf jeder Kerze der Rueckkehr
+    erneut und dieselbe Bewegung stuende vielfach in der Statistik. Siehe
+    :class:`DeviationReentry`.
     """
     window = SessionTimeWindow(
         _parse_time(session_start), _parse_time(session_end), timezone
     )
 
-    long_entry = (
-        PreviousDeviationExceeds("close", "vwap", deviation_atr, "below")
-        & Rising("close")
-        & ColumnBelow("close", "vwap")
-        & window
-    )
-    short_entry = (
-        PreviousDeviationExceeds("close", "vwap", deviation_atr, "above")
-        & Falling("close")
-        & ColumnAbove("close", "vwap")
-        & window
-    )
+    long_entry = DeviationReentry("close", "vwap", deviation_atr, "below") & window
+    short_entry = DeviationReentry("close", "vwap", deviation_atr, "above") & window
 
     return RuleStrategy(
         name="vwap_reversion",

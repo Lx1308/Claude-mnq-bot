@@ -81,6 +81,9 @@ class Protokollbericht:
     erzeugt: int = 0
     gefiltert: int = 0
     neu_gespeichert: int = 0
+    # Probelauf: gerechnet, aber bewusst nicht geschrieben. Ohne dieses
+    # Feld saehe ein Probelauf im Log wie ein Lauf ohne Treffer aus.
+    nur_gerechnet: bool = False
     verworfen: list[str] = field(default_factory=list)
 
     def to_dict(self) -> dict[str, Any]:
@@ -91,6 +94,7 @@ class Protokollbericht:
             "erzeugt": self.erzeugt,
             "gefiltert": self.gefiltert,
             "neu_gespeichert": self.neu_gespeichert,
+            "nur_gerechnet": self.nur_gerechnet,
             "verworfen": list(self.verworfen),
         }
 
@@ -156,12 +160,18 @@ def protokolliere(
     bereits_vorbereitet: bool = False,
     blackout_pruefer: BlackoutPruefer | Callable | None = None,
     ab_zeitpunkt: pd.Timestamp | None = None,
+    nur_rechnen: bool = False,
 ) -> Protokollbericht:
     """Ein vollstaendiger Lauf: erkennen, filtern, speichern.
 
     ``ab_zeitpunkt`` erlaubt ueberlappende Laeufe, ohne dass Duplikate
     entstehen - der UNIQUE-Index im Speicher faengt Wiederholungen ohnehin
     ab, aber die Begrenzung spart die Filterarbeit.
+
+    ``nur_rechnen`` laesst ausschliesslich den Schreibvorgang aus. Erkennung
+    und Filterung laufen unveraendert durch - ein Probelauf, der einen
+    anderen Weg naehme, wuerde etwas anderes pruefen als der echte Lauf und
+    waere als Probe wertlos.
     """
     # Vor jeder Arbeit: eine Konfiguration, die nie ausloesen kann, soll
     # abbrechen statt still ein leeres Ergebnis zu liefern.
@@ -212,7 +222,8 @@ def protokolliere(
         ideen.append(idee)
 
     bericht.erzeugt = len(ideen)
-    bericht.neu_gespeichert = store.speichere(ideen)
+    bericht.nur_gerechnet = nur_rechnen
+    bericht.neu_gespeichert = 0 if nur_rechnen else store.speichere(ideen)
 
     log_event(
         log,

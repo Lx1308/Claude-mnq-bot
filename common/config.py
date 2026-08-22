@@ -329,6 +329,13 @@ class IdeenFilterConfig:
     # Entwarnung aussehen.
     blackout_aktiv: bool = True
 
+    # Wie weit zurueck der Wirtschaftskalender ueberhaupt Auskunft geben
+    # kann. Forex Factory liefert im Wesentlichen die laufende Woche; fragt
+    # man aeltere Zeitpunkte ab, findet sich dort kein Termin und die
+    # Antwort waere "kein Blackout" - eine Entwarnung aus einer Wissens-
+    # luecke heraus. Jenseits dieser Grenze bleibt die Frage deshalb offen.
+    blackout_max_alter_tage: float = 7.0
+
 
 @dataclass(frozen=True)
 class IdeasConfig:
@@ -631,6 +638,9 @@ class Config:
                 liquiditaet_aktiv=bool(id_filter.get("liquiditaet_aktiv", True)),
                 duennzone_aktiv=bool(id_filter.get("duennzone_aktiv", True)),
                 blackout_aktiv=bool(id_filter.get("blackout_aktiv", True)),
+                blackout_max_alter_tage=float(
+                    id_filter.get("blackout_max_alter_tage", 7.0)
+                ),
             ),
         )
 

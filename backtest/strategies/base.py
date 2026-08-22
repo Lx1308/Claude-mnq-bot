@@ -302,6 +302,86 @@ class PreviousDeviationExceeds(Rule):
         )
 
 
+class DeviationReentry(Rule):
+    """Flanke: Kurs war weiter als N x ATR von der Referenz weg und ist zurueck.
+
+    WARUM DAS EINE EIGENE REGEL IST UND NICHT AUS DREI ZUSAMMENGESETZT
+    -----------------------------------------------------------------
+    Die naheliegende Komposition - "Vorkerze war weit weg UND Kurs steigt
+    UND VWAP noch nicht erreicht" - ist **keine Flanke**. Sie bleibt waehrend
+    der ganzen Rueckkehrbewegung wahr und feuert auf jeder steigenden Kerze
+    erneut.
+
+    An echten MNQ-5m-Daten gemessen und am 22.08.2026 nachgerechnet -
+    822 Kerzen vom 18.08. bis 21.08.2026, Handelsfenster 09:30-15:45 ET,
+    ``deviation_atr`` 1.5, Long-Seite, Signale mit hoechstens drei Kerzen
+    Abstand als eine Bewegung gezaehlt: **47 Signale in 10 Bewegungen**,
+    die groesste davon mit 11 Signalen. Dieselbe Strecke mit dieser Regel:
+    11 Signale. (Die Messgrundlage steht hier mit, weil "47 Signale" ohne
+    Seite, Zeitraum und Buendelungsregel spaeter nicht nachpruefbar waere.)
+
+    In der spaeteren Erwartungswert-Rechnung haette eine einzige Bewegung
+    elffach gezaehlt - das Ergebnis waere nicht schwach, sondern falsch.
+
+    Diese Regel prueft stattdessen den **Uebertritt**: die Vorkerze lag
+    ausserhalb des Bandes, die aktuelle liegt darin. Das kann je Ausflug
+    genau einmal zutreffen und braucht dafuer nur zwei Zeilen, bleibt also
+    im Lookahead-sicheren Rahmen von :class:`BarContext`.
+    """
+
+    def __init__(
+        self,
+        column: str,
+        reference: str,
+        atr_multiple: float,
+        side: str,
+        atr_column: str = "atr",
+    ) -> None:
+        if side not in {"above", "below"}:
+            raise ValueError("side muss 'above' oder 'below' sein.")
+        self._column = column
+        self._reference = reference
+        self._multiple = atr_multiple
+        self._side = side
+        self._atr_column = atr_column
+
+    def evaluate(self, ctx: BarContext) -> bool:
+        vorher = ctx.previous_value(self._column)
+        vorher_ref = ctx.previous_value(self._reference)
+        vorher_atr = ctx.previous_value(self._atr_column)
+        jetzt = ctx.value(self._column)
+        jetzt_ref = ctx.value(self._reference)
+        jetzt_atr = ctx.value(self._atr_column)
+
+        if not _valid(vorher, vorher_ref, vorher_atr, jetzt, jetzt_ref, jetzt_atr):
+            return False
+        if vorher_atr <= 0 or jetzt_atr <= 0:
+            return False
+
+        vorher_abstand = vorher - vorher_ref
+        jetzt_abstand = jetzt - jetzt_ref
+
+        if self._side == "below":
+            war_draussen = vorher_abstand <= -self._multiple * vorher_atr
+            ist_drinnen = jetzt_abstand > -self._multiple * jetzt_atr
+            # Noch nicht ueber die Referenz hinaus - sonst waere die
+            # Rueckkehr bereits gelaufen und es gaebe nichts mehr zu holen.
+            noch_nicht_durch = jetzt_abstand < 0
+        else:
+            war_draussen = vorher_abstand >= self._multiple * vorher_atr
+            ist_drinnen = jetzt_abstand < self._multiple * jetzt_atr
+            noch_nicht_durch = jetzt_abstand > 0
+
+        return war_draussen and ist_drinnen and noch_nicht_durch
+
+    def describe(self) -> str:
+        richtung = "unterhalb" if self._side == "below" else "oberhalb"
+        return (
+            f"{self._column} kehrt aus {self._multiple} x ATR {richtung} "
+            f"{self._reference} zurueck"
+        )
+
+
 class SessionTimeWindow(Rule):
     """Nur innerhalb eines Zeitfensters der Boersenzeit handeln.
 

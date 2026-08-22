@@ -344,6 +344,16 @@ ideas:
     # Entwarnung aussehen.
     blackout_aktiv: true
 
+    # Wie weit zurueck der Kalender ueberhaupt Auskunft geben kann.
+    # Forex Factory liefert im Wesentlichen die laufende Woche. Fragt man
+    # einen drei Wochen alten Zeitpunkt ab, findet sich dort kein Termin
+    # und die Antwort waere "kein Blackout" - eine Entwarnung aus einer
+    # Wissensluecke heraus. Jenseits dieser Grenze bleibt die Frage offen.
+    #
+    # Praktische Folge: den Protokollierungslauf regelmaessig laufen
+    # lassen, nicht einmal im Monat aufholen.
+    blackout_max_alter_tage: 7.0
+
 # ---------------------------------------------------------------------------
 # Wirtschaftskalender (MCP-Tool get_event_risk)
 # ---------------------------------------------------------------------------

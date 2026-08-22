@@ -14,7 +14,14 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from backtest.strategies.base import BarContext, Falling, PreviousDeviationExceeds, Rising
+from backtest.strategies.base import (
+    BarContext,
+    ColumnBelow,
+    DeviationReentry,
+    Falling,
+    PreviousDeviationExceeds,
+    Rising,
+)
 from backtest.strategies.library import STRATEGY_LIBRARY, build_strategy
 from common.config import (
     Config,
@@ -26,6 +33,8 @@ from common.config import (
 from common.instruments import MNQ
 from ideas import erkennung, store as store_modul
 from ideas.erkennung import FehlendeSpalte, aktive_setups, erkenne, pruefe_spalten
+from ideas.filters import filter_blackout
+from ideas.kalender import KalenderBlackout
 from ideas.model import (
     QUELLE_MANUELL,
     QUELLE_REGEL,
@@ -195,6 +204,74 @@ def test_previous_deviation_misst_auf_der_vorkerze():
         kontext({"close": 95.0, "vwap": 100.0, "atr": 10.0},
                 {"close": 90.0, "vwap": 100.0, "atr": 10.0})
     )
+
+
+def test_deviation_reentry_feuert_nur_beim_uebertritt():
+    """Die Kernkorrektur: eine Rueckkehrbewegung ergibt EIN Signal.
+
+    Gefunden an echten MNQ-5m-Daten: die urspruengliche Komposition
+    (`PreviousDeviationExceeds & Rising & ColumnBelow`) feuerte auf jeder
+    steigenden Kerze der Rueckkehr erneut - 47 Signale in 10 Bewegungen,
+    die groesste mit 11. In der Erwartungswert-Rechnung haette eine einzige
+    Bewegung elffach gezaehlt.
+    """
+    regel = DeviationReentry("close", "vwap", 1.5, "below")
+
+    # Kurs kommt von -3.0 ATR langsam zurueck: -30, -25, -20, -14, -8, -2.
+    # Das Band liegt bei -15. Uebertritt findet zwischen -20 und -14 statt.
+    verlauf = [-30.0, -25.0, -20.0, -14.0, -8.0, -2.0]
+    treffer = []
+    for vorher, jetzt in zip(verlauf, verlauf[1:]):
+        ctx = kontext(
+            {"close": 100.0 + jetzt, "vwap": 100.0, "atr": 10.0},
+            {"close": 100.0 + vorher, "vwap": 100.0, "atr": 10.0},
+        )
+        if regel.evaluate(ctx):
+            treffer.append(jetzt)
+
+    assert treffer == [-14.0], (
+        f"Genau ein Uebertritt erwartet, bekam {treffer}. Feuert die Regel "
+        "mehrfach, zaehlt dieselbe Bewegung spaeter mehrfach."
+    )
+
+
+def test_alte_komposition_wuerde_den_test_nicht_bestehen():
+    """Gegenprobe: die fehlerhafte Variante testweise wieder eingesetzt.
+
+    Ein Test, der vorher und nachher gruen ist, beweist nichts. Diese
+    Gegenprobe zeigt, dass der Test oben die Haeufung tatsaechlich faengt.
+    """
+    alt = (
+        PreviousDeviationExceeds("close", "vwap", 1.5, "below")
+        & Rising("close")
+        & ColumnBelow("close", "vwap")
+    )
+
+    verlauf = [-30.0, -25.0, -20.0, -14.0, -8.0, -2.0]
+    treffer = []
+    for vorher, jetzt in zip(verlauf, verlauf[1:]):
+        ctx = kontext(
+            {"close": 100.0 + jetzt, "vwap": 100.0, "atr": 10.0},
+            {"close": 100.0 + vorher, "vwap": 100.0, "atr": 10.0},
+        )
+        if alt.evaluate(ctx):
+            treffer.append(jetzt)
+
+    assert len(treffer) > 1, (
+        "Die alte Komposition muss hier mehrfach feuern - sonst traefe der "
+        "Test oben den gemeldeten Fehler gar nicht."
+    )
+
+
+def test_deviation_reentry_feuert_nicht_wenn_die_referenz_schon_durchbrochen_ist():
+    """Ist der VWAP bereits ueberschritten, ist die Rueckkehr gelaufen."""
+    regel = DeviationReentry("close", "vwap", 1.5, "below")
+    # Sprung von -3.0 ATR direkt ueber den VWAP hinaus.
+    ctx = kontext(
+        {"close": 105.0, "vwap": 100.0, "atr": 10.0},
+        {"close": 70.0, "vwap": 100.0, "atr": 10.0},
+    )
+    assert not regel.evaluate(ctx)
 
 
 def test_previous_deviation_verwirft_ungueltigen_atr():
@@ -689,6 +766,98 @@ def test_config_validate_zieht_ideas_nicht_in_die_importhuelle():
     quelltext = inspect.getsource(Config.validate)
     assert "import ideas" not in quelltext
     assert "from ideas" not in quelltext
+
+
+# ---------------------------------------------------------------------------
+#  Blackout-Schicht: Abdeckungsgrenze des Wirtschaftskalenders
+# ---------------------------------------------------------------------------
+
+class _Kalenderattrappe:
+    """Minimale Terminquelle. Zaehlt, wie oft sie gefragt wurde."""
+
+    def __init__(self, antwort: dict) -> None:
+        self.antwort = antwort
+        self.abfragen = 0
+
+    async def event_risk(self, *, now=None, symbol=None) -> dict:
+        self.abfragen += 1
+        return self.antwort
+
+
+def test_blackout_ausserhalb_der_kalenderabdeckung_bleibt_offen():
+    """Der Kernfall: alte Zeitpunkte duerfen keine Entwarnung ergeben.
+
+    Forex Factory kennt im Wesentlichen die laufende Woche. Fragt man einen
+    drei Wochen alten Zeitpunkt ab, findet sich dort kein Termin - die
+    Antwort saehe aus wie "geprueft, frei", waere aber "nicht gewusst".
+    Das ist Bug-Lehre 6 in neuer Verkleidung.
+    """
+    quelle = _Kalenderattrappe(
+        {"calendar_available": True, "blackout": {"aktiv": False}}
+    )
+    jetzt = datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc)
+    pruefer = KalenderBlackout(quelle, max_alter_tage=7.0, jetzt=jetzt)
+
+    alt = jetzt - timedelta(days=21)
+    assert pruefer(alt) is None, (
+        "Ausserhalb der Abdeckung muss die Frage offen bleiben, nicht mit "
+        "'kein Blackout' beantwortet werden."
+    )
+    assert quelle.abfragen == 0, (
+        "Der Kalender darf gar nicht erst gefragt werden - seine Antwort "
+        "waere ja das Problem."
+    )
+    assert pruefer.ausserhalb_der_abdeckung == 1
+
+
+def test_blackout_innerhalb_der_abdeckung_wird_wirklich_gefragt():
+    """Gegenprobe: sonst blieben die Tests oben auch gruen, wenn die
+    Schicht grundsaetzlich nie fragte."""
+    quelle = _Kalenderattrappe(
+        {"calendar_available": True, "blackout": {"aktiv": True}}
+    )
+    jetzt = datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc)
+    pruefer = KalenderBlackout(quelle, max_alter_tage=7.0, jetzt=jetzt)
+
+    assert pruefer(jetzt - timedelta(hours=2)) is True
+    assert quelle.abfragen == 1
+    assert pruefer.ausserhalb_der_abdeckung == 0
+
+
+def test_blackout_in_der_zukunft_gilt_als_abgedeckt():
+    """Termine stehen im Kalender, bevor sie stattfinden - nur die
+    Vergangenheit faellt aus der Abdeckung."""
+    quelle = _Kalenderattrappe(
+        {"calendar_available": True, "blackout": {"aktiv": False}}
+    )
+    jetzt = datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc)
+    pruefer = KalenderBlackout(quelle, max_alter_tage=7.0, jetzt=jetzt)
+
+    assert pruefer(jetzt + timedelta(days=3)) is False
+    assert quelle.abfragen == 1
+
+
+def test_nicht_erreichbarer_kalender_ist_nicht_pruefbar_statt_frei():
+    """``calendar_available: false`` heisst "unbekannt", nicht "frei"."""
+    quelle = _Kalenderattrappe(
+        {"calendar_available": False, "blackout": {"aktiv": False}}
+    )
+    jetzt = datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc)
+    pruefer = KalenderBlackout(quelle, max_alter_tage=7.0, jetzt=jetzt)
+
+    assert pruefer(jetzt - timedelta(hours=1)) is None
+
+
+def test_offener_blackout_wird_zum_dritten_filterausgang():
+    """Die Schicht haengt am Filter: ``None`` muss dort als 'nicht
+    pruefbar' ankommen und darf die Idee weder durchwinken noch ablehnen."""
+    ergebnis = filter_blackout(
+        datetime(2026, 8, 22, 12, 0, tzinfo=timezone.utc),
+        IdeenFilterConfig(blackout_aktiv=True),
+        lambda _zeitpunkt: None,
+    )
+    assert not ergebnis.abgelehnt
+    assert ergebnis.ungeprueft
 
 
 def _minimalkonfiguration(*, profil: str = "sim_frei") -> dict:
