@@ -38,13 +38,13 @@ beiden aufgegangen und entfernt.
 | `ideas/` (Etappe C) | **4 Setup-Familien fertig, Einstiegspunkt `python -m ideas` da**, aber noch in keiner Aufgabenplanung eingetragen | ja, 44 Tests |
 | Etappe D, Lucid-Simulation | **existiert nicht** | — |
 
-**Testsuite: 337 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
+**Testsuite: 342 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
 
 | Datei | Tests |
 |---|---|
 | `test_mcp_snapshot.py` | 44 |
 | `test_dukascopy.py` | 21 |
-| `test_ideas.py` | 44 |
+| `test_ideas.py` | 49 |
 | `test_levels_structure.py` | 39 |
 | `test_ntbridge.py` | 37 |
 | `test_instruments_sessions.py` | 26 |
@@ -55,7 +55,7 @@ beiden aufgegangen und entfernt.
 | `test_indicators.py` | 15 |
 | `test_engine.py` | 13 |
 
-Verlauf: 124 → … → 326 → 334 → 370 → 373 → 316 → **337**.
+Verlauf: 124 → … → 334 → 370 → 373 → 316 → 337 → **342**.
 
 **Der Rückgang ist keine Regression.** Mit dem Legacy-Pfad fielen
 `test_live_bot.py` (29) und `test_on_demand.py` (35) weg — 64 Tests für Code,
@@ -416,6 +416,24 @@ Damit die Auswertung trotzdem **nachspielen** kann, tragen Ideen
 `atr_referenz`, `stop_atr` und `ziel_atr` mit: der tatsächliche Einstieg ist
 die Eröffnung der Folgekerze, nicht der gespeicherte Schlusskurs. Ohne diese
 drei Felder wäre das R-Vielfache nicht rekonstruierbar.
+
+### 6.5 Nachvollziehbarkeit ist geprüft, nicht behauptet
+
+Spezifikation Abschnitt 5, Schritt 3 — seit 22.08.2026 erfüllt.
+`ideas/nachvollzug.py` rechnet eine gespeicherte Idee gegen die vorbereiteten
+Kerzen zurück und meldet jede Abweichung einzeln:
+
+1. Zur `erstellt_utc` existiert eine Kerze.
+2. `entry` ist deren Schlusskurs.
+3. `atr_referenz` ist deren ATR.
+4. `stop` und `ziel` ergeben sich aus `entry` und den ATR-Faktoren.
+5. **Die Einstiegsregel war auf jener Kerze tatsächlich erfüllt.**
+
+Punkt 5 ist der Kern. Die ersten vier prüfen Arithmetik — eine frei erfundene
+Zeile, deren Zahlen zueinander passen, bestünde sie alle. Ein Test setzt genau
+so eine Zeile auf eine ruhige Kerze und weist nach, dass sie durchfällt.
+
+Gegen echte MNQ-Daten: **39 von 39** protokollierten Ideen nachvollziehbar.
 
 ### 6.4 Noch offen
 
