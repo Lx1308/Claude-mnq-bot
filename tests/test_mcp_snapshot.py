@@ -12,14 +12,10 @@ import pandas as pd
 import pytest
 
 from common.config import (
-    AlertConfig,
+    AnalyseConfig,
     BacktestConfig,
-    ClaudeConfig,
     Config,
     LoggingConfig,
-    NotifyConfig,
-    OnDemandConfig,
-    TradovateConfig,
 )
 from common.instruments import MGC, MNQ
 from common.contracts import Contract
@@ -111,13 +107,9 @@ def make_loaded(
 @pytest.fixture
 def mcp_config(market_cfg, indicator_cfg) -> Config:
     return Config(
-        tradovate=TradovateConfig(),
         market=market_cfg,
         indicators=indicator_cfg,
-        alerts=AlertConfig(),
-        claude=ClaudeConfig(),
-        on_demand=OnDemandConfig(swing_strength=3, swing_lookback=120, max_zones=3),
-        notify=NotifyConfig(telegram_enabled=False),
+        analyse=AnalyseConfig(swing_strength=3, swing_lookback=120, max_zones=3),
         logging=LoggingConfig(),
         backtest=BacktestConfig(),
     )

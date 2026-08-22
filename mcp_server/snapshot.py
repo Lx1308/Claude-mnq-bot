@@ -262,28 +262,28 @@ def _volume_block(
 
 
 def _structure_block(enriched: pd.DataFrame, instrument: Instrument, config: Config) -> dict[str, Any]:
-    on_demand = config.on_demand
+    analyse = config.analyse
     atr_value = _clean(enriched["atr"].iloc[-1]) if "atr" in enriched.columns else None
 
     structure = classify_market_structure(
-        enriched, strength=on_demand.swing_strength, lookback=on_demand.swing_lookback
+        enriched, strength=analyse.swing_strength, lookback=analyse.swing_lookback
     )
     supports, resistances = support_resistance_zones(
         enriched,
         atr_value=atr_value,
-        strength=on_demand.swing_strength,
-        lookback=on_demand.swing_lookback,
-        max_zones=on_demand.max_zones,
-        merge_atr=on_demand.zone_merge_atr,
+        strength=analyse.swing_strength,
+        lookback=analyse.swing_lookback,
+        max_zones=analyse.max_zones,
+        merge_atr=analyse.zone_merge_atr,
     )
     trend = assess_trend(
         enriched,
         atr_value=atr_value,
-        slope_lookback=on_demand.trend_slope_lookback,
-        flat_threshold_atr=on_demand.trend_flat_threshold_atr,
+        slope_lookback=analyse.trend_slope_lookback,
+        flat_threshold_atr=analyse.trend_flat_threshold_atr,
     )
     swings = find_swing_points(
-        enriched, strength=on_demand.swing_strength, lookback=on_demand.swing_lookback
+        enriched, strength=analyse.swing_strength, lookback=analyse.swing_lookback
     )[:6]
 
     return {
@@ -420,8 +420,8 @@ def build_snapshot_payload(
                     instrument=instrument,
                     levels=level_set.levels,
                     atr_value=atr_value,
-                    strength=config.on_demand.swing_strength,
-                    lookback=config.on_demand.swing_lookback,
+                    strength=config.analyse.swing_strength,
+                    lookback=config.analyse.swing_lookback,
                 )
             ],
         }

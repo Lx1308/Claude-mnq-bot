@@ -67,17 +67,18 @@ def _lies_setup_parameter(werte: Any) -> "IdeenSetupParameter":
 
 @dataclass(frozen=True)
 class Secrets:
-    tradovate_username: str
-    tradovate_password: str
-    tradovate_cid: str
-    tradovate_secret: str
-    tradovate_device_id: str
-    tradovate_app_id: str
-    tradovate_app_version: str
-    anthropic_api_key: str | None
-    telegram_bot_token: str | None
-    telegram_chat_id: str | None
-    tradovate_env_override: str | None
+    """Zugangsdaten aus der .env.
+
+    Seit der Entfernung des Legacy-Pfads (22.08.2026) bleibt hier genau
+    ein Eintrag: der FRED-Schluessel fuer die Ist-Werte im
+    Wirtschaftskalender. Tradovate-, Anthropic- und Telegram-Schluessel
+    sind ersatzlos entfallen - das Zielsystem ruft keinen davon auf.
+
+    Es gibt bewusst KEINE Pflichtpruefung mehr: ohne FRED_API_KEY laeuft
+    alles weiter, nur die Actual-Werte fehlen. Das wird im Snapshot
+    ausgewiesen statt geschaetzt.
+    """
+
     fred_api_key: str | None = None
 
     @staticmethod
@@ -85,81 +86,13 @@ class Secrets:
         if dotenv_path is not None and Path(dotenv_path).exists():
             load_dotenv(dotenv_path, override=False)
 
-        def opt(name: str) -> str | None:
-            value = os.environ.get(name, "").strip()
-            return value or None
-
-        return Secrets(
-            tradovate_username=opt("TRADOVATE_USERNAME") or "",
-            tradovate_password=opt("TRADOVATE_PASSWORD") or "",
-            tradovate_cid=opt("TRADOVATE_CID") or "",
-            tradovate_secret=opt("TRADOVATE_SECRET") or "",
-            tradovate_device_id=opt("TRADOVATE_DEVICE_ID") or "",
-            tradovate_app_id=opt("TRADOVATE_APP_ID") or "ClaudeChartBot",
-            tradovate_app_version=opt("TRADOVATE_APP_VERSION") or "1.0.0",
-            anthropic_api_key=opt("ANTHROPIC_API_KEY"),
-            telegram_bot_token=opt("TELEGRAM_BOT_TOKEN"),
-            telegram_chat_id=opt("TELEGRAM_CHAT_ID"),
-            tradovate_env_override=(opt("TRADOVATE_ENV") or "").lower() or None,
-            fred_api_key=opt("FRED_API_KEY"),
-        )
-
-    def require_tradovate(self) -> None:
-        """Wirft, wenn Pflichtfelder fuer die Tradovate-Auth fehlen."""
-        missing = [
-            name
-            for name, value in (
-                ("TRADOVATE_USERNAME", self.tradovate_username),
-                ("TRADOVATE_PASSWORD", self.tradovate_password),
-                ("TRADOVATE_CID", self.tradovate_cid),
-                ("TRADOVATE_SECRET", self.tradovate_secret),
-                ("TRADOVATE_DEVICE_ID", self.tradovate_device_id),
-            )
-            if not value
-        ]
-        if missing:
-            raise ConfigError(
-                "Folgende Umgebungsvariablen fehlen (siehe .env.example): "
-                + ", ".join(missing)
-            )
-
-    @property
-    def telegram_configured(self) -> bool:
-        return bool(self.telegram_bot_token and self.telegram_chat_id)
+        wert = os.environ.get("FRED_API_KEY", "").strip()
+        return Secrets(fred_api_key=wert or None)
 
 
 # ---------------------------------------------------------------------------
 # Konfigurations-Sektionen
 # ---------------------------------------------------------------------------
-
-@dataclass(frozen=True)
-class WebsocketConfig:
-    heartbeat_interval_seconds: float = 2.5
-    reconnect_initial_delay_seconds: float = 2.0
-    reconnect_max_delay_seconds: float = 120.0
-    reconnect_backoff_factor: float = 2.0
-    stale_data_timeout_seconds: float = 90.0
-
-
-@dataclass(frozen=True)
-class TradovateConfig:
-    environment: str = "demo"
-    allow_live_environment: bool = False
-    token_refresh_margin_seconds: int = 300
-    request_timeout_seconds: float = 20.0
-    max_retries: int = 3
-    websocket: WebsocketConfig = field(default_factory=WebsocketConfig)
-
-    @property
-    def rest_base_url(self) -> str:
-        host = "live" if self.environment == "live" else "demo"
-        return f"https://{host}.tradovateapi.com/v1"
-
-    @property
-    def market_data_url(self) -> str:
-        host = "md" if self.environment == "live" else "md-demo"
-        return f"wss://{host}.tradovateapi.com/v1/websocket"
-
 
 @dataclass(frozen=True)
 class SessionConfig:
@@ -226,40 +159,6 @@ class IndicatorConfig:
             self.atr_period + 1,
             self.flag.impulse_lookback + self.flag.consolidation_lookback + 1,
         )
-
-
-@dataclass(frozen=True)
-class ConditionConfig:
-    enabled: bool = True
-    cooldown_minutes: int | None = None
-    level: float | None = None
-    buffer_ticks: float = 0.0
-
-
-@dataclass(frozen=True)
-class AlertConfig:
-    default_cooldown_minutes: int = 30
-    max_alerts_per_session: int = 20
-    conditions: dict[str, ConditionConfig] = field(default_factory=dict)
-
-    def for_condition(self, name: str) -> ConditionConfig:
-        return self.conditions.get(name, ConditionConfig(enabled=False))
-
-    def cooldown_for(self, name: str) -> int:
-        cfg = self.for_condition(name)
-        return cfg.cooldown_minutes if cfg.cooldown_minutes is not None else self.default_cooldown_minutes
-
-
-@dataclass(frozen=True)
-class ClaudeConfig:
-    model: str = "claude-sonnet-5"
-    max_tokens: int = 1200
-    timeout_seconds: float = 45.0
-    max_retries: int = 2
-    effort: str = "low"
-    # Der On-Demand-Bericht braucht mehr Raum als ein Alarm-Kommentar.
-    report_max_tokens: int = 4000
-    report_effort: str = "medium"
 
 
 @dataclass(frozen=True)
@@ -348,8 +247,11 @@ class IdeasConfig:
     # alle Ideen durch beide Regelwerke und benutzt dieses Feld NICHT als
     # Filter (Spezifikation Abschnitt 4).
     #
-    # Bewusst nicht "demo": unter "tradovate:" steht bereits
-    # "environment: demo" fuer die Broker-Umgebung.
+    # Der Wert heisst "sim_frei" und nicht "demo", weil die Config bis zum
+    # 22.08.2026 unter "tradovate:" ein "environment: demo" fuehrte und
+    # beides verwechselbar war. Der Tradovate-Abschnitt ist mit dem
+    # Legacy-Pfad entfallen, der eigene Wertebereich bleibt trotzdem: er
+    # benennt die Kontoumgebung praeziser, als "demo" es je tat.
     profil: str = "sim_frei"
     profile_erlaubt: tuple[str, ...] = ("sim_frei", "lucid_challenge", "lucid_funded")
     datenbank: str = "data/ideas.sqlite3"
@@ -397,26 +299,25 @@ class EventRiskConfig:
 
 
 @dataclass(frozen=True)
-class OnDemandConfig:
-    enabled: bool = True
-    long_poll_timeout_seconds: float = 25.0
-    poll_retry_delay_seconds: float = 5.0
-    cooldown_seconds: float = 60.0
-    max_reports_per_day: int = 50
-    allow_symbol_override: bool = True
-    history_bars: int = 400
+class AnalyseConfig:
+    """Parameter der Struktur- und Zonenanalyse im Snapshot.
+
+    Hiess bis zum 22.08.2026 ``on_demand`` - benannt nach dem
+    /analyse-Kommando des Telegram-Bots, den es nicht mehr gibt. Die
+    sieben Felder jener Schleife (Poll-Timeouts, Cooldown, Tageslimit)
+    sind mit ihm entfallen; geblieben sind die sechs, die
+    ``mcp_server/snapshot.py`` tatsaechlich auswertet.
+
+    Ein Abschnitt, der nach einer geloeschten Funktion heisst, waere
+    irrefuehrend - deshalb umbenannt statt nur ausgeduennt.
+    """
+
     swing_strength: int = 3
     swing_lookback: int = 120
     max_zones: int = 3
     zone_merge_atr: float = 0.5
     trend_slope_lookback: int = 10
     trend_flat_threshold_atr: float = 0.02
-
-
-@dataclass(frozen=True)
-class NotifyConfig:
-    telegram_enabled: bool = True
-    telegram_timeout_seconds: float = 15.0
 
 
 @dataclass(frozen=True)
@@ -449,18 +350,14 @@ class BacktestConfig:
 
 @dataclass(frozen=True)
 class Config:
-    tradovate: TradovateConfig
     market: MarketConfig
     indicators: IndicatorConfig
     # Alles ab hier hat brauchbare Defaults - so laesst sich ein Config-Objekt
     # in Tests und Skripten aufbauen, ohne jede Sektion auszubuchstabieren.
-    alerts: AlertConfig = field(default_factory=AlertConfig)
-    claude: ClaudeConfig = field(default_factory=ClaudeConfig)
-    on_demand: OnDemandConfig = field(default_factory=OnDemandConfig)
+    analyse: AnalyseConfig = field(default_factory=AnalyseConfig)
     event_risk: EventRiskConfig = field(default_factory=EventRiskConfig)
     ntbridge: NtBridgeConfig = field(default_factory=NtBridgeConfig)
     ideas: IdeasConfig = field(default_factory=IdeasConfig)
-    notify: NotifyConfig = field(default_factory=NotifyConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
@@ -480,23 +377,6 @@ class Config:
 
     @staticmethod
     def from_dict(data: Mapping[str, Any]) -> "Config":
-        tv = dict(_require(data, "tradovate", "root"))
-        ws = dict(tv.pop("websocket", {}) or {})
-        tradovate = TradovateConfig(
-            environment=str(tv.get("environment", "demo")).lower(),
-            allow_live_environment=bool(tv.get("allow_live_environment", False)),
-            token_refresh_margin_seconds=int(tv.get("token_refresh_margin_seconds", 300)),
-            request_timeout_seconds=float(tv.get("request_timeout_seconds", 20)),
-            max_retries=int(tv.get("max_retries", 3)),
-            websocket=WebsocketConfig(
-                heartbeat_interval_seconds=float(ws.get("heartbeat_interval_seconds", 2.5)),
-                reconnect_initial_delay_seconds=float(ws.get("reconnect_initial_delay_seconds", 2)),
-                reconnect_max_delay_seconds=float(ws.get("reconnect_max_delay_seconds", 120)),
-                reconnect_backoff_factor=float(ws.get("reconnect_backoff_factor", 2.0)),
-                stale_data_timeout_seconds=float(ws.get("stale_data_timeout_seconds", 90)),
-            ),
-        )
-
         mk = dict(_require(data, "market", "root"))
         sess = dict(mk.pop("session", {}) or {})
         market = MarketConfig(
@@ -530,48 +410,14 @@ class Config:
             ),
         )
 
-        al = dict(data.get("alerts", {}) or {})
-        conditions = {
-            name: ConditionConfig(
-                enabled=bool(spec.get("enabled", True)),
-                cooldown_minutes=(int(spec["cooldown_minutes"]) if spec.get("cooldown_minutes") is not None else None),
-                level=(float(spec["level"]) if spec.get("level") is not None else None),
-                buffer_ticks=float(spec.get("buffer_ticks", 0.0)),
-            )
-            for name, spec in (al.get("conditions", {}) or {}).items()
-        }
-        alerts = AlertConfig(
-            default_cooldown_minutes=int(al.get("default_cooldown_minutes", 30)),
-            max_alerts_per_session=int(al.get("max_alerts_per_session", 20)),
-            conditions=conditions,
-        )
-
-        cl = dict(data.get("claude", {}) or {})
-        claude = ClaudeConfig(
-            model=str(cl.get("model", "claude-sonnet-5")),
-            max_tokens=int(cl.get("max_tokens", 1200)),
-            timeout_seconds=float(cl.get("timeout_seconds", 45)),
-            max_retries=int(cl.get("max_retries", 2)),
-            effort=str(cl.get("effort", "low")).lower(),
-            report_max_tokens=int(cl.get("report_max_tokens", 4000)),
-            report_effort=str(cl.get("report_effort", "medium")).lower(),
-        )
-
-        od = dict(data.get("on_demand", {}) or {})
-        on_demand = OnDemandConfig(
-            enabled=bool(od.get("enabled", True)),
-            long_poll_timeout_seconds=float(od.get("long_poll_timeout_seconds", 25)),
-            poll_retry_delay_seconds=float(od.get("poll_retry_delay_seconds", 5)),
-            cooldown_seconds=float(od.get("cooldown_seconds", 60)),
-            max_reports_per_day=int(od.get("max_reports_per_day", 50)),
-            allow_symbol_override=bool(od.get("allow_symbol_override", True)),
-            history_bars=int(od.get("history_bars", 400)),
-            swing_strength=int(od.get("swing_strength", 3)),
-            swing_lookback=int(od.get("swing_lookback", 120)),
-            max_zones=int(od.get("max_zones", 3)),
-            zone_merge_atr=float(od.get("zone_merge_atr", 0.5)),
-            trend_slope_lookback=int(od.get("trend_slope_lookback", 10)),
-            trend_flat_threshold_atr=float(od.get("trend_flat_threshold_atr", 0.02)),
+        an = dict(data.get("analyse", {}) or {})
+        analyse = AnalyseConfig(
+            swing_strength=int(an.get("swing_strength", 3)),
+            swing_lookback=int(an.get("swing_lookback", 120)),
+            max_zones=int(an.get("max_zones", 3)),
+            zone_merge_atr=float(an.get("zone_merge_atr", 0.5)),
+            trend_slope_lookback=int(an.get("trend_slope_lookback", 10)),
+            trend_flat_threshold_atr=float(an.get("trend_flat_threshold_atr", 0.02)),
         )
 
         er = dict(data.get("event_risk", {}) or {})
@@ -644,12 +490,6 @@ class Config:
             ),
         )
 
-        nt = dict(data.get("notify", {}) or {})
-        notify = NotifyConfig(
-            telegram_enabled=bool(nt.get("telegram_enabled", True)),
-            telegram_timeout_seconds=float(nt.get("telegram_timeout_seconds", 15)),
-        )
-
         lg = dict(data.get("logging", {}) or {})
         logging_cfg = LoggingConfig(
             level=str(lg.get("level", "INFO")).upper(),
@@ -677,16 +517,12 @@ class Config:
         )
 
         cfg = Config(
-            tradovate=tradovate,
             market=market,
             indicators=indicators,
-            alerts=alerts,
-            claude=claude,
-            on_demand=on_demand,
+            analyse=analyse,
             event_risk=event_risk,
             ntbridge=ntbridge,
             ideas=ideas,
-            notify=notify,
             logging=logging_cfg,
             backtest=backtest,
             raw=dict(data),
@@ -697,8 +533,6 @@ class Config:
     # -- Validierung -------------------------------------------------------
 
     def validate(self) -> None:
-        if self.tradovate.environment not in {"demo", "live"}:
-            raise ConfigError("tradovate.environment muss 'demo' oder 'live' sein.")
         if self.market.candle_interval_minutes <= 0:
             raise ConfigError("market.candle_interval_minutes muss > 0 sein.")
         if self.market.tick_size <= 0:
@@ -734,42 +568,17 @@ class Config:
                     f"Ein Tick ist bei {instrument.root} {instrument.tick_value:.2f} USD wert."
                 )
 
-        # Vortagesmarken brauchen einen Puffer ueber zwei Sessions. Nur
-        # pruefen, wenn die davon abhaengigen Alarme ueberhaupt aktiv sind.
-        prev_day_conditions = [
-            name
-            for name in ("prev_day_high_cross", "prev_day_low_cross")
-            if self.alerts.for_condition(name).enabled
-        ]
-        needed_for_prev_day = self.market.bars_for_previous_session
-        if prev_day_conditions and self.market.candle_buffer_size < needed_for_prev_day:
+        swing_window = 2 * self.analyse.swing_strength + 1
+        if self.analyse.swing_lookback < swing_window:
             raise ConfigError(
-                f"market.candle_buffer_size ({self.market.candle_buffer_size}) reicht nicht fuer "
-                f"Vortageshoch/-tief: bei {self.market.candle_interval_minutes}-Minuten-Kerzen "
-                f"werden {needed_for_prev_day} Kerzen benoetigt (Vorsession + laufende Session). "
-                f"Sonst bleiben die Vortagesmarken leer und die Alarme "
-                f"{', '.join(prev_day_conditions)} loesen nie aus. "
-                "Entweder candle_buffer_size erhoehen oder diese Bedingungen abschalten."
-            )
-        if prev_day_conditions and self.market.warmup_bars < needed_for_prev_day:
-            raise ConfigError(
-                f"market.warmup_bars ({self.market.warmup_bars}) reicht nicht fuer "
-                f"Vortageshoch/-tief: {needed_for_prev_day} Kerzen werden beim Start geladen "
-                "muessen, sonst dauert es bis zum naechsten Handelstag, bis die Alarme "
-                f"{', '.join(prev_day_conditions)} funktionieren."
-            )
-
-        swing_window = 2 * self.on_demand.swing_strength + 1
-        if self.on_demand.swing_lookback < swing_window:
-            raise ConfigError(
-                f"on_demand.swing_lookback ({self.on_demand.swing_lookback}) muss mindestens "
+                f"analyse.swing_lookback ({self.analyse.swing_lookback}) muss mindestens "
                 f"2*swing_strength+1 = {swing_window} betragen, sonst kann kein Swing "
                 "bestaetigt werden."
             )
-        if self.market.candle_buffer_size < self.on_demand.swing_lookback:
+        if self.market.candle_buffer_size < self.analyse.swing_lookback:
             raise ConfigError(
                 f"market.candle_buffer_size ({self.market.candle_buffer_size}) ist kleiner als "
-                f"on_demand.swing_lookback ({self.on_demand.swing_lookback}) - die Zonen "
+                f"analyse.swing_lookback ({self.analyse.swing_lookback}) - die Zonen "
                 "wuerden auf weniger Kerzen beruhen als konfiguriert."
             )
         # Ideen-Protokollierung: ein Tippfehler im Profil oder ein unbekannter
@@ -783,8 +592,7 @@ class Config:
                     f"ideas.profile_erlaubt ({', '.join(self.ideas.profile_erlaubt)}). "
                     "Das Feld dokumentiert die tatsaechliche Kontoumgebung; ein "
                     "Tippfehler wuerde die Auswertung unbemerkt in zwei Gruppen "
-                    "zerlegen. Hinweis: 'demo' ist hier bewusst KEIN gueltiger "
-                    "Wert - das ist die Tradovate-Umgebung unter tradovate.environment."
+                    "zerlegen."
                 )
             # Die Pruefung der Setup-SCHLUESSEL steht bewusst nicht hier,
             # sondern in ``ideas.setups.pruefe_konfiguration``. Ein Import
@@ -800,6 +608,29 @@ class Config:
                     "aktiv. Die Protokollierung liefe dann dauerhaft ohne Ergebnis."
                 )
 
+            # Vortagesmarken brauchen die komplette Vorsession PLUS die
+            # laufende. Reicht ideas.bars nicht, bleiben prev_session_high
+            # und -low dauerhaft NaN und pdh_pdl_bruch loest NIE aus - ohne
+            # Fehlermeldung.
+            #
+            # Diese Zusicherung stand bis zum 22.08.2026 an den Alarmen des
+            # Legacy-Pfads (candle_buffer_size). Der Pfad ist entfernt, die
+            # Gefahr nicht: sie ist mit der Ideen-Protokollierung nur
+            # umgezogen.
+            minuten = {"1m": 1, "5m": 5, "15m": 15, "1h": 60}.get(
+                self.ideas.timeframe
+            )
+            if minuten is not None:
+                noetig = 2 * (23 * 60 // minuten)
+                if self.ideas.bars < noetig:
+                    raise ConfigError(
+                        f"ideas.bars ({self.ideas.bars}) reicht nicht fuer "
+                        f"Vortageshoch/-tief: bei {self.ideas.timeframe}-Kerzen "
+                        f"werden {noetig} benoetigt (Vorsession + laufende "
+                        "Session). Sonst bleiben die Vortagesmarken leer und "
+                        "das Setup pdh_pdl_bruch loest nie aus."
+                    )
+
         if not 0.0 < self.backtest.split.in_sample_fraction < 1.0:
             raise ConfigError("backtest.split.in_sample_fraction muss zwischen 0 und 1 liegen.")
         if self.backtest.split.mode not in {"fraction", "date"}:
@@ -807,11 +638,3 @@ class Config:
         if self.backtest.split.mode == "date" and not self.backtest.split.split_date:
             raise ConfigError("backtest.split.mode='date' erfordert backtest.split.split_date.")
 
-    def with_environment(self, environment: str) -> "Config":
-        """Kopie mit ueberschriebener Tradovate-Umgebung (z.B. aus .env oder CLI)."""
-        env = environment.lower()
-        if env == self.tradovate.environment:
-            return self
-        from dataclasses import replace
-
-        return replace(self, tradovate=replace(self.tradovate, environment=env))

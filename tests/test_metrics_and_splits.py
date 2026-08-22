@@ -156,35 +156,49 @@ def test_optimierung_auf_out_of_sample_wird_verhindert():
         assert_in_sample_only(frame, split)
 
 
-def test_puffer_muss_zwei_sessions_abdecken_wenn_vortagesalarme_aktiv_sind():
-    """Regressionstest fuer einen stillen Ausfall.
+def test_ideas_bars_muessen_zwei_sessions_abdecken():
+    """Regressionstest fuer einen stillen Ausfall - umgezogen, nicht entfernt.
 
-    Mit zu kleinem Puffer bleiben prev_session_high/-low dauerhaft NaN und
-    die Vortages-Alarme feuern nie - ohne jede Fehlermeldung. Das muss beim
-    Start auffallen.
+    Mit zu wenig Kerzen bleiben prev_session_high/-low dauerhaft NaN, und das
+    Setup pdh_pdl_bruch loest NIE aus - ohne jede Fehlermeldung.
+
+    Bis zum 22.08.2026 haftete diese Zusicherung an
+    ``market.candle_buffer_size`` und den Vortages-Alarmen des Live-Bots. Der
+    Alarmpfad ist entfernt, die Gefahr nicht: sie ist mit der
+    Ideen-Protokollierung nach ``ideas.bars`` umgezogen.
     """
+    from dataclasses import replace
+
     from common.config import Config, ConfigError
 
     basis = Config.load("config.yaml")
+
+    # 5m-Kerzen: eine 23-Stunden-Session hat 276, zwei also 552.
+    zu_wenig = replace(basis, ideas=replace(basis.ideas, timeframe="5m", bars=300))
+    with pytest.raises(ConfigError, match="Vortageshoch"):
+        zu_wenig.validate()
+
+    # Gegenprobe: knapp darueber muss durchgehen. Ohne sie bliebe der Test
+    # auch dann gruen, wenn validate() aus einem anderen Grund immer wuerfe.
+    genug = replace(basis, ideas=replace(basis.ideas, timeframe="5m", bars=600))
+    genug.validate()
+
+
+def test_ideas_bars_pruefung_skaliert_mit_dem_timeframe():
+    """Auf 15m reichen weniger Kerzen als auf 5m - die Pruefung muss das kennen."""
     from dataclasses import replace
 
-    zu_klein = replace(basis, market=replace(basis.market, candle_buffer_size=500))
-    with pytest.raises(ConfigError, match="Vortageshoch"):
-        zu_klein.validate()
+    from common.config import Config, ConfigError
 
-    # Sind die Bedingungen abgeschaltet, ist ein kleiner Puffer in Ordnung.
-    from common.config import AlertConfig, ConditionConfig
+    basis = Config.load("config.yaml")
 
-    ohne_vortagesalarme = replace(
-        zu_klein,
-        alerts=AlertConfig(
-            conditions={
-                "prev_day_high_cross": ConditionConfig(enabled=False),
-                "prev_day_low_cross": ConditionConfig(enabled=False),
-            }
-        ),
-    )
-    ohne_vortagesalarme.validate()
+    # 15m: zwei Sessions = 2 * 92 = 184. 300 reicht hier also, auf 5m nicht.
+    auf_15m = replace(basis, ideas=replace(basis.ideas, timeframe="15m", bars=300))
+    auf_15m.validate()
+
+    auf_5m = replace(basis, ideas=replace(basis.ideas, timeframe="5m", bars=300))
+    with pytest.raises(ConfigError):
+        auf_5m.validate()
 
 
 def test_bars_per_session_skaliert_mit_dem_kerzenintervall(market_cfg):
