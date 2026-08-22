@@ -2,7 +2,7 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-21 (abends). Geprüft gegen den tatsächlichen Projektordner.
+Stand: 2026-08-22 (nachts). Geprüft gegen den tatsächlichen Projektordner.
 
 ---
 
@@ -35,16 +35,17 @@ beiden aufgegangen und entfernt.
 | `mcp_server/` (3 Tools) | **fertig, an Claude Desktop angebunden** | ja |
 | `backtest/` | **fertig** | ja, **nie auf echten Daten gerechnet** |
 | `live_bot/` (Legacy: Tradovate + Telegram) | lauffähig, **nicht Zielsystem** | ja |
-| `ideas/` (Etappe C) | **Zwischenstand, nicht nutzbar** | nein |
-| Etappe D, Profil-Logik, Lucid-Simulation | **existiert nicht** | — |
+| `ideas/` (Etappe C) | **4 Setup-Familien fertig**, nicht an einen Dauerlauf gehängt | ja, 36 Tests |
+| Etappe D, Lucid-Simulation | **existiert nicht** | — |
 
-**Testsuite: 334 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
+**Testsuite: 370 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
 
 | Datei | Tests |
 |---|---|
 | `test_mcp_snapshot.py` | 43 |
 | `test_levels_structure.py` | 39 |
 | `test_ntbridge.py` | 37 |
+| `test_ideas.py` | **36** |
 | `test_on_demand.py` | 35 |
 | `test_live_bot.py` | 29 |
 | `test_instruments_sessions.py` | 26 |
@@ -54,9 +55,14 @@ beiden aufgegangen und entfernt.
 | `test_indicators.py` / `test_metrics_and_splits.py` | je 15 |
 | `test_engine.py` | 13 |
 
-Verlauf: 124 → … → 286 → 326 → 332 → 335 → 329 → **334**.
+Verlauf: 124 → … → 286 → 326 → 332 → 335 → 329 → 334 → **370**.
 Der Rückgang auf 329 war beabsichtigt: ein parametrisierter Test über acht
 Moduldateien wurde durch zwei gezielte, stärkere ersetzt.
+
+**Bekannte Flakiness:** `test_ntbridge.py::test_empfaenger_lehnt_falschen_pfad_ab`
+fiel einmal mit `ConnectionAbortedError` (WinError 10053) aus und war isoliert
+sowie im Wiederholungslauf grün. Socket-Timing unter Windows, kein Codefehler —
+aber bei einem Fehlschlag zuerst wiederholen, bevor man sucht.
 
 ### Was seit dem 21.08.2026 nachweislich läuft
 
@@ -78,32 +84,46 @@ SQLite → MCP → Claude Desktop.
 - **Kein Backtest auf echten Marktdaten.** Einzige Datendatei ist
   `data/DEMO_1m.csv`, ein synthetischer Zufallspfad. Daraus dürfen **keine**
   Aussagen über Strategiegüte abgeleitet werden.
-- **Etappe C ist nicht einsatzfähig** (Abschnitt 6).
+- **Etappe C läuft in keinem Dauerprozess.** `ideas.pipeline.protokolliere()`
+  ist gebaut und getestet, wird aber von nichts regelmäßig aufgerufen. Es ist
+  **noch keine einzige echte Idee protokolliert**.
 
 ### Bekannte Probleme
 
-1. **Lücke in der Tagesserie: 2026-07-31 → 2026-08-12, acht Handelstage.**
-   Die Kerze vom 12.08. bekommt dadurch eine True Range von rund **1560 Punkten**
-   (Vortagesschluss 28441.50 → Hoch 30001.50), weil der Sprung über die Lücke als
-   eine Tagesbewegung zählt. Das treibt den **1d-ATR auf 650 Punkte** — ein
-   Datenartefakt, kein Marktzustand. Die 1d-Zeile im Snapshot ist nicht
-   belastbar, bis die Lücke in NinjaTrader nachgeladen ist.
-2. **Kein `.env` vorhanden.** Der MCP-Server startet trotzdem. Folge: ohne
+1. **Kein `.env` vorhanden.** Der MCP-Server startet trotzdem. Folge: ohne
    `FRED_API_KEY` liefert `get_event_risk` die **Termine** (Forex Factory braucht
    keinen Schlüssel), aber **keine Ist-Werte**.
-3. **Tagesbar-Schluss ≠ letzter 1m-Schluss.** Für den 20.08. meldet die
+2. **Tagesbar-Schluss ≠ letzter 1m-Schluss.** Für den 20.08. meldet die
    NT8-Tageskerze 29300.50, der letzte 1m-Schluss derselben Session 29317.00 —
    16,5 Punkte. Normal bei Futures (Settlement statt letztem Trade), aber
    relevant, falls Level je aus dem Tages- statt dem Intraday-Frame kommen.
+3. **MCP-Serverstart dauert ~7,5 Sekunden.** Gemessen über einen echten
+   stdio-Handshake. Cowork und Code starten je eine **eigene** Kopie des Servers
+   und laufen dabei in einen Timeout; Claude Desktop hält seine Instanz offen und
+   ist deshalb unauffällig. Ursache ist fast ausschließlich der Importpfad
+   (1190 Module): pandas dominiert, dahinter `mcp` und numpy. **Gebraucht wird
+   pandas erst beim ersten Werkzeugaufruf, nicht für den Handshake** — ein
+   verzögerter Import wäre die Abhilfe, ist aber noch nicht umgesetzt.
+
+### Erledigt am 22.08.2026
+
+- **Datenlücke 20.08. geschlossen.** Rund vier Stunden ab 16:00 CT fehlten in
+  1m/5m/15m (193/39/13 Kerzen). Beim Öffnen von NinjaTrader lieferte die Bridge
+  die Historie nach; der idempotente Speicher nahm sie ohne Duplikate auf.
+  `pruefe_datenluecken.py` meldet jetzt **0 größere Lücken** über sieben Tage.
+- **Die ältere Tagesserien-Lücke** (2026-07-31 → 2026-08-12) liegt außerhalb des
+  Sieben-Tage-Fensters der Prüfung und ist damit **nicht** als erledigt belegt.
+  Vor Aussagen über den 1d-ATR mit `--tage 0` gegenprüfen.
 
 ### Offene technische Aufgaben
 
-1. **Etappe C** gegen die Spezifikation neu aufsetzen (Abschnitt 6).
-2. Etappe D: `evaluate_past_ideas`, `get_performance_report`.
-3. Profil-Logik `demo`/`lucid` + Lucid-Regelsimulation.
-4. Etappe E: Dauerbetrieb-Härtung.
-5. Tagesserien-Lücke in NinjaTrader nachladen.
-6. Entscheidung: Legacy-Pfad `live_bot/` samt Tradovate entfernen? (Abschnitt 7)
+1. Etappe C an einen Dauerlauf hängen, damit tatsächlich Ideen entstehen.
+2. Die 8 weiteren Setup-Familien (Spezifikation 2.2), schrittweise.
+3. Etappe D: `evaluate_past_ideas`, `get_performance_report`.
+4. Lucid-Regelsimulation.
+5. MCP-Startzeit: pandas verzögert importieren.
+6. Etappe E: Dauerbetrieb-Härtung.
+7. Entscheidung: Legacy-Pfad `live_bot/` samt Tradovate entfernen? (Abschnitt 7)
 
 ---
 
@@ -170,10 +190,19 @@ Kostet Token je Alarm.
 | `context.py` | langlebiger Zustand, kein Login, keine Zugangsdaten |
 | `cli.py` | Terminal-Dump (`snapshot`, `levels`) |
 
-### `ideas/` — Etappe C, Zwischenstand
+### `ideas/` — Etappe C
 
-`model.py`, `detectors.py`, `filters.py`, `store.py`. **Nicht nutzbar**,
-Abschnitt 6.
+| Datei | Inhalt |
+|---|---|
+| `setups.py` | **Setup-Bibliothek.** 4 Familien, jede auf eine `RuleStrategy` abgebildet. `pruefe_konfiguration()` bricht bei unbekanntem Schlüssel oder durchweg abgeschalteten Familien ab |
+| `erkennung.py` | läuft über die Kerzen und wertet die Regel-Objekte über `BarContext` aus; `pruefe_spalten()`, `Erkennungsbericht` |
+| `filters.py` | vier Filter, **drei** Ausgänge (durch / abgelehnt / nicht prüfbar), `Filterbilanz.kontext` |
+| `model.py` | `TradeIdee` (Haupt-Log), `Beobachtung` (Exploration-Log), `berechne_crv` |
+| `store.py` | SQLite, Tabellen `ideen` und `observations` |
+| `pipeline.py` | `vorbereiten()`, `baue_idee()`, `protokolliere()` |
+
+**`detectors.py` gibt es nicht mehr** — sie war die zweite Signal-Implementierung
+(Abschnitt 6). Ein Test verhindert ihre Rückkehr.
 
 ---
 
@@ -189,7 +218,13 @@ Abschnitt 6.
 ### Namensfalle
 
 `config.yaml` enthält `environment: demo` **unter `tradovate:`** — das ist die
-Broker-Umgebung, **nicht** das Profil `demo`/`lucid` aus `ideas.profil`.
+Broker-Umgebung, **nicht** die Kontoumgebung aus `ideas.profil`.
+
+Genau deshalb heißt der Vorgabewert dort **`sim_frei`** und nicht `demo`: ein
+eigener Wertebereich macht die Verwechslung unmöglich. Erlaubt sind
+`sim_frei`, `lucid_challenge`, `lucid_funded` (`ideas.profile_erlaubt`);
+`Config.validate()` bricht bei allem anderen ab — ein Tippfehler würde die
+spätere Auswertung sonst still in zwei Gruppen zerlegen.
 
 ### Claude-Desktop-Anbindung
 
@@ -223,8 +258,13 @@ zerbricht die Paketimporte.
 
 `compute_indicators` wird von Live-Bot **und** Backtest aufgerufen. Eine zweite
 Rechenlogik hieße, dass der Backtest eine andere Strategie testet als die, die
-live läuft. **Diese Invariante ist der Grund, warum der Etappe-C-Zwischenstand
-überarbeitet werden muss** (Abschnitt 6).
+live läuft.
+
+**Sie gilt auch für die Signal-Logik, nicht nur für die Indikatoren.** Das war
+der Grund, den Etappe-C-Zwischenstand zu ersetzen statt fortzuschreiben
+(Abschnitt 6): `ideas/detectors.py` war eine zweite Fassung der Erkennung.
+`ideas/setups.py` bildet jetzt jede Familie auf eine `RuleStrategy` aus
+`backtest/strategies/` ab, und ein Test prüft das.
 
 ### 5.2 Eigene Backtest-Engine
 
@@ -281,33 +321,77 @@ im Fehlerpfad.
 
 ---
 
-## 6. Etappe C: Zwischenstand vs. Spezifikation
+## 6. Etappe C: gebaut am 22.08.2026
 
-**Wichtigster offener Punkt.** Am 21.08.2026 wurden Modell, Erkenner, Filter und
-Speicher gebaut (`739cd1c`). **Danach** kam `ETAPPE_C_SPEZIFIKATION.md` (im
-normalen Chat erstellt). Sie weicht mehrfach ab. **Vor dem Weiterbauen
-abgleichen, nicht darauf aufsetzen.**
+`ETAPPE_C_SPEZIFIKATION.md` liegt seit dem 22.08. **im Projektordner** (vorher
+nur im normalen Chat, was einen halben Tag Rätselraten gekostet hat). Sie ist
+die Vorgabe; Abschnitt 4 (Rolle des `profil`-Felds) ist inzwischen geklärt.
 
-| Punkt | Zwischenstand | Spezifikation |
+Der Zwischenstand vom 21.08. (`739cd1c`) wurde **nicht fortgeschrieben**,
+sondern in den abweichenden Punkten ersetzt:
+
+| Punkt | Zwischenstand | jetzt |
 |---|---|---|
-| **Signal-Logik** | eigene Erkenner in `detectors.py` | **Backtest-Strategie-Logik wiederverwenden**, keine zweite Fassung |
-| Logs | nur `ideas` | zusätzlich `observations` (Exploration, fließt **nie** in `evaluate_past_ideas`) |
-| Herkunftsfeld | fehlt | `quelle` = `regel` / `manuell_assistiert` |
-| Primärschlüssel | `(instrument, setup, ts_utc)` | `idea_id` INTEGER PK |
-| Setup-Schlüssel | Richtung im Namen (`pdh_bruch`/`pdl_bruch`) | eine Familie je Schlüssel, Richtung als eigene Spalte |
-| Umfang | 4 Setups | 12 Familien, schrittweise |
-| Freitext | fehlt | `notiz` |
+| **Signal-Logik** | eigene Erkenner in `detectors.py` | Regel-Objekte aus `backtest/strategies/` |
+| Logs | nur `ideas` | zusätzlich `observations`, gesperrt gegen die Auswertung |
+| Herkunftsfeld | fehlte | `quelle` = `regel` / `manuell_assistiert` |
+| Primärschlüssel | `(instrument, setup, ts_utc)` | `idea_id` PK + UNIQUE-Index |
+| Setup-Schlüssel | Richtung im Namen | eine Familie je Schlüssel, Richtung als Spalte |
+| Freitext | fehlte | `notiz` |
+| Tests | bewusst keine | 36 |
 
-**Der erste Punkt ist der schwerwiegende:** `detectors.py` ist genau die zweite
-Implementierung, die Invariante 5.1 ausschließt. Deshalb wurden für `ideas/`
-bewusst **keine Tests** geschrieben — Aufwand für Code, der so nicht bleibt.
+### 6.1 Die Spezifikation ordnete zwei Familien falsch zu
 
-**Vor dem Bau zu klären (laut Spezifikation offen):** Rolle des `profil`-Felds —
-nur Herkunft mitführen, oder beim Auswerten filtern?
+Sie behauptet (Abschnitt 2.1), alle vier Setups existierten bereits als
+Backtest-Strategien. Für zwei stimmt das nicht:
 
-**Tragfähig aus dem Zwischenstand:** die drei Filter-Ausgänge (durch / abgelehnt
-/ nicht prüfbar), das Speichern auch gefilterter Ideen, und
-`initial_balance_per_session()` in `common/levels.py` (getestet).
+- `rsi_mean_reversion` ist eine RSI-Mittelwertrückkehr und hat mit der
+  **Initial Balance** nichts zu tun.
+- `vwap_trend` ist Trendfolge (Einstieg **mit** der VWAP-Kreuzung), während
+  `vwap_reversion` die Gegenbewegung **zurück** zum Anker meint.
+
+Statt die Zuordnung zu übernehmen, wurden `ib_breakout` und `vwap_reversion`
+als Fabriken in `library.py` ergänzt — im bestehenden Regel-Framework, damit
+beide auch im Backtest rechenbar sind. Dafür drei neue Regel-Objekte in
+`base.py`: `Rising`, `Falling`, `PreviousDeviationExceeds`.
+
+### 6.2 `profil` ist Herkunft, kein Steuerungsfeld
+
+Wert ist **`sim_frei`**, nicht `demo` — `demo` wäre mit `tradovate.environment`
+verwechselbar (die Namensfalle aus Abschnitt 4). Erlaubte Werte stehen in
+`config.yaml` unter `ideas.profile_erlaubt`; `Config.validate()` bricht bei
+allem anderen ab.
+
+Die Unterscheidung, auf die es ankommt:
+
+| | hält fest | wann |
+|---|---|---|
+| `profil` (Feld an der Idee) | was **tatsächlich** war — welches Konto | beim Protokollieren |
+| `rules` (Parameter von `evaluate_past_ideas`) | was **gewesen wäre** — welches Regelwerk | beim Auswerten |
+
+`lade_fuer_auswertung()` filtert deshalb **nicht** nach `profil`, außer man
+verlangt es ausdrücklich.
+
+### 6.3 Was bewusst NICHT gespeichert wird
+
+Kein Ergebnisfeld (Gewinn/Verlust). Das entsteht erst durch
+`evaluate_past_ideas` unter einem bestimmten Regelwerk — stünde es im Log,
+gäbe es zwei Wahrheiten, je nachdem wann man hinschaut.
+
+Damit die Auswertung trotzdem **nachspielen** kann, tragen Ideen
+`atr_referenz`, `stop_atr` und `ziel_atr` mit: der tatsächliche Einstieg ist
+die Eröffnung der Folgekerze, nicht der gespeicherte Schlusskurs. Ohne diese
+drei Felder wäre das R-Vielfache nicht rekonstruierbar.
+
+### 6.4 Noch offen
+
+Die **8 weiteren Familien** aus Spezifikation 2.2 (BOS, CHoCH, RSI-Divergenz,
+Doppeltop/-boden, Dreieck, Range-Kompression, Gap-Fill, Gap-and-Go) sind
+bewusst nicht gebaut — die Spezifikation empfiehlt schrittweise, und keine
+davon ist gegen echte Daten geprüft.
+
+`protokolliere()` hängt an **keinem Dauerprozess**. Es ist noch keine einzige
+echte Idee protokolliert.
 
 ---
 
@@ -352,6 +436,36 @@ kaputt"**.
 | **11** | **Vortagesmarken aus angeschnittener Session** | **`_vorsession_vollstaendig()`** |
 | **12** | **Zweiter Empfänger lief still daneben** | **`laeuft_bereits()` + `_ExklusiverServer`** |
 | **13** | **Kostengarantie-Test prüfte nur direkte Importe** | **transitive Hülle** |
+| **14** | **Schichtumkehr zog `backtest` in die MCP-Importhülle** | **Prüfung nach `ideas.setups` verschoben** |
+| **15** | **UTF-8-BOM ließ den AST-Test scheitern** | **BOM entfernt, ASCII-Konvention** |
+
+### 8.15 Schichtumkehr (behoben, `142fd11`)
+
+Die Startprüfung der Setup-Schlüssel stand zuerst in `Config.validate()` und
+importierte dafür `ideas.setups`. Das ist eine **Schichtumkehr** — `common` ist
+die Basis, `ideas` liegt darüber — und hatte eine Nebenwirkung, die niemand
+beabsichtigt hatte: über diesen Import zog der MCP-Server `ideas` **samt
+`backtest.strategies`** in seine Importhülle.
+
+Aufgefallen ist es nur, weil der Kostengarantie-Test die transitive Hülle
+rechnet (Lehre 13). Ohne ihn wäre die Hülle still gewachsen.
+
+Jetzt: `ideas.setups.pruefe_konfiguration()`, aufgerufen von
+`pipeline.protokolliere()`. In `Config.validate()` bleibt nur, was ohne
+Fachwissen prüfbar ist (Profil gegen `profile_erlaubt`, „mindestens eine
+Familie aktiv"). Ein eigener Test hält `Config.validate` frei von
+`ideas`-Importen.
+
+### 8.16 BOM in einer Quelldatei
+
+`backtest/strategies/library.py` trug plötzlich ein UTF-8-BOM — **nicht** aus
+einem Commit; es tauchte im Arbeitsverzeichnis auf. Folge: `ast.parse` warf
+`SyntaxError: invalid non-printable character U+FEFF`, und **beide**
+Kostengarantie-Tests fielen aus, ohne dass an ihrer Zusage etwas dran war.
+
+Zwei Lehren: Die ASCII-Konvention ist kein Stilwunsch — ein AST-basierter Test
+bricht daran. Und ein Testfehlschlag im Importhüllen-Test kann eine
+**Parse**-Ursache haben statt einer fachlichen; die Fehlermeldung zuerst lesen.
 
 ### 8.11 Vortagesmarken (behoben, `cd5bcc6`)
 
@@ -426,6 +540,23 @@ IB-Lookahead-Sperre (Kerze um 09:30 kennt sonst `ib_high` von 10:30).
 - Tests auf Schlüsselmenge der Claude-Payloads, Disclaimer und Verbot direkter
   Handelsempfehlungen.
 
+Aus `test_ideas.py` (Etappe C):
+
+- `test_jede_setup_familie_verweist_auf_eine_backtest_strategie` — die
+  tragende Invariante 5.1, als Prüfung statt als Absichtserklärung.
+- `test_ideas_modul_hat_keine_eigenen_erkenner_mehr` — verhindert die Rückkehr
+  von `detectors.py`.
+- `test_auswertung_liest_niemals_das_exploration_log` — Quelltextprüfung, dass
+  `lade_fuer_auswertung` die Tabelle `observations` nicht einmal nennt.
+- `test_config_validate_zieht_ideas_nicht_in_die_importhuelle` — Lehre 14.
+- `test_fehlende_spalte_bricht_laut_ab_statt_still_zu_schweigen` — ohne sie
+  bliebe ein Setup bei fehlender Spalte stumm.
+- `test_erkennung_sieht_nie_in_die_zukunft` und
+  `test_ib_bruch_loest_vor_ablauf_des_ib_fensters_nicht_aus`.
+- `test_gueltige_minimalkonfiguration_kommt_durch` — Gegenprobe zu den
+  Startprüfungen: ohne sie blieben die grün, auch wenn `validate()` aus einem
+  ganz anderen Grund immer würfe.
+
 **Testdaten tragen eigene Zusicherungen.** Beispiel: der Vorsession-Test prüft
 selbst, dass der gedeckelte Frame weiterhin zwei Session-Daten berührt — sonst
 träfe er den gemeldeten Fehler gar nicht.
@@ -462,7 +593,23 @@ und `.claude/settings.local.json` ab. `core.autocrlf=false`.
 .venv\Scripts\python.exe -m pytest
 .venv\Scripts\python.exe -m ntbridge
 .venv\Scripts\python.exe -m mcp_server.cli snapshot --symbol MNQ
+.venv\Scripts\python.exe pruefe_datenluecken.py            # letzte 7 Tage
+.venv\Scripts\python.exe pruefe_datenluecken.py --tage 0   # gesamte Historie
 ```
+
+**Datenlücken-Prüfung** (`pruefe_datenluecken.py`, neu am 22.08.2026): meldet
+Lücken in der Kerzenabdeckung und trennt dabei erwartete Nicht-Handelszeit
+(Wartungspause, Wochenende) von echten Ausfällen — NinjaTrader erzeugt ohne
+Handel gar keine Kerze, einzelne fehlende Minuten sind in dünnen Phasen normal.
+Öffnet die Datenbank **nur lesend** (`mode=ro`), läuft also neben dem
+Empfänger. Exitcodes: `0` sauber, `2` Lücken gefunden, `1` Prüfung nicht möglich
+— der Unterschied zwischen 1 und 2 ist wichtig.
+
+Läuft zusätzlich täglich um 08:00 über die Windows-Aufgabenplanung
+(`Claude Chart Bot - Datenluecken-Pruefung` → `pruefe_datenluecken_taeglich.bat`)
+und hängt die Ausgabe an `datenluecken_log.txt` an (nicht versioniert).
+Der Wrapper setzt das Arbeitsverzeichnis — ohne das fände das Skript seine
+Datenbank nicht, und die Aufgabe scheiterte täglich lautlos.
 
 **Konventionen:** Quelldateien **ASCII** (Umlaute als ae/oe/ue); README, `docs/`
 und Kontextdateien mit echten Umlauten. Nutzertexte, Docstrings, Kommentare und
