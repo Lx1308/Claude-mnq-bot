@@ -3,9 +3,11 @@
 **Dauerhaftes Gedächtnis der inhaltlichen Projektseite.**
 Für künftige Claude-Chat-Sessions ohne Zugriff auf den alten Verlauf.
 
-**Stand: 21. August 2026** — gegen den tatsächlichen Code verifiziert.
+**Stand: 22. August 2026** — gegen den tatsächlichen Code verifiziert.
 **Ergänzt 21. August 2026 (nachts): Etappe A und B erstmals mit echten
 NT8-Live-Marktdaten verifiziert (siehe Abschnitt 17).**
+**Ergänzt 22. August 2026: Profil-Begriff entflochten (Abschnitt 8) — `profil`
+und `rules` sind zwei verschiedene Dinge und hießen vorher beide „Profil".**
 
 > **Schwesterdatei:** `CODE_CHAT_KONTEXT.md` enthält die technische Seite —
 > Architektur, Module, Implementierungsstand, Bugs mit Fundstelle im Code, Tests.
@@ -64,7 +66,8 @@ Laurin, Privattrader. Intraday-Futures, hauptsächlich **MNQ**, gelegentlich
 ### SOLLTE
 
 - MGC-Analyse auf Abruf (Protokollierung nur MNQ)
-- Zwei Regelprofile: demo und lucid
+- Zwei Regelwerke in der Auswertung: ohne Einschränkungen und Lucid
+  (`rules`, siehe Abschnitt 8)
 - Dauerbetrieb auf dem Laptop
 
 ### OPTIONAL / SPÄTER
@@ -194,18 +197,50 @@ auf Lucids Website zu verifizieren.
 
 ## 8. PROFIL-ARCHITEKTUR UND AUSWERTUNG — die eigentliche Zielfrage
 
-**Zwei Profile in der Config:**
+> **Begriffsklärung vom 22.08.2026 — vorher stand hier eine Vermischung.**
+> Ältere Fassungen dieser Datei sprachen von „zwei Profilen `demo`/`lucid`"
+> und meinten damit *beides zugleich*: auf welchem Konto gehandelt wurde
+> **und** nach welchem Regelwerk gerechnet wird. Das sind zwei verschiedene
+> Dinge, und sie werden seither getrennt geführt.
 
-| Profil | Bedeutung |
+**Erstens: `profil` — was tatsächlich war.** Ein Feld an jeder Idee, gesetzt
+beim Protokollieren. Reine Herkunftsdokumentation, kein Steuerungsfeld.
+
+| Wert | Bedeutung |
 |---|---|
-| `demo` | keine Einschränkungen: kein Zwangsschluss, Overnight erlaubt, keine Haltedauer-Grenze, kein Drawdown-Limit, Hedging erlaubt |
+| `sim_frei` | eigenes NinjaTrader-Simulationskonto, keine Prop-Firm-Regeln (aktuell) |
+| `lucid_challenge` | laufende Lucid-Challenge |
+| `lucid_funded` | bestandene Challenge, Sim-Funded |
+
+Der Wertebereich steht in `config.yaml` unter `ideas.profile_erlaubt`; ein
+Tippfehler bricht beim Start ab, statt die Auswertung still in zwei Gruppen zu
+zerlegen.
+
+> **Warum nicht `demo`:** `config.yaml` enthält bereits `environment: demo`
+> unter `tradovate:` — das ist die Broker-Umgebung. Ein eigener Wertebereich
+> macht die Verwechslung unmöglich.
+
+**Zweitens: `rules` — was gewesen wäre.** Ein Parameter von
+`evaluate_past_ideas`, gesetzt beim Auswerten:
+
+| Wert | Bedeutung |
+|---|---|
+| `none` | keine Einschränkungen: kein Zwangsschluss, Overnight erlaubt, keine Haltedauer-Grenze, kein Drawdown-Limit, Hedging erlaubt |
 | `lucid` | alle Regeln aus Abschnitt 6 aktiv |
+| `both` | beides nebeneinander |
 
 Alle Werte konfigurierbar, keine Magic Numbers im Code.
 
 **Eine gemeinsame Ideen-Datenbank** mit Profilfeld je Idee.
 
-`evaluate_past_ideas` bekommt den Parameter `rules = "none" | "lucid" | "both"`.
+**Entscheidend:** Bei `rules="both"` werden **alle** Ideen durch **beide**
+Regelwerke gerechnet — unabhängig von ihrem `profil`. Das Feld wird dabei
+ausdrücklich **nicht** als Filter benutzt; nur so lässt sich die Zielfrage
+unten überhaupt beantworten. Als *optionaler* Filter bleibt es abrufbar
+(„nur die Ideen vom echten Prop-Firm-Konto").
+
+Bei `"both"` wird jede Idee **zweimal** ausgewertet und beides nebeneinander
+ausgegeben, plus:
 Bei `"both"` wird jede Idee **zweimal** ausgewertet und beides nebeneinander
 ausgegeben, plus:
 
@@ -498,8 +533,10 @@ Bauchgefühl.
 2. **HOCH:** Empfänger dauerhaft mitlaufen lassen; Laptop nicht schlafen legen.
    Jede Lücke kostet Historie, die historienabhängige Kennzahlen brauchen.
 3. **MITTEL:** Etappe D — `evaluate_past_ideas`, `get_performance_report`.
-4. **MITTEL:** Profil-Logik demo/lucid; Lucid-Regeln als Simulationsmodell
-   inklusive EOD-Trailing-Drawdown über die Kontofolge.
+4. **MITTEL:** Regelwerk-Simulation für `rules="lucid"` inklusive
+   EOD-Trailing-Drawdown über die Kontofolge. (Das `profil`-Feld selbst ist
+   seit 22.08.2026 fertig — es dokumentiert nur die Herkunft, siehe
+   Abschnitt 8.)
 5. **MITTEL:** Etappen E–F.
 6. **MITTEL:** README aktualisieren — sie beschreibt noch ausschließlich den
    Tradovate-Pfad und erwähnt weder MCP noch NinjaTrader.

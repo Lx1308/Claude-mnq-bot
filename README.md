@@ -24,12 +24,13 @@ Dazu ein getrenntes Backtesting-Framework und ein älterer Telegram-/Alarm-Pfad.
 5. [Empfänger starten](#5-empfänger-starten)
 6. [MCP-Server in Claude Desktop](#6-mcp-server-in-claude-desktop)
 7. [Terminal-Dump ohne Claude Desktop](#7-terminal-dump-ohne-claude-desktop)
-8. [Legacy: Telegram-Bot und /analyse](#8-legacy-telegram-bot-und-analyse)
-9. [Backtesting](#9-backtesting)
-10. [Konfiguration im Detail](#10-konfiguration-im-detail)
-11. [Logging](#11-logging)
-12. [Tests](#12-tests)
-13. [Bekannte Grenzen](#13-bekannte-grenzen)
+8. [Ideen-Protokollierung (Etappe C)](#8-ideen-protokollierung-etappe-c)
+9. [Legacy: Telegram-Bot und /analyse](#9-legacy-telegram-bot-und-analyse)
+10. [Backtesting](#10-backtesting)
+11. [Konfiguration im Detail](#11-konfiguration-im-detail)
+12. [Logging](#12-logging)
+13. [Tests](#13-tests)
+14. [Bekannte Grenzen](#14-bekannte-grenzen)
 
 ---
 
@@ -72,7 +73,7 @@ Das Projekt ist über die Zeit gewachsen und hat deshalb **zwei** Pfade:
 | Tradovate → live_bot → Anthropic-API → Telegram | Legacy, lauffähig | Token je Alarm |
 
 Der Legacy-Pfad ist absichtlich erhalten geblieben, ist aber nicht mehr das Ziel.
-Abschnitt 8 beschreibt ihn.
+Abschnitt 9 beschreibt ihn.
 
 ---
 
@@ -388,16 +389,16 @@ Für das **Zielsystem** wird davon nur eine Variable gebraucht:
 | Variable | Wofür | Nötig für |
 |---|---|---|
 | `FRED_API_KEY` | Ist-Werte der Wirtschaftstermine | `get_event_risk` |
-| `ANTHROPIC_API_KEY` | nur Legacy-Telegram-Pfad | Abschnitt 8 |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | nur Legacy | Abschnitt 8 |
-| `TRADOVATE_*` | nur Legacy | Abschnitt 8 |
+| `ANTHROPIC_API_KEY` | nur Legacy-Telegram-Pfad | Abschnitt 9 |
+| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | nur Legacy | Abschnitt 9 |
+| `TRADOVATE_*` | nur Legacy | Abschnitt 9 |
 
 Ohne `FRED_API_KEY` läuft alles weiter — `get_event_risk` weist die Ist-Werte
 dann als nicht verfügbar aus, statt so zu tun, als gäbe es keine Termine.
 
 ---
 
-## 8. Legacy: Telegram-Bot und /analyse
+## 9. Legacy: Telegram-Bot und /analyse
 
 Der ursprüngliche Pfad: Tradovate-WebSocket → Alarm-Bedingungen → Anthropic-API →
 Telegram. Er ist lauffähig und bleibt erhalten, **kostet aber Token je Alarm**
@@ -451,9 +452,9 @@ in der Standardkonfiguration.
 
 ---
 
-## 9. Backtesting
+## 10. Backtesting
 
-### 9.1 Strategien ansehen und testen
+### 10.1 Strategien ansehen und testen
 
 ```bash
 .venv\Scripts\python.exe -m backtest.cli list
@@ -471,7 +472,7 @@ Eigene CSV nach `data/<SYMBOL>_1m.csv` legen. Erwartete Spalten:
 `timestamp,open,high,low,close,volume` (Zeitstempel ohne Zeitzone werden als UTC
 gelesen).
 
-### 9.2 Parametersuche — mit Schutzriegel
+### 10.2 Parametersuche — mit Schutzriegel
 
 ```bash
 .venv\Scripts\python.exe -m backtest.cli optimize --symbol NQZ5 \
@@ -493,7 +494,7 @@ erst danach geschnitten. Würde man den OOS-Block isoliert vorbereiten, hätten
 dessen erste ~50 Kerzen keinen gültigen SMA(50) und die Strategie bliebe dort
 stumm — ein stiller Verlust an OOS-Zeitraum.
 
-### 9.3 Eigene Strategie schreiben
+### 10.3 Eigene Strategie schreiben
 
 ```python
 from backtest.strategies.base import ColumnAbove, CrossesAbove, CrossesBelow, RuleStrategy
@@ -512,7 +513,7 @@ In `backtest/strategies/library.py` unter `STRATEGY_LIBRARY` eintragen.
 `BarContext` gibt bewusst nur die aktuelle und die vorherige Zeile frei —
 Look-ahead ist damit strukturell ausgeschlossen.
 
-### 9.4 Ausführungsmodell
+### 10.4 Ausführungsmodell
 
 - Regeln werden auf dem **Schlusskurs** ausgewertet, ausgeführt wird zur
   **Eröffnung der Folgekerze**.
@@ -535,7 +536,7 @@ siehe [`docs/BACKTESTING_ENTSCHEIDUNG.md`](docs/BACKTESTING_ENTSCHEIDUNG.md).
 
 ---
 
-## 10. Konfiguration im Detail
+## 11. Konfiguration im Detail
 
 Alles Wesentliche steckt in `config.yaml`, Secrets ausschließlich in `.env`.
 Vorrang: **CLI > .env > YAML**.
@@ -584,7 +585,7 @@ sind auf diesem Modell nicht erlaubt.
 
 ---
 
-## 11. Logging
+## 12. Logging
 
 Zwei Dateien parallel in `logs/` (rotierend), je Prozess ein Paar:
 
@@ -604,7 +605,7 @@ Payload. Wichtige Typen: `ntbridge.started`, `ntbridge.bars.accepted`,
 
 ---
 
-## 12. Tests
+## 13. Tests
 
 ```bash
 .venv\Scripts\python.exe -m pytest              # alles (326)
@@ -638,7 +639,7 @@ eskaliert wird.
 
 ---
 
-## 13. Bekannte Grenzen
+## 14. Bekannte Grenzen
 
 **Antwortzeit 10–30 Sekunden.** Für den Auslöser eines 1-Minuten-Einstiegs zu
 langsam. Der Nutzen liegt in der Vorbereitung und in der späteren Auswertung.
