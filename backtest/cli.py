@@ -31,7 +31,7 @@ from backtest.engine import Backtester, CostModel
 from backtest.metrics import compute_metrics, format_metrics
 from backtest.splits import split_data
 from backtest.strategies.library import STRATEGY_LIBRARY, build_strategy
-from common.config import Config, ConfigError, Secrets
+from common.config import Config, ConfigError
 from common.logging_setup import setup_logging
 
 log = logging.getLogger("backtest")
@@ -89,9 +89,10 @@ def load_data(config: Config, args: argparse.Namespace) -> pd.DataFrame:
 
     if provider_name == "csv":
         provider = create_provider("csv", directory=config.backtest.csv_directory, path=args.csv)
-    elif provider_name == "tradovate":
-        provider = create_provider("tradovate", config=config, secrets=Secrets.load())
     else:
+        # Seit dem 22.08.2026 gibt es nur noch "csv". create_provider wirft
+        # mit einer Liste der verfuegbaren Quellen, statt still etwas anderes
+        # zu nehmen.
         provider = create_provider(provider_name)
 
     request = BarRequest(
@@ -255,27 +256,6 @@ def command_optimize(config: Config, args: argparse.Namespace) -> int:
     return 0
 
 
-def command_fetch(config: Config, args: argparse.Namespace) -> int:
-    """Laedt Historie von Tradovate und legt sie als CSV ab."""
-    provider = create_provider("tradovate", config=config, secrets=Secrets.load())
-    request = BarRequest(
-        symbol=args.symbol,
-        interval_minutes=args.interval or config.market.candle_interval_minutes,
-        max_bars=args.bars,
-    )
-    frame = provider.load(request)
-
-    directory = Path(args.output or config.backtest.csv_directory)
-    target = directory / f"{args.symbol.upper()}_{request.interval_minutes}m.csv"
-    path = CsvDataProvider.write(frame, target)
-
-    print(
-        f"{len(frame)} Bars geschrieben nach {path.resolve()}\n"
-        f"Zeitraum: {frame.index[0]} bis {frame.index[-1]}"
-    )
-    return 0
-
-
 # ---------------------------------------------------------------------------
 # Argument-Parser
 # ---------------------------------------------------------------------------
@@ -339,13 +319,6 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--top", type=int, default=15)
     optimize_parser.add_argument("--output", help="Zielverzeichnis")
     optimize_parser.set_defaults(handler=command_optimize)
-
-    fetch_parser = subparsers.add_parser("fetch", help="Historie von Tradovate als CSV speichern")
-    fetch_parser.add_argument("--symbol", required=True)
-    fetch_parser.add_argument("--interval", type=int)
-    fetch_parser.add_argument("--bars", type=int, default=5000)
-    fetch_parser.add_argument("--output", help="Zielverzeichnis (Standard: backtest.csv.directory)")
-    fetch_parser.set_defaults(handler=command_fetch)
 
     return parser
 

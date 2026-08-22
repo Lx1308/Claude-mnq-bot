@@ -8,12 +8,15 @@ Es gibt hier **keinen Broker-Login und keine Zugangsdaten**. Die Kerzen
 liefert NinjaTrader ueber den ntbridge-Empfaenger in eine SQLite-Datei; der
 Server liest ausschliesslich daraus.
 
-Historischer Hinweis: Frueher stand hier ein Tradovate-Login mit
-Kontraktaufloesung, der wegen Tradovates Drosselung nicht je Aufruf
-passieren durfte. Diese Datenquelle wurde verworfen (sie verlangt ein
-Live-Konto mit Mindesteinlage plus kostenpflichtiges API-Add-on). Die
-Entscheidung, den Zustand einmal aufzubauen, ist geblieben - die
-urspruengliche Begruendung gilt so aber nicht mehr.
+Warum der Zustand einmal aufgebaut und dann gehalten wird: Das Oeffnen
+der SQLite-Datei und der Aufbau der BarSource kosten je Aufruf spuerbar
+Zeit, und der MCP-Server startet ohnehin schon langsam (rund 7,5 Sekunden,
+fast ausschliesslich Imports).
+
+Die urspruengliche Begruendung war eine andere - hier stand bis zum
+21.08.2026 ein Tradovate-Login, das wegen der Drosselung dort nicht je
+Aufruf passieren durfte. Diese Datenquelle ist verworfen und der Code
+entfernt; die Entscheidung, den Zustand zu halten, traegt aber weiterhin.
 """
 
 from __future__ import annotations

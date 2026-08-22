@@ -366,8 +366,9 @@ def session_cumulative_delta(
 ) -> pd.Series | None:
     """Kumulatives Volumen-Delta, das zu jedem Sessionbeginn zurueckstellt.
 
-    Erwartet die Spalten ``bid_volume`` und ``ask_volume`` (aus den
-    Tradovate-Feldern ``bidVolume``/``offerVolume``). Fehlen sie oder sind
+    Erwartet die Spalten ``bid_volume`` und ``ask_volume``. NinjaTrader
+    liefert sie nur mit dem kostenpflichtigen Add-on "Order Flow +", das
+    nicht lizenziert ist - die Spalten fehlen also dauerhaft. Fehlen sie oder sind
     sie durchgehend null, wird ``None`` zurueckgegeben - **nicht** ein aus
     Auf-/Abwaertskerzen geschaetztes Ersatzdelta. Ein geschaetztes Delta
     sieht aus wie eine Messung und ist keine.
