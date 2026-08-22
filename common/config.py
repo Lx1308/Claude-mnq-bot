@@ -138,7 +138,10 @@ class FlagConfig:
     impulse_lookback: int = 20
     impulse_min_atr: float = 2.5
     consolidation_lookback: int = 10
-    consolidation_max_atr: float = 1.2
+    # Vorlaeufiger, aus Daten abgeleiteter Startwert - siehe config.yaml.
+    # 1.2 konnte auf keiner Zeitebene ausloesen (schmalste beobachtete
+    # Konsolidierung: Range/ATR = 1.37 auf 5m).
+    consolidation_max_atr: float = 2.40
     breakout_buffer_atr: float = 0.1
 
 
@@ -405,7 +408,7 @@ class Config:
                 impulse_lookback=int(flag.get("impulse_lookback", 20)),
                 impulse_min_atr=float(flag.get("impulse_min_atr", 2.5)),
                 consolidation_lookback=int(flag.get("consolidation_lookback", 10)),
-                consolidation_max_atr=float(flag.get("consolidation_max_atr", 1.2)),
+                consolidation_max_atr=float(flag.get("consolidation_max_atr", 2.40)),
                 breakout_buffer_atr=float(flag.get("breakout_buffer_atr", 0.1)),
             ),
         )

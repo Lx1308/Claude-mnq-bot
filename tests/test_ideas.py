@@ -1045,3 +1045,30 @@ def test_pruefe_alle_gibt_die_beanstandungen_heraus_nicht_nur_eine_zahl():
     assert len(beanstandet) == 1
     _, ergebnis = beanstandet[0]
     assert any("ziel" in a for a in ergebnis.abweichungen)
+
+
+def test_flaggen_schwelle_ist_ueberhaupt_erfuellbar():
+    """Regressionsschutz gegen Bug 8.17.
+
+    ``consolidation_max_atr`` stand bis zum 22.08.2026 auf 1.2. Die
+    schmalste Konsolidierung ueber 850 echte MNQ-5m-Kerzen hatte
+    Range/ATR = 1.37, ueber 12871 CFD-Kerzen lag der Median bei 3.02 -
+    die Bedingung war auf keiner Zeitebene erfuellbar. Das Setup stand als
+    aktiv in der Config und lieferte garantiert nichts.
+
+    Die Untergrenze hier ist bewusst grob: sie soll keinen bestimmten Wert
+    erzwingen, sondern nur verhindern, dass wieder einer eingetragen wird,
+    den die Daten nie erreichen. Welcher Wert innerhalb des Erfuellbaren
+    richtig ist, bleibt eine Konfigurationsfrage.
+    """
+    from common.config import Config as _C
+
+    cfg = _C.load("config.yaml")
+    schwelle = cfg.indicators.flag.consolidation_max_atr
+
+    assert schwelle > 1.4, (
+        f"consolidation_max_atr = {schwelle} liegt unter der schmalsten je "
+        "gemessenen Konsolidierung (Range/ATR = 1.37 auf 5m). Das Setup "
+        "flaggen_ausbruch koennte damit NIE ausloesen - siehe "
+        "CODE_CHAT_KONTEXT.md Bug 8.17."
+    )

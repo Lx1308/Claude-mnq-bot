@@ -71,8 +71,30 @@ indicators:
     impulse_min_atr: 2.5
     # Anzahl Kerzen der Konsolidierungsphase.
     consolidation_lookback: 10
+
     # Range der Konsolidierung darf hoechstens so viele ATR betragen.
-    consolidation_max_atr: 1.2
+    #
+    # VORLAEUFIGER STARTWERT, aus Daten abgeleitet - KEINE getestete
+    # Trading-Entscheidung. Jederzeit hier aenderbar.
+    #
+    # Der fruehere Wert 1.2 konnte NIE ausloesen: die schmalste
+    # Konsolidierung ueber 850 echte MNQ-5m-Kerzen hatte Range/ATR = 1.37,
+    # der Median lag bei 2.92. Das Setup stand als aktiv in der Config und
+    # lieferte garantiert nichts.
+    #
+    # 2.40 ist das 25. Perzentil der gemessenen Verteilung: das engste
+    # Viertel der Konsolidierungen gilt als "eng". Gemessen ueber 107 Tage
+    # (12871 Kerzen); beide Datenquellen stimmen auf 0.07 ueberein
+    # (MNQ p25 = 2.47, CFD p25 = 2.40 - genommen wurde der niedrigere,
+    # also selektivere Wert aus der groesseren Stichprobe).
+    #
+    # Ergibt rund 7 Ausbrueche je Woche, also gut 5 Wochen bis zu Laurins
+    # Schwelle von 20 Ideen je Richtung.
+    #
+    # Laurin hat das Setzen DIESES Werts ausdruecklich genehmigt ("hab da
+    # auch keine Ahnung"). Das ist eine Ausnahme - andere Setup-Parameter
+    # bleiben rueckfragepflichtig. Details in CODE_CHAT_KONTEXT.md 8.17.
+    consolidation_max_atr: 2.40
     # Ausbruch zaehlt erst ab diesem Puffer (in ATR) ueber/unter der Range.
     breakout_buffer_atr: 0.1
 # ---------------------------------------------------------------------------

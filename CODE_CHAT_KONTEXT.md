@@ -38,13 +38,13 @@ beiden aufgegangen und entfernt.
 | `ideas/` (Etappe C) | **4 Setup-Familien fertig, Einstiegspunkt `python -m ideas` da**, aber noch in keiner Aufgabenplanung eingetragen | ja, 44 Tests |
 | Etappe D, Lucid-Simulation | **existiert nicht** | — |
 
-**Testsuite: 342 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
+**Testsuite: 343 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
 
 | Datei | Tests |
 |---|---|
 | `test_mcp_snapshot.py` | 44 |
 | `test_dukascopy.py` | 21 |
-| `test_ideas.py` | 49 |
+| `test_ideas.py` | 50 |
 | `test_levels_structure.py` | 39 |
 | `test_ntbridge.py` | 37 |
 | `test_instruments_sessions.py` | 26 |
@@ -55,7 +55,7 @@ beiden aufgegangen und entfernt.
 | `test_indicators.py` | 15 |
 | `test_engine.py` | 13 |
 
-Verlauf: 124 → … → 334 → 370 → 373 → 316 → 337 → **342**.
+Verlauf: 124 → … → 334 → 370 → 373 → 316 → 337 → 342 → **343**.
 
 **Der Rückgang ist keine Regression.** Mit dem Legacy-Pfad fielen
 `test_live_bot.py` (29) und `test_on_demand.py` (35) weg — 64 Tests für Code,
@@ -518,7 +518,7 @@ kaputt"**.
 | **13** | **Kostengarantie-Test prüfte nur direkte Importe** | **transitive Hülle** |
 | **15** | **Schichtumkehr zog `backtest` in die MCP-Importhülle** | **Prüfung nach `ideas.setups` verschoben** |
 | **16** | **UTF-8-BOM ließ den AST-Test scheitern** | **BOM entfernt, ASCII-Konvention** |
-| **17** | **`flaggen_ausbruch` kann nie auslösen** | **OFFEN — Schwellenwert gehört Laurin (8.17)** |
+| **17** | **`flaggen_ausbruch` konnte nie auslösen** | **Schwelle aus der Verteilung abgeleitet (8.17)** |
 | **18** | **Ein-Minuten-Versatz in der Dukascopy-Quelle** | **`label="right"`, Abschnitt 14.2** |
 
 Die Nummern folgen den Unterabschnitten; **14 fehlt in der Tabelle**, weil
@@ -559,36 +559,73 @@ Inhalt stimmte.
 Zweite Lehre: Ein Fehlschlag im Importhüllen-Test kann eine **Parse**-Ursache
 haben statt einer fachlichen. Erst die Fehlermeldung lesen, dann suchen.
 
-### 8.17 `flaggen_ausbruch` kann nie auslösen — OFFEN
+### 8.17 `flaggen_ausbruch` konnte nie auslösen (behoben, 22.08.2026)
 
-**Gemessen am 22.08.2026 an echten MNQ-5m-Daten:**
+**Der Befund.** `indicators.flag.consolidation_max_atr` stand auf `1.2`. Die
+Bedingung lautet `range_width <= consolidation_max_atr * atr`, der Wert ist also
+eine Obergrenze für `Range/ATR`. Gemessen:
 
-| | Wert |
-|---|---|
-| schmalste Konsolidierung über 864 Kerzen | `Range/ATR = 1.39` |
-| Schwelle `indicators.flag.consolidation_max_atr` | `1.2` |
-| `flag_in_consolidation` | **0 von 864 Kerzen** |
+| Zeitebene | n | Minimum | p10 | p25 | Median |
+|---|---|---|---|---|---|
+| MNQ 1m | 4312 | 1,08 | 2,08 | 2,46 | 3,02 |
+| MNQ 5m | 850 | **1,37** | 2,11 | 2,47 | 2,92 |
+| MNQ 15m | 323 | 1,40 | 1,91 | 2,31 | 2,77 |
+| CFD 5m | 12243 | 0,50 | 2,02 | 2,40 | 3,02 |
 
-Die Bedingung ist auf dieser Zeitebene **nicht erfüllbar**. Der Impuls-Teil
-wäre erreichbar (Maximum 10,09 bei Schwelle 2,5); es scheitert allein an der
-Range-Breite. Die Schwelle stammt aus der 1m-Konfiguration, und über fünf
-Kerzen ist eine Range naturgemäß breiter im Verhältnis zum ATR.
+`flag_in_consolidation` war **0 von 864** auf 5m. Das Setup stand als `aktiv`
+in der Config und lieferte garantiert nichts — die Protokollierung meldete
+0 Signale, was aussieht wie „kein Setup aufgetreten", tatsächlich aber
+„Bedingung unerfüllbar" war.
 
-**Warum das schlimmer ist als „Setup feuert selten":** `flaggen_ausbruch` steht
-in `config.yaml` als `aktiv: true` und liefert garantiert nichts. Die
-Protokollierung meldet dafür 0 Signale — was aussieht wie „kein Setup
-aufgetreten", tatsächlich aber „Bedingung unerfüllbar" ist. Genau die Sorte
-stiller Ausfall, an der dieses Projekt schon mehrfach hing.
+> **Korrektur einer früheren Aussage in dieser Datei:** Es hieß hier, die
+> Schwelle stamme aus der 1m-Konfiguration. Die Messung widerlegt das — die
+> Verteilung ist über alle Zeitebenen nahezu gleich (Median 2,77–3,02). `1.2`
+> war auf **keiner** Zeitebene praktikabel.
 
-**Bewusst nicht behoben.** Ein Setup-Schwellenwert ist Trading-Logik; die
-Spezifikation (Abschnitt 6) legt solche Zahlen ausdrücklich Laurin vor, nicht
-dem Code. Eine geratene Zahl wäre hier besonders schädlich, weil sie
-festlegte, wie oft das Setup künftig auslöst.
+### 8.17.1 Wie der neue Wert zustande kam
 
-Drei Wege stehen offen: die Schwelle für 5m anheben (müsste über 1,4 liegen,
-der Median ist 2,94), das Setup auf 1m protokollieren, oder es bis zur
-Klärung auf `aktiv: false` setzen. Steht auf der Rückfrage-Liste in
-Abschnitt 15.
+**Genehmigung.** Laurin hat das Setzen **dieses einen** Werts ausdrücklich
+erlaubt („hab da auch keine Ahnung"). Das ist eine benannte Ausnahme von der
+Regel, dass Setup-Parameter Trading-Logik sind und ihm vorgelegt werden —
+**andere Setup-Parameter bleiben rückfragepflichtig.** Es war keine
+eigenmächtige Entscheidung.
+
+**Methode.** Nicht geraten, sondern aus der Verteilung abgeleitet:
+
+1. `Range/ATR` über beide Datenquellen gemessen. Beide Verteilungen stimmen
+   auf **0,07** überein (MNQ p25 = 2,47, CFD p25 = 2,40) — die Kennzahl ist
+   normiert und überträgt sich, was die breitere CFD-Stichprobe rechtfertigt.
+2. Auslösehäufigkeit je Kandidat auf **12 871 Kerzen über 107 Tage** gemessen,
+   nicht auf den 3 Tagen MNQ-Historie. Dort sprang die Zahl zwischen 2,40 (null
+   Ausbrüche) und 2,47 (drei) — ein reines Kleinstichproben-Artefakt, nach dem
+   man nicht wählen darf.
+3. Gewählt: **p25 = 2,40**, der niedrigere und damit selektivere der beiden
+   Werte, aus der größeren Stichprobe.
+
+| Schwelle | Ausbrüche/Woche | Wochen bis 20 je Richtung |
+|---|---|---|
+| 1,20 (vorher) | 0,3 | 152 |
+| 2,00 (p10) | 3,7 | 10,7 |
+| **2,40 (p25)** | **7,4** | **5,4** |
+| 3,00 (Median) | 12,6 | 3,2 |
+
+Die Definition ist begründbar: **das engste Viertel der Konsolidierungen gilt
+als „eng"** — selektiv, ohne extrem zu sein. Die ~5 Wochen bis zu Laurins
+eigener Schwelle von 20 Ideen je Kategorie passen zur Projektprämisse „nach
+einigen Wochen auswerten".
+
+**Was der Wert nicht ist.** Keine getestete Trading-Entscheidung. Er legt
+fest, wie oft das Setup künftig auslöst, nicht ob es trägt — das beantwortet
+erst Etappe D. Änderbar in `config.yaml`, ohne Codeänderung.
+
+**Wirkung, gemessen.** Auf 1m: 368 enge Phasen, **25 Ausbrüche** (vorher 0/0).
+Auf 5m: 45 enge Phasen, 0 Ausbrüche in den vorhandenen 3 Tagen — bei
+geschätzten 7/Woche ein plausibler Zufall, kein Fehler. Die Bedingung ist
+damit **erfüllbar** statt strukturell tot.
+
+`test_flaggen_schwelle_ist_ueberhaupt_erfuellbar` hält eine grobe Untergrenze
+(1,4) fest. Sie erzwingt keinen bestimmten Wert, verhindert aber die Rückkehr
+eines unerreichbaren. Gegenprobe durchgeführt: bei 1,2 fällt der Test.
 
 ### 8.11 Vortagesmarken (behoben, `cd5bcc6`)
 
@@ -920,15 +957,11 @@ fehlerfrei durch.
 
 ### Was auf Laurin wartet
 
-1. **`flaggen_ausbruch` kann nie auslösen.** An echten MNQ-5m-Daten gemessen:
-   die schmalste Konsolidierung über 864 Kerzen hat `Range/ATR = 1.39`, die
-   Schwelle `consolidation_max_atr` steht auf `1.2`. `flag_in_consolidation` ist
-   **0 von 864**. Die Schwelle stammt aus der 1m-Konfiguration.
-   Das Setup steht als aktiv in der Config und liefert garantiert nichts —
-   genau die Sorte stiller Ausfall, die dieses Projekt teuer bezahlt hat.
-   **Keine Zahl geraten**, weil Setup-Schwellen laut Spezifikation Trading-Logik
-   sind. Drei Wege: Schwelle für 5m anheben (müsste über 1.4 liegen, Median ist
-   2.94), das Setup auf 1m protokollieren, oder auf `aktiv: false` setzen.
+1. ~~`flaggen_ausbruch` kann nie auslösen~~ — **erledigt am 22.08.2026.**
+   Laurin hat das Setzen dieses einen Werts genehmigt; er ist aus der
+   gemessenen Verteilung abgeleitet (Bug 8.17). **Andere Setup-Parameter
+   bleiben rückfragepflichtig.**
+
 2. **Branch mergen?** `legacy-entfernen` wartet auf `main`.
 3. **Die 8 weiteren Setup-Familien** — alle oder schrittweise?
 4. **Dukascopy-Vollabzug starten?** Zehn Jahre sind viele GB und Stunden
