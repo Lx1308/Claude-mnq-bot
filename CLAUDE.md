@@ -39,11 +39,19 @@ auflösen — feststellen, dokumentieren, den Nutzer informieren.
 
 ## Projektgrenze
 
-Read-only by design. Der Bot liest Marktdaten, rechnet, alarmiert und
-kommentiert — es gibt **keinen Aufruf eines Tradovate-Order-Endpunkts**, und
-das ist eine bewusste Entscheidung des Nutzers, keine offene Lücke. Order-
-Routing, Positionsverwaltung oder Auto-Execution nicht unaufgefordert
-ergänzen oder vorschlagen; bei Aufgaben, die daran rühren, vorher nachfragen.
+Read-only by design. Das Projekt liest Marktdaten, rechnet und protokolliert —
+es gibt **keinen Order-Endpunkt, keine Positionsverwaltung, kein Lesen von
+Kontodaten**, und das ist eine bewusste Entscheidung des Nutzers, keine offene
+Lücke. Nicht unaufgefordert ergänzen oder vorschlagen, auch nicht als inertes
+Interface; bei Aufgaben, die daran rühren, vorher nachfragen.
+
+*Struktureller Schutz:* `ClaudeBridge.cs` ist ein NinjaTrader-**Indikator**, und
+ein Indikator kann dort keine Orders platzieren.
+
+**Kosten:** Nichts im Projekt ruft die Anthropic-API auf. Interpretiert wird
+ausschließlich in der Claude-Desktop-Unterhaltung über das bestehende Abo. Seit
+dem 22.08.2026 prüft `test_kein_modul_im_projekt_erreicht_die_anthropic_api`
+das **repo-weit**.
 
 ## Befehle
 
@@ -51,10 +59,10 @@ ergänzen oder vorschlagen; bei Aufgaben, die daran rühren, vorher nachfragen.
 Immer das venv des Projekts verwenden:
 
 ```bash
-.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 124)
+.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 337)
 .venv\Scripts\python.exe -m pytest tests/test_engine.py      # eine Datei
 .venv\Scripts\python.exe -m pytest -k lookahead -v           # einzelne Tests nach Namensmuster
-.venv\Scripts\python.exe -m pytest tests/test_on_demand.py::test_parse_command_mit_symbol
+.venv\Scripts\python.exe -m pytest tests/test_ideas.py::test_deviation_reentry_feuert_nur_beim_uebertritt
 ```
 
 Neu aufsetzen (der Interpreter liegt unter dem Python Install Manager):
@@ -64,11 +72,14 @@ C:\Users\lm130\AppData\Local\Python\bin\python.exe -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
 
-Live-Bot und Backtest:
+Betrieb und Backtest:
 
 ```bash
-.venv\Scripts\python.exe -m live_bot.main --test-notification    # Zustellweg prüfen, ohne Tradovate
-.venv\Scripts\python.exe -m live_bot.main                        # Demo-Umgebung
+.venv\Scripts\python.exe -m ntbridge                            # Empfänger für NT8-Kerzen
+.venv\Scripts\python.exe -m mcp_server.cli snapshot --symbol MNQ  # Terminal-Dump
+.venv\Scripts\python.exe -m ideas --probelauf                   # Ideen erkennen, nichts schreiben
+.venv\Scripts\python.exe -m ideas                               # Protokollierungslauf
+.venv\Scripts\python.exe pruefe_datenluecken.py                 # Lücken in der Kerzenabdeckung
 .venv\Scripts\python.exe -m backtest.cli list
 .venv\Scripts\python.exe -m backtest.cli compare --symbol DEMO --csv data\DEMO_1m.csv
 .venv\Scripts\python.exe -m backtest.cli optimize --symbol DEMO --csv data\DEMO_1m.csv \
@@ -113,15 +124,18 @@ täglich zurück) und Vortageshoch/-tief ab.
 dem Zeitstempel — eine Addition von 24 h wäre an Zeitumstellungstagen um
 eine Stunde daneben.
 
-### 3. Der Kerzenpuffer muss zwei Sessions abdecken
+### 3. Der Kerzenvorrat muss zwei Sessions abdecken
 
-Vortagesmarken brauchen die komplette Vorsession **plus** die laufende, also
-2 × 23 × 60 = 2760 Ein-Minuten-Kerzen (`MarketConfig.bars_for_previous_session`).
-Ist `candle_buffer_size` kleiner, bleibt `prev_session_high` dauerhaft NaN und
-die Alarme `prev_day_high_cross` / `prev_day_low_cross` feuern **nie** — ohne
-Fehlermeldung. `Config.validate()` bricht deshalb beim Start ab, sofern diese
-Bedingungen aktiv sind. Diese Prüfung nicht abschwächen; sie existiert wegen
-genau dieses stillen Ausfalls.
+Vortagesmarken brauchen die komplette Vorsession **plus** die laufende. Bei
+5-Minuten-Kerzen sind das 2 × 276 = 552, bei Minutenkerzen 2760. Reicht
+`ideas.bars` nicht, bleibt `prev_session_high` dauerhaft NaN und das Setup
+`pdh_pdl_bruch` löst **nie** aus — ohne Fehlermeldung. `Config.validate()`
+bricht deshalb beim Start ab, skaliert nach `ideas.timeframe`.
+
+Diese Zusicherung hing bis zum 22.08.2026 an `market.candle_buffer_size` und
+den Alarmen des Live-Bots. Der Alarmpfad ist entfernt, die Gefahr nicht — sie
+ist mit der Ideen-Protokollierung nur umgezogen. Die Prüfung nicht
+abschwächen; sie existiert wegen genau dieses stillen Ausfalls.
 
 ### 4. Backtest-Ausführungsmodell
 
@@ -145,74 +159,90 @@ Indikatoren rückwärtsgerichtet sind, entsteht dabei kein Blick in die Zukunft.
 Jede Parametersuche ruft `splits.assert_in_sample_only` auf und wirft
 `OutOfSampleViolation`, sobald OOS-Daten im Datensatz liegen.
 
-### 6. Zwei Claude-Pfade, ein Aufrufweg
+### 6. Ideen-Protokollierung ruft dieselbe Signal-Logik wie der Backtest
 
-`ClaudeCommentator.comment` (Alarm) und `.report` (`/analyse`) unterscheiden
-sich nur in System-Prompt, `max_tokens` und `effort`; beide laufen durch
-`_create()` mit derselben Fehler-, Refusal- und Truncation-Behandlung.
+Invariante 1 gilt **auch für Signale**, nicht nur für Indikatoren. Jede
+Setup-Familie in `ideas/setups.py` bildet auf eine `RuleStrategy` aus
+`backtest/strategies/library.py` ab; `ideas/erkennung.py` wertet deren
+Regel-Objekte über denselben `BarContext` aus wie die Engine. Es gibt hier
+bewusst **keine** eigenen Erkenner — ein früherer Zwischenstand
+(`ideas/detectors.py`) hatte sie, und genau deshalb wurde er ersetzt. Ein Test
+verhindert die Rückkehr.
 
-`build_metrics_payload` (Alarm) und `build_report_payload` (Bericht) sind die
-**einzigen** Stellen, an denen Daten das Haus verlassen — ausschließlich
-berechnete Kennzahlen, keine Rohdaten, keine Kerzenlisten, keine Bilder. Tests
-prüfen die Schlüsselmenge; neue Felder dort bewusst hinzufügen.
+Stop und Ziel entstehen aus `stop_loss_atr`/`take_profit_atr` derselben
+Strategie. Gespeichert wird zusätzlich `atr_referenz` — der tatsächliche
+Einstieg ist die Eröffnung der Folgekerze, nicht der protokollierte
+Schlusskurs, und ohne den ATR-Bezug wäre das R-Vielfache nicht rekonstruierbar.
 
-Beide System-Prompts verbieten direkte Handelsempfehlungen und verlangen einen
-Disclaimer; fehlt er in der Antwort, ergänzt ihn `_create`. Tests sichern diese
-Zusagen einzeln ab — beim Umformulieren mitziehen.
+**Kein Ergebnisfeld** in der Ideen-Tabelle: Gewinn und Verlust entstehen erst
+bei der Auswertung unter einem bestimmten Regelwerk. Stünden sie im Log, gäbe
+es zwei Wahrheiten.
 
-Modell ist `claude-sonnet-5` (Nutzerwunsch). Sampling-Parameter wie
-`temperature` sind auf diesem Modell **nicht erlaubt** (400). `max_tokens`
-deckelt Denk- *und* Antworttokens zusammen, weil adaptives Denken
-standardmäßig an ist.
+`profil` (`sim_frei`/`lucid_challenge`/`lucid_funded`) dokumentiert die
+**tatsächliche** Kontoumgebung und ist kein Steuerungsfeld; `rules`
+(`none`/`lucid`/`both`) entscheidet beim **Auswerten**, was gerechnet wird.
+Die beiden nie vermischen.
 
-### 7. Zustellung geht nie verloren
+### 7. Filter haben drei Ausgänge, nicht zwei
 
-`Notifier.send` versucht Telegram und fällt bei jedem Fehler auf Konsole +
-Log zurück. `send_long` teilt Texte über dem 4096-Zeichen-Limit an
-Absatzgrenzen. Der Fallback-Pfad darf selbst nie werfen — er greift genau
-dann, wenn ohnehin schon etwas schiefliegt.
+`ideas/filters.py`: durch, abgelehnt — oder **nicht prüfbar**. Der dritte ist
+der wichtige. Ist der Wirtschaftskalender nicht erreichbar, wäre „keine
+Termine, also durch" eine Freigabe aus einem Ausfall heraus, und „ablehnen"
+vernichtete den Datensatz. Die Idee wird protokolliert und als ungeprüft
+vermerkt.
 
-### 8. `log_event` hat positions-only Parameter
+Aus demselben Grund kennt `ideas/kalender.py` eine **Abdeckungsgrenze**: Forex
+Factory liefert im Wesentlichen die laufende Woche, für ältere Zeitpunkte
+findet sich dort kein Termin — die Antwort wäre „kein Blackout" aus einer
+Wissenslücke heraus. Jenseits von `ideas.filter.blackout_max_alter_tage` bleibt
+die Frage offen.
 
-`log_event(logger, event, message, /, *, level=…, **payload)`. Der `/` ist
-Absicht: sonst kollidiert ein Payload-Feld namens `message` mit dem
-Positionsparameter und wirft zur Laufzeit einen `TypeError` — ausgerechnet im
-Fehlerpfad. Payload-Schlüssel dürfen deshalb beliebig heißen.
+**Auch gefilterte Ideen werden gespeichert.** Sonst ließe sich weder prüfen, ob
+ein Filter zu scharf steht, noch beantworten, wie viele Ideen ein Regelwerk
+verhindert hätte.
 
-Zwei Senken parallel: `logs/bot.log` (lesbar) und `logs/events.jsonl` (eine
-JSON-Zeile pro Event). Neue Ereignisse immer über `log_event` mit einem
-Event-Namen im Schema `bereich.aktion`.
+### 8. Zwei Logs, strikt getrennt
 
-### 9. Async-Aufbau des Live-Bots
+Tabelle `ideen` (regelbasiert, reproduzierbar) und `observations`
+(freie Beobachtungen). `IdeenStore.lade_fuer_auswertung` ist der einzige Weg,
+auf dem Etappe D an Daten kommt, und liest **nur** `ideen`. Ein Test prüft, dass
+der Quelltext dieser Methode das Wort `observations` nicht einmal enthält —
+sonst schliche sich nicht-reproduzierbares Rauschen in die Statistik.
 
-`LiveBot.run` startet drei Tasks: `feed` (Marktdaten), `candle-ticker`
-(schließt Kerzen auch ohne Ticks) und optional `telegram-commands`. `self._lock`
-serialisiert alles, was den `MarketState` anfasst.
+### 9. Kerzen tragen die Schlusszeit
 
-Wichtig: `_live_state_snapshot` kopiert den Puffer **unter** dem Lock und gibt
-ihn frei, bevor der mehrere Sekunden dauernde Claude-Aufruf startet. Neue
-lange Operationen niemals unter dem Lock laufen lassen.
+NinjaTrader beschriftet eine Kerze mit dem Ende ihres Fensters: die Ticks von
+14:00:00 bis 14:00:59 ergeben die Kerze **14:01**. Wer eine neue Datenquelle
+anbindet, muss das treffen (`resample(..., closed="left", label="right")`).
 
-Netzwerkschichten fangen jeden Fehler ab und protokollieren ihn, statt ihn
-eskalieren zu lassen — ein einzelner Fehler darf den Bot nie beenden.
+Bei den Dukascopy-Daten war es zunächst falsch, und **nichts an den Kursen hat
+es verraten** — die Reihe sah lückenlos und plausibel aus. Aufgefallen ist es
+erst im Kreuzvergleich gegen echte MNQ-Kerzen: r = −0,06 statt +0,95. Eine neue
+Quelle deshalb immer auf **Änderungen** gegenprüfen, nicht auf Niveaus.
 
-### 10. Tradovate-Market-Data-Protokoll
+### 10. Näherungen werden gekennzeichnet
 
-Textbasiert, SockJS-ähnlich (`live_bot/tradovate/md_socket.py`): Frames mit
-Präfix `o`/`h`/`a`/`c`, Requests als `<endpoint>\n<id>\n<query>\n<body>`,
-Client-Heartbeat `[]` alle ~2,5 s (Pflicht). `MarketDataSocket` kapselt genau
-**eine** Verbindung; Reconnect mit Backoff, Neu-Abonnieren und Historien-
-Nachladen liegen eine Ebene höher in `market/feed.py`. Nach einem Ausfall wird
-die Historie neu geladen, was die entstandene Datenlücke schließt.
+Delta bleibt `null` mit Begründung statt geschätzt zu werden. Volume Profile
+trägt `naeherung: true`. Die Dukascopy-Historie ist ein Index-CFD und kein
+MNQ-Futures; die Einschränkung steht in der erzeugten Datei selbst (Tabelle
+`herkunft`), und Backtests darauf sind **rein informativ**.
 
-### 11. Konfiguration und Live-Schutz
+Eine Schätzung, die aussieht wie eine Messung, ist in diesem Projekt der
+schwerste Fehler.
+
+### 11. Konfiguration und Startprüfungen
 
 Schwellenwerte ausschließlich in `config.yaml`, Secrets ausschließlich in
 `.env` — nichts davon im Code. Umgebungs-Vorrang: CLI > `.env` > YAML.
 
-Die Live-Umgebung ist doppelt gesichert: `allow_live_environment: true` in der
-`config.yaml` **und** `--i-know-this-is-live` beim Start. Beide Riegel
-beibehalten.
+**Abbrechende Startprüfungen** statt stiller Fehlfunktion: `Config.validate()`
+bricht bei unbekanntem `ideas.profil` ab und wenn `ideas.bars` nicht für zwei
+Sessions reicht (sonst blieben die Vortagesmarken NaN und `pdh_pdl_bruch` löste
+nie aus). `ideas.setups.pruefe_konfiguration` bricht bei unbekanntem
+Setup-Schlüssel ab.
+
+Diese Prüfungen nicht abschwächen — jede existiert wegen eines konkreten
+stillen Ausfalls.
 
 ### 12. Erweiterungspunkte
 
@@ -223,10 +253,11 @@ beibehalten.
   und in `library.py::STRATEGY_LIBRARY` eintragen. `BarContext` gibt bewusst nur
   die aktuelle und die vorherige Zeile frei — Look-ahead ist damit strukturell
   ausgeschlossen.
-- **Alarm-Bedingungen**: Prüfmethode in `ConditionEvaluator._checks` ergänzen,
-  Schlüssel in `config.yaml` unter `alerts.conditions` anlegen. Alle Bedingungen
-  sind Flankenerkennungen (Vergleich vorheriger/aktueller Snapshot), nicht
-  Zustandsabfragen.
+- **Setup-Familien**: Strategie in `library.py` anlegen, dann in
+  `ideas/setups.py::SETUP_BIBLIOTHEK` eintragen — mit `zusatzspalten`, sonst
+  bliebe das Setup bei fehlender Spalte stumm statt zu meckern. Einstiegsregeln
+  müssen **Flanken** sein, keine Zustandsabfragen: eine Zustandsregel feuert auf
+  jeder Kerze der Bewegung erneut und zählt dieselbe Bewegung vielfach.
 
 ## Konventionen
 
@@ -239,7 +270,9 @@ beibehalten.
 
 ## Weiterführend
 
-- `README.md` — Einrichtung, `/analyse`-Bericht, bekannte Grenzen
+- `README.md` — Einrichtung, NinjaTrader, MCP, Ideen-Protokollierung, Grenzen
+- `ETAPPE_C_SPEZIFIKATION.md` — verbindliche Vorgabe für die
+  Ideen-Protokollierung, inklusive der acht noch nicht gebauten Setup-Familien
 - `docs/BACKTESTING_ENTSCHEIDUNG.md` — warum eine eigene Engine statt
   `backtesting.py` oder `vectorbt`; lies das, bevor du eine der beiden
   Bibliotheken vorschlägst

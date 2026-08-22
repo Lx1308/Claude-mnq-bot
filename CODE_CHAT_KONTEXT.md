@@ -38,11 +38,12 @@ beiden aufgegangen und entfernt.
 | `ideas/` (Etappe C) | **4 Setup-Familien fertig, Einstiegspunkt `python -m ideas` da**, aber noch in keiner Aufgabenplanung eingetragen | ja, 44 Tests |
 | Etappe D, Lucid-Simulation | **existiert nicht** | — |
 
-**Testsuite: 316 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
+**Testsuite: 337 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
 
 | Datei | Tests |
 |---|---|
 | `test_mcp_snapshot.py` | 44 |
+| `test_dukascopy.py` | 21 |
 | `test_ideas.py` | 44 |
 | `test_levels_structure.py` | 39 |
 | `test_ntbridge.py` | 37 |
@@ -54,7 +55,7 @@ beiden aufgegangen und entfernt.
 | `test_indicators.py` | 15 |
 | `test_engine.py` | 13 |
 
-Verlauf: 124 → … → 326 → 334 → 370 → 373 → **316**.
+Verlauf: 124 → … → 326 → 334 → 370 → 373 → 316 → **337**.
 
 **Der Rückgang ist keine Regression.** Mit dem Legacy-Pfad fielen
 `test_live_bot.py` (29) und `test_on_demand.py` (35) weg — 64 Tests für Code,
@@ -739,7 +740,84 @@ hochladen; das Datum in der Kopfzeile verrät, ob die Kopie noch stimmt.
 
 ---
 
-## 14. Stand bei Sitzungsende (22.08.2026)
+## 14. Dukascopy: Backtest-Historie als Näherung (22.08.2026)
+
+Zehn Jahre echte CME-MNQ-Minutendaten sind **kostenlos nicht erhältlich**
+(Databento, CME DataMine, dxFeed — alle kostenpflichtig). Kostenlos ist
+Dukascopys öffentliche Tickhistorie, dort aber als **CFD auf den
+Nasdaq-100-Index**, nicht als Futures.
+
+| Datei | Inhalt |
+|---|---|
+| `backtest/data/dukascopy.py` | bi5-Dekodierung, Verdichtung zu 1m-Kerzen |
+| `backtest/data/dukascopy_store.py` | eigene SQLite mit Tabelle `herkunft` |
+| `lade_dukascopy.py` | Download, parallel und wiederaufnehmbar |
+| `tests/test_dukascopy.py` | 21 Tests der Import-/Konvertierungslogik |
+
+### 14.1 Diese Daten sind eine Näherung — das ist keine Formalie
+
+* **Andere Preisbildung:** ein Market Maker statt CME-Orderbuch.
+* **Kein echtes Handelsvolumen.** Die Volumenspalte trägt Dukascopy-Liquidität
+  in Millionen Einheiten. Alles Volumenbasierte (relatives Volumen, Volume
+  Profile, VWAP) bedeutet hier etwas anderes.
+* **Keine Kontraktabläufe.** Echte MNQ-Historie hat vierteljährlich einen
+  Rollover-Sprung, der CFD nicht.
+* **Andere Sessionstruktur** — nicht CME-Globex mit Wartungspause.
+
+Gemessener Niveauabstand zu echten MNQ-Kerzen desselben Tages: **−86 Punkte**
+(Streuung 5,6), weil der CFD den Index abbildet und MNQ das Futures mit
+Aufschlag.
+
+**Ergebnisse eines Backtests auf diesen Daten sind rein informativ.** Sie
+taugen dazu, eine Strategie auf Plausibilität und Programmierfehler
+abzuklopfen — nicht als Grundlage für eine Entscheidung über Geld. Das Projekt
+verlangt das schon für den Backtest auf den eigenen NT8-Daten; hier gilt es
+stärker. Die Warnung steht in der erzeugten Datei selbst (Tabelle `herkunft`),
+nach dem Vorbild von `naeherung: true` beim Volume Profile.
+
+### 14.2 Drei Dinge, die nur ein Abgleich zeigt
+
+**Das Symbol ist gemessen, nicht geraten.** `USATECHIDXUSD`. Die naheliegenden
+`USA100IDXUSD` und `NAS100IDXUSD` liefern 404. Ebenso der Preisfaktor 1000:
+29408411 / 1000 = 29408.41 passt zum Nasdaq-Niveau.
+
+**`duka` ist unbrauchbar.** Das empfohlene Paket setzt keinen
+`User-Agent`-Header; Dukascopy antwortet darauf mit **HTTP 403** und einer
+Cloudflare-Seite — gemessen auch für `EURUSD`, das es garantiert gibt. `duka`
+läuft in seine Wiederholungsschleife und bricht ab. Der Download ist deshalb
+selbst gebaut (rund 30 Zeilen).
+
+**Ein-Minuten-Versatz, gefunden nur durch Kreuzvergleich.** Beide Reihen
+bewegen sich um 5,3 Punkte je Minute, ihre Minutenänderungen korrelierten aber
+mit **r = −0,06**, also gar nicht. Ursache: `resample` beschriftet mit dem
+**Anfang** des Fensters, NinjaTrader mit der **Schlusszeit**. Nach der
+Korrektur (`closed="left", label="right"`): **r = +0,9492** bei Versatz 0.
+
+Nichts an den Kursen selbst hätte das verraten — die Reihe sah lückenlos und
+plausibel aus. **Lehre:** Eine neue Datenquelle gegen eine bekannte
+kreuzprüfen, und zwar auf *Änderungen*, nicht auf Niveaus. Ein Niveauvergleich
+hätte den Versatz nicht gezeigt.
+
+### 14.3 Dauer und Bedienung
+
+Zehn Jahre sind rund **87.600 Stunden**; seriell gemessen ~6 s je Stunde, also
+über fünf Tage. Der Download läuft deshalb parallel, ist **wiederaufnehmbar**
+(geholte Stunden stehen in der Datenbank) und hält HTTP 503 aus — Dukascopy
+drosselt bei zu vielen Anfragen, mit exponentiellem Backoff über vier Versuche.
+
+```bash
+.venv\Scripts\python.exe lade_dukascopy.py --jahre 10 --parallel 12
+.venv\Scripts\python.exe lade_dukascopy.py --von 2024-01-01 --bis 2024-02-01
+```
+
+Historie reicht bis mindestens 2015 zurück; 2014 liefert nichts mehr.
+**Der Vollabzug ist noch nicht gelaufen** — nur ein Probetag (1335 Kerzen).
+Die Datei ist in `.gitignore`, sie wächst auf viele GB und ist jederzeit neu
+ladbar.
+
+---
+
+## 15. Stand bei Sitzungsende (22.08.2026)
 
 ### Fertig und committet
 
@@ -780,6 +858,13 @@ Festgehalten, weil sie zeigen, wie schnell Notizen altern:
 3. „`kumulatives_delta.reason` nennt noch Tradovate" — nennt seit längerem
    korrekt NinjaTrader und das fehlende Add-on.
 
+### Neu hinzugekommen: Dukascopy-Näherungsdaten
+
+Import, Speicher, Download und 21 Tests stehen (Abschnitt 14). **Der
+Zehn-Jahres-Vollabzug ist bewusst nicht gestartet** — er dauert auch parallel
+Stunden und lädt viele GB. Der Befehl steht in 14.3; ein Probetag lief
+fehlerfrei durch.
+
 ### Was auf Laurin wartet
 
 1. **`flaggen_ausbruch` kann nie auslösen.** An echten MNQ-5m-Daten gemessen:
@@ -793,6 +878,8 @@ Festgehalten, weil sie zeigen, wie schnell Notizen altern:
    2.94), das Setup auf 1m protokollieren, oder auf `aktiv: false` setzen.
 2. **Branch mergen?** `legacy-entfernen` wartet auf `main`.
 3. **Die 8 weiteren Setup-Familien** — alle oder schrittweise?
+4. **Dukascopy-Vollabzug starten?** Zehn Jahre sind viele GB und Stunden
+   Laufzeit. Der Download ist wiederaufnehmbar, also gefahrlos abbrechbar.
 
 ### Halbfertig
 
