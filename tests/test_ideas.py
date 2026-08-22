@@ -906,3 +906,142 @@ _BASIS_KONFIGURATION: dict = {
     "logging": {},
     "backtest": {},
 }
+
+
+# ---------------------------------------------------------------------------
+#  Nachvollziehbarkeit (Spezifikation Abschnitt 5, Schritt 3)
+# ---------------------------------------------------------------------------
+
+def nachvollzug_umgebung():
+    """Ein Rahmen mit genau einem echten pdh_pdl_bruch plus passende Config."""
+    from common.config import Config as _C
+
+    rahmen = baue_rahmen(
+        [98.0, 99.0, 105.0, 106.0],
+        prev_session_high=100.0,
+        prev_session_low=50.0,
+    )
+    daten = _minimalkonfiguration()
+    # Nur eine Familie aktiv, damit die Zuordnung eindeutig ist.
+    for schluessel in ALLE_SETUPS:
+        daten["ideas"]["setups"][schluessel] = {"aktiv": schluessel == "pdh_pdl_bruch"}
+    daten["ideas"]["timeframe"] = "15m"
+    daten["ideas"]["bars"] = 300
+    return rahmen, _C.from_dict(daten)
+
+
+def erste_idee(rahmen, cfg):
+    from ideas.pipeline import baue_idee
+
+    signale, _ = erkenne(rahmen, cfg.ideas)
+    signal = [s for s in signale if s.richtung == RICHTUNG_LONG][0]
+    idee = baue_idee(signal, MNQ, cfg.ideas.timeframe, cfg)
+    # In die Form bringen, in der der Speicher sie zurueckgibt.
+    return {
+        "erstellt_utc": idee.erstellt_utc,
+        "setup": idee.setup,
+        "richtung": idee.richtung,
+        "entry": idee.entry,
+        "stop": idee.stop,
+        "ziel": idee.ziel,
+        "atr_referenz": idee.atr_referenz,
+        "stop_atr": idee.stop_atr,
+        "ziel_atr": idee.ziel_atr,
+    }
+
+
+def test_frisch_protokollierte_idee_ist_nachvollziehbar():
+    """Die Zusage "nachspielbar" - geprueft statt behauptet.
+
+    Ohne diesen Nachweis faellt eine Idee mit falschem Zeitstempel oder
+    einem Stop, der nicht zu ihrem ATR passt, erst in Etappe D auf - wenn
+    die Statistik schon darauf beruht.
+    """
+    from ideas.nachvollzug import pruefe_idee
+
+    rahmen, cfg = nachvollzug_umgebung()
+    ergebnis = pruefe_idee(erste_idee(rahmen, cfg), rahmen, cfg)
+
+    assert ergebnis.nachvollziehbar, ergebnis.abweichungen
+    assert ergebnis.kerze_gefunden
+    assert ergebnis.signal_bestaetigt
+
+
+def test_verschobener_zeitstempel_faellt_auf():
+    """Gegenprobe: eine Minute daneben, und nichts passt mehr."""
+    from ideas.nachvollzug import pruefe_idee
+
+    rahmen, cfg = nachvollzug_umgebung()
+    idee = erste_idee(rahmen, cfg)
+    idee["erstellt_utc"] = idee["erstellt_utc"] + timedelta(minutes=1)
+
+    ergebnis = pruefe_idee(idee, rahmen, cfg)
+    assert not ergebnis.nachvollziehbar
+    assert not ergebnis.kerze_gefunden
+    assert any("keine Kerze" in a for a in ergebnis.abweichungen)
+
+
+def test_stop_der_nicht_zum_atr_passt_faellt_auf():
+    """Der Kern der Rekonstruierbarkeit.
+
+    Etappe D bildet Stop und Ziel relativ zum tatsaechlichen Fill neu. Passt
+    der gespeicherte Stop nicht zu entry und stop_atr, waere das R-Vielfache
+    still falsch.
+    """
+    from ideas.nachvollzug import pruefe_idee
+
+    rahmen, cfg = nachvollzug_umgebung()
+    idee = erste_idee(rahmen, cfg)
+    idee["stop"] = idee["stop"] - 7.5
+
+    ergebnis = pruefe_idee(idee, rahmen, cfg)
+    assert not ergebnis.nachvollziehbar
+    assert any("stop" in a for a in ergebnis.abweichungen)
+
+
+def test_erfundene_idee_besteht_die_arithmetik_aber_nicht_die_regel():
+    """Der eigentliche Kern von Schritt 3.
+
+    Eine Zeile, deren Zahlen alle zueinander passen, aber auf einer Kerze
+    sitzt, auf der die Bedingung gar nicht erfuellt war, bestuende jede
+    reine Rechenpruefung. Erst die Regelpruefung faengt sie.
+    """
+    from ideas.nachvollzug import pruefe_idee
+
+    rahmen, cfg = nachvollzug_umgebung()
+    vorlage = erste_idee(rahmen, cfg)
+
+    # Eine Kerze OHNE Bruch waehlen und die Zahlen sauber dazu rechnen.
+    ruhige = rahmen.index[1]
+    schluss = float(rahmen.loc[ruhige, "close"])
+    atr = float(rahmen.loc[ruhige, "atr"])
+    erfunden = dict(vorlage)
+    erfunden.update(
+        erstellt_utc=ruhige.to_pydatetime(),
+        entry=schluss,
+        atr_referenz=atr,
+        stop=schluss - vorlage["stop_atr"] * atr,
+        ziel=schluss + vorlage["ziel_atr"] * atr,
+    )
+
+    ergebnis = pruefe_idee(erfunden, rahmen, cfg)
+    assert ergebnis.kerze_gefunden, "Die Kerze existiert - nur das Signal nicht."
+    assert not ergebnis.signal_bestaetigt
+    assert not ergebnis.nachvollziehbar
+    assert any("NICHT erfuellt" in a for a in ergebnis.abweichungen)
+
+
+def test_pruefe_alle_gibt_die_beanstandungen_heraus_nicht_nur_eine_zahl():
+    """Eine Zahl allein sagt nicht, ob ein systematischer Fehler vorliegt."""
+    from ideas.nachvollzug import pruefe_alle
+
+    rahmen, cfg = nachvollzug_umgebung()
+    gut_idee = erste_idee(rahmen, cfg)
+    kaputt = dict(gut_idee)
+    kaputt["ziel"] = kaputt["ziel"] + 33.0
+
+    gut, beanstandet = pruefe_alle([gut_idee, kaputt], rahmen, cfg)
+    assert gut == 1
+    assert len(beanstandet) == 1
+    _, ergebnis = beanstandet[0]
+    assert any("ziel" in a for a in ergebnis.abweichungen)
