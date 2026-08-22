@@ -903,7 +903,28 @@ sammelt die Aufgabe ab sofort Daten mit einem Setup, das garantiert leer bleibt.
    die Tagesserie hat eine Lücke 31.07.–12.08., der 1d-ATR ist dadurch ein
    Artefakt von rund 650 Punkten.
 
-### Kleinkram, noch offen
+### Kleinkram
 
-- `kumulatives_delta.reason` nennt Tradovate als Quelle.
-- Docstring in `mcp_server/context.py` begründet mit Tradovate-Login-Drosselung.
+Am 22.08.2026 nachgeprüft — die zuvor hier stehende Liste war bereits erledigt
+und damit ein Widerspruch zwischen Dokumentation und Code:
+
+- `kumulatives_delta.reason` (`mcp_server/snapshot.py:241`) nennt **korrekt**
+  NinjaTrader und das fehlende Add-on „Order Flow +", nicht Tradovate.
+- Der Docstring in `mcp_server/context.py` nennt Tradovate nur noch in einem
+  ausdrücklich als historisch markierten Absatz („hier stand bis zum
+  21.08.2026"); die Zeilen darüber stellen klar, dass es keinen Broker-Login
+  gibt. Das ist die vom Projekt gewollte *Warum*-Dokumentation, kein Rest.
+
+Tatsächlich noch offen war eine andere Stelle, jetzt behoben:
+`common/instruments.py` verwies mit `:func:` auf
+`live_bot.tradovate.contracts.third_friday` — ein Modul, das es nicht mehr
+gibt; die Funktion steht seit der Entfernung in derselben Datei. Ebenso zeigte
+der Kommentar über `MONTH_CODE_BY_NUMBER` auf eine gelöschte zweite Kopie, und
+die Einleitung begründete das Modul noch mit dem Live-Bot.
+
+**Lehre:** Eine „noch offen"-Liste am Sitzungsende altert genauso schnell wie
+die Arbeitsanweisung, die sie erzeugt hat. Vor dem Abarbeiten gegen den Code
+prüfen, nicht danach.
+
+Weiterhin auf der Platte, aber nicht in Git: ein leerer Ordner `live_bot/` mit
+`__pycache__`-Resten. Nicht gelöscht — Aufräumen im Dateisystem gehört Laurin.

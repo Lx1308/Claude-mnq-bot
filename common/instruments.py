@@ -3,14 +3,14 @@
 Warum eigenes Modul
 -------------------
 ``MarketConfig`` in :mod:`common.config` beschreibt genau EIN Instrument -
-das reicht fuer den Live-Bot, der einen Kontrakt streamt. Der MCP-Server
-beantwortet dagegen Fragen zu mehreren Instrumenten in derselben Sitzung
-(MNQ und MGC) und braucht dafuer Ticksize, Punktwert, Handelszeiten und
-Verfallsregel je Symbol.
+das genuegt fuer einen Backtest-Lauf, der auf einem Kontrakt rechnet. Der
+MCP-Server beantwortet dagegen Fragen zu mehreren Instrumenten in derselben
+Sitzung (MNQ und MGC) und braucht dafuer Ticksize, Punktwert, Handelszeiten
+und Verfallsregel je Symbol.
 
 Die Verfallsregel ist dabei kein Detail
 ---------------------------------------
-:func:`live_bot.tradovate.contracts.third_friday` gilt fuer die Index-
+:func:`third_friday` (weiter unten in diesem Modul) gilt fuer die Index-
 Futures (MNQ/MES: Quartalsmonate H/M/U/Z, letzter Handelstag 3. Freitag).
 Fuer COMEX-Gold ist sie **falsch**: MGC notiert G/J/M/Q/V/Z und der letzte
 Handelstag ist der drittletzte Geschaeftstag des Liefermonats. Wer die
@@ -25,8 +25,9 @@ from datetime import date, time as dtime, timedelta
 from enum import Enum
 from typing import Callable
 
-# CME-Monatscodes (identisch zu live_bot.tradovate.contracts.MONTH_CODES,
-# hier nochmals als Umkehrabbildung fuer die Kontraktlisten)
+# CME-Monatscodes, zusaetzlich als Umkehrabbildung fuer die Kontraktlisten.
+# Die frueher zweite Kopie in live_bot/tradovate/contracts.py ist mit dem
+# Legacy-Pfad entfallen; dies ist seit dem 22.08.2026 die einzige Quelle.
 MONTH_CODE_BY_NUMBER = {
     1: "F", 2: "G", 3: "H", 4: "J", 5: "K", 6: "M",
     7: "N", 8: "Q", 9: "U", 10: "V", 11: "X", 12: "Z",
