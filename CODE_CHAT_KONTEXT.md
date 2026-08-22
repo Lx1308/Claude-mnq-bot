@@ -752,8 +752,33 @@ gemessen, nicht gerechnet).
 | `31b0d60` | Konfiguration bereinigt, `on_demand` → `analyse`, Puffer-Prüfung umgezogen |
 | `c68b4b6` | Kostentest repo-weit, Gegenprobe durchgeführt |
 | `78f494c` | README auf den Stand nach der Entfernung |
+| `578a0e1` | `CODE_CHAT_KONTEXT.md`, Testzahlen gemessen |
+| `09e3c12` | `NORMALER_CHAT_KONTEXT.md`, Notiz „bleibt bestehen" aufgehoben |
+| `0240132` | kaputtes `fetch`-Kommando, veraltete Begründungen |
 
 Der Branch ist **nicht** nach `main` gemerged — das ist bewusst offen gelassen.
+
+### Ein echter Defekt, den die Aufräumarbeit zutage förderte
+
+`backtest/cli.py` bot weiterhin ein `fetch`-Kommando an, das Historie von
+Tradovate lädt. Der Provider war gelöscht — das Kommando wäre mit
+`DataProviderError` abgebrochen. Kein Test hatte es bemerkt, weil kein Test es
+aufrief. **Lehre:** Nach dem Entfernen einer Datenquelle nicht nur die Importe
+prüfen, sondern auch die Kommandozeile, die sie anbietet.
+
+### Drei Annahmen der Arbeitsanweisung waren überholt
+
+Festgehalten, weil sie zeigen, wie schnell Notizen altern:
+
+1. „Der Zwischenstand in `ideas/` ist nach der Spezifikation entstanden und
+   überholt, `detectors.py` ist der schwerwiegende Punkt" — `detectors.py` war
+   zu diesem Zeitpunkt bereits entfernt (`142fd11`), `ideas/` gegen die
+   Spezifikation neu gebaut.
+2. „README beschreibt derzeit ausschließlich den gelöschten Pfad" — sie war
+   seit `e932844` auf NinjaTrader/MCP umgestellt; der Legacy-Teil war ein klar
+   gekennzeichneter Abschnitt 9.
+3. „`kumulatives_delta.reason` nennt noch Tradovate" — nennt seit längerem
+   korrekt NinjaTrader und das fehlende Add-on.
 
 ### Was auf Laurin wartet
 
