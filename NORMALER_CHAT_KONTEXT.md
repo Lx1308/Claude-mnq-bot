@@ -514,22 +514,27 @@ kontinuierlich Historie, solange der Empfänger läuft.
 
 ### Projektziel gerade
 
-Etappe C beginnen: die regelbasierte Ideen-Protokollierung. Erst damit entsteht
-das, worum es dem Nutzer eigentlich geht — auswertbare Setups statt
-Bauchgefühl.
+Etappe C **produktiv** machen: die Protokollierung steht, aber sie läuft nicht.
+Solange sie an keinem Dauerprozess hängt, entsteht kein Datensatz — und ohne
+Datensatz gibt es auch für Etappe D nichts auszuwerten.
 
 ### Erledigt
 
-- Gesamte Rechenlogik in `common/` (**326 Tests grün**)
+- Gesamte Rechenlogik in `common/` (**370 Tests grün**)
 - MCP-Server mit Tool 1 und Tool 2, Terminal-Dump
 - **Etappe A abgeschlossen** (Bridge kompiliert, zwei Charts, live sendend)
 - **Etappe B abgeschlossen** (Empfänger, SQLite-Speicher, BarSource — mit
   echten Daten verifiziert)
+- **Etappe C gebaut** (22.08.2026): 4 Setup-Familien, 4 Filter mit drei
+  Ausgängen, zwei getrennte Logs — aber noch an keinen Dauerlauf gehängt
+- Lokales Git-Repo, README auf das Zielsystem umgestellt und um Etappe C
+  ergänzt
 
 ### Offen
 
-1. **HOCH:** Etappe C — regelbasierte Ideen-Protokollierung (MNQ). Der nächste
-   inhaltliche Schritt.
+1. **HOCH:** Etappe C an einen Dauerlauf hängen. Die Protokollierung ist gebaut
+   und getestet (4 Setup-Familien), wird aber von **keinem** laufenden Prozess
+   aufgerufen — es ist bislang keine einzige echte Idee entstanden.
 2. **HOCH:** Empfänger dauerhaft mitlaufen lassen; Laptop nicht schlafen legen.
    Jede Lücke kostet Historie, die historienabhängige Kennzahlen brauchen.
 3. **MITTEL:** Etappe D — `evaluate_past_ideas`, `get_performance_report`.
@@ -537,12 +542,12 @@ Bauchgefühl.
    EOD-Trailing-Drawdown über die Kontofolge. (Das `profil`-Feld selbst ist
    seit 22.08.2026 fertig — es dokumentiert nur die Herkunft, siehe
    Abschnitt 8.)
-5. **MITTEL:** Etappen E–F.
-6. **MITTEL:** README aktualisieren — sie beschreibt noch ausschließlich den
-   Tradovate-Pfad und erwähnt weder MCP noch NinjaTrader.
-7. **NIEDRIG, aber Voraussetzung für unbeaufsichtigtes Arbeiten:** Git-Repo
-   anlegen, privates GitHub, `.gitignore` prüfen (`.env`, `.venv/`, `*.sqlite3`,
-   Logs). Ohne das gibt es kein Rückholnetz für fehlerhafte Änderungen.
+5. **MITTEL:** Die 8 weiteren Setup-Familien (Spezifikation 2.2), schrittweise.
+6. **MITTEL:** Etappen E–F.
+7. **NIEDRIG:** Privates GitHub-Repo anlegen und pushen. Das **lokale** Git-Repo
+   steht seit dem 21.08. samt geprüfter `.gitignore` (`.env`, `.venv/`, `logs/`,
+   `*.sqlite3`); ein Push braucht **Laurins ausdrückliche Freigabe** und ist
+   deshalb offen.
 8. **NIEDRIG:** Gegencheck, ob der NT8-Feed wirklich Echtzeit ist (Vergleich mit
    TradingView). Nach dem Live-Test praktisch schon sehr wahrscheinlich.
 9. **NIEDRIG:** `laeuft_seit_utc` in `/status` zeigt nach frischem Start ein
@@ -552,6 +557,12 @@ Bauchgefühl.
 > **Korrektur gegenüber älteren Fassungen:** Die früheren Punkte 1–5 unter
 > "Offen" (kompilieren, Empfänger starten, Charts einrichten, Erfolgstest,
 > Etappe B verifizieren) sind **alle erledigt**.
+>
+> **Korrektur vom 22.08.2026:** Der Punkt "README aktualisieren — beschreibt nur
+> den Tradovate-Pfad" war **veraltet**; die README war bereits auf
+> NinjaTrader/MCP umgestellt. Die tatsächliche Lücke war eine andere: `ideas/`
+> kam darin überhaupt nicht vor. Das ist jetzt Abschnitt 8 der README. Der Punkt
+> ist damit erledigt und aus der Liste entfernt.
 
 ### Blocker
 

@@ -2,7 +2,7 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-22 (nachts). Geprüft gegen den tatsächlichen Projektordner.
+Stand: 2026-08-22 (Nachmittagslauf). Geprüft gegen den tatsächlichen Projektordner.
 
 ---
 
@@ -35,17 +35,23 @@ beiden aufgegangen und entfernt.
 | `mcp_server/` (3 Tools) | **fertig, an Claude Desktop angebunden** | ja |
 | `backtest/` | **fertig** | ja, **nie auf echten Daten gerechnet** |
 | `live_bot/` (Legacy: Tradovate + Telegram) | lauffähig, **nicht Zielsystem** | ja |
-| `ideas/` (Etappe C) | **4 Setup-Familien fertig**, nicht an einen Dauerlauf gehängt | ja, 36 Tests |
+| `ideas/` (Etappe C) | **4 Setup-Familien fertig, Einstiegspunkt `python -m ideas` da**, aber noch in keiner Aufgabenplanung eingetragen | ja, 44 Tests |
 | Etappe D, Lucid-Simulation | **existiert nicht** | — |
 
-**Testsuite: 370 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
+**Testsuite: erwartet 378 Tests.** `.venv\Scripts\python.exe -m pytest`
+
+Der Lauf vom 22.08. (nachmittags) fand im Linux-Sandkasten statt und konnte
+`pytest` nicht ausführen (Abschnitt 11). Die 8 neu hinzugekommenen Tests wurden
+dort **einzeln** über einen Direktlauf ausgeführt (8/8 grün) plus Gegenprobe;
+die Gesamtzahl 378 = 370 + 8 ist gerechnet, nicht gemessen. **Bei der nächsten
+Gelegenheit auf Windows einmal komplett laufen lassen.**
 
 | Datei | Tests |
 |---|---|
 | `test_mcp_snapshot.py` | 43 |
 | `test_levels_structure.py` | 39 |
 | `test_ntbridge.py` | 37 |
-| `test_ideas.py` | **36** |
+| `test_ideas.py` | **44** |
 | `test_on_demand.py` | 35 |
 | `test_live_bot.py` | 29 |
 | `test_instruments_sessions.py` | 26 |
@@ -84,9 +90,11 @@ SQLite → MCP → Claude Desktop.
 - **Kein Backtest auf echten Marktdaten.** Einzige Datendatei ist
   `data/DEMO_1m.csv`, ein synthetischer Zufallspfad. Daraus dürfen **keine**
   Aussagen über Strategiegüte abgeleitet werden.
-- **Etappe C läuft in keinem Dauerprozess.** `ideas.pipeline.protokolliere()`
-  ist gebaut und getestet, wird aber von nichts regelmäßig aufgerufen. Es ist
-  **noch keine einzige echte Idee protokolliert**.
+- **Etappe C ist noch in keiner Aufgabenplanung eingetragen.** Der
+  Einstiegspunkt `python -m ideas` existiert seit dem 22.08. und wurde als
+  Probelauf gegen die echten Kerzen gefahren (Abschnitt 6.5), aber nichts ruft
+  ihn regelmäßig auf. Es ist **noch keine einzige echte Idee protokolliert** —
+  das bleibt Laurins Schritt auf dem Windows-Rechner.
 
 ### Bekannte Probleme
 
@@ -114,10 +122,34 @@ SQLite → MCP → Claude Desktop.
 - **Die ältere Tagesserien-Lücke** (2026-07-31 → 2026-08-12) liegt außerhalb des
   Sieben-Tage-Fensters der Prüfung und ist damit **nicht** als erledigt belegt.
   Vor Aussagen über den 1d-ATR mit `--tage 0` gegenprüfen.
+- **README um Etappe C ergänzt** (neuer Abschnitt 8, Abschnitte 8–14
+  durchnummeriert). Dabei ein **Widerspruch aufgelöst**: beide Kontextdateien
+  führten "README beschreibt nur den Tradovate-Pfad" als offenen Punkt, obwohl
+  Commit `e932844` sie längst auf NinjaTrader/MCP umgestellt hatte. Die echte
+  Lücke war eine andere: `ideas/` kam in der README überhaupt nicht vor. Der
+  Punkt ist in `NORMALER_CHAT_KONTEXT.md` jetzt korrigiert.
+
+### Erledigt am 22.08.2026 (Nachmittagslauf)
+
+- **Einstiegspunkt `python -m ideas`** (`ideas/__main__.py`) — ein Einzellauf
+  über die jüngsten Kerzen, gedacht für die Windows-Aufgabenplanung, nicht als
+  Dauerprozess. Begründung im Modul-Docstring: ein Einzellauf ist zustandslos,
+  der Speicher idempotent, ein Lauf zu viel schadet nicht.
+- **Blackout-Schicht `ideas/kalender.py`** mit Abdeckungsgrenze
+  (`ideas.filter.blackout_max_alter_tage`, Vorgabe 7 Tage).
+- **`DeviationReentry`** in `backtest/strategies/base.py` — behebt eine
+  Signalhäufung in `vwap_reversion` (Lehre 17).
+- **Messung im Docstring von `DeviationReentry` nachgerechnet** und um ihre
+  Grundlage ergänzt. Sie stimmt: 47 Signale in 10 Bewegungen, größte mit 11 —
+  gilt aber nur für die **Long-Seite** bei Bündelung mit höchstens drei Kerzen
+  Abstand. Beides stand vorher nicht dabei und wäre später nicht nachprüfbar
+  gewesen.
 
 ### Offene technische Aufgaben
 
-1. Etappe C an einen Dauerlauf hängen, damit tatsächlich Ideen entstehen.
+1. `python -m ideas` in die Windows-Aufgabenplanung eintragen (mindestens
+   täglich, besser stündlich — sonst greift die Blackout-Prüfung nicht, siehe
+   6.5). Erst damit entstehen echte Ideen.
 2. Die 8 weiteren Setup-Familien (Spezifikation 2.2), schrittweise.
 3. Etappe D: `evaluate_past_ideas`, `get_performance_report`.
 4. Lucid-Regelsimulation.
@@ -199,7 +231,9 @@ Kostet Token je Alarm.
 | `filters.py` | vier Filter, **drei** Ausgänge (durch / abgelehnt / nicht prüfbar), `Filterbilanz.kontext` |
 | `model.py` | `TradeIdee` (Haupt-Log), `Beobachtung` (Exploration-Log), `berechne_crv` |
 | `store.py` | SQLite, Tabellen `ideen` und `observations` |
-| `pipeline.py` | `vorbereiten()`, `baue_idee()`, `protokolliere()` |
+| `pipeline.py` | `vorbereiten()`, `baue_idee()`, `protokolliere()` (mit `nur_rechnen` für den Probelauf) |
+| `kalender.py` | `KalenderBlackout` — Abdeckungsgrenze vor `CalendarService`; kennt nur ein Protokoll, **nicht** `mcp_server` |
+| `__main__.py` | Einzellauf-CLI: `--probelauf`, `--kein-kalender`, `--symbol`, `--bars`. Verdrahtet den Kalender als **einzige** Stelle mit `mcp_server`-Import |
 
 **`detectors.py` gibt es nicht mehr** — sie war die zweite Signal-Implementierung
 (Abschnitt 6). Ein Test verhindert ihre Rückkehr.
@@ -610,6 +644,22 @@ Läuft zusätzlich täglich um 08:00 über die Windows-Aufgabenplanung
 und hängt die Ausgabe an `datenluecken_log.txt` an (nicht versioniert).
 Der Wrapper setzt das Arbeitsverzeichnis — ohne das fände das Skript seine
 Datenbank nicht, und die Aufgabe scheiterte täglich lautlos.
+
+### Unbeaufsichtigte Läufe: die Testsuite läuft dort nicht
+
+Der geplante Lauf ("resume-project-work") arbeitet aus einem **Linux-Sandkasten**
+auf den gemounteten Projektordner. Dort gibt es nur **Python 3.10** und **kein
+Netz**; das Projekt braucht 3.14, und `.venv/` enthält Windows-Binärpakete.
+Versucht und gescheitert: pytest aus `.venv/Lib/site-packages` unter 3.10
+nachzunutzen — es fehlt `exceptiongroup`, das erst 3.11 in die Standardbibliothek
+kam. Ein Shim dafür wäre falsch, weil 3.10 `BaseExceptionGroup` gar nicht kennt.
+
+**Folge:** ein unbeaufsichtigter Lauf kann `pytest` **nicht** ausführen. Er darf
+deshalb nur Änderungen committen, die er anders belegen kann — Dokumentation,
+oder Code, dessen Verhalten sich mit einem gezielten `python3 -c`-Skript
+nachweisen lässt. Import- und API-Prüfungen funktionieren: `PYTHONPATH=. python3 -c
+"import ideas.pipeline"` läuft unter 3.10 durch, und die transitive Importhülle
+lässt sich über `sys.modules` gegenprüfen.
 
 **Konventionen:** Quelldateien **ASCII** (Umlaute als ae/oe/ue); README, `docs/`
 und Kontextdateien mit echten Umlauten. Nutzertexte, Docstrings, Kommentare und

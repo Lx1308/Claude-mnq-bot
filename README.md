@@ -75,6 +75,10 @@ Das Projekt ist über die Zeit gewachsen und hat deshalb **zwei** Pfade:
 Der Legacy-Pfad ist absichtlich erhalten geblieben, ist aber nicht mehr das Ziel.
 Abschnitt 9 beschreibt ihn.
 
+Daneben liegt `ideas/` (Abschnitt 8): dieselbe Datenbasis, aber nicht auf Zuruf,
+sondern regelbasiert protokollierend. Auch dieser Weg ruft die Anthropic-API
+nicht auf.
+
 ---
 
 ## 2. Projektstruktur
@@ -114,6 +118,16 @@ Claude chart bot/
 │   ├── levels.py                PDH/PDL/PDC, Overnight, IB, Opening Range, Gap
 │   ├── structure.py             Swings, S/R-Zonen, BOS/CHoCH, RSI-Divergenz
 │   └── patterns.py              Flagge, Dreieck, Doppeltop/-boden, Kompression
+│
+├── ideas/                       Etappe C: regelbasierte Ideen-Protokollierung
+│   ├── setups.py                4 Familien → je eine Backtest-Strategie
+│   ├── erkennung.py             wertet die Regel-Objekte über den Kerzen aus
+│   ├── filters.py               ADX, Liquidität, Dünnzone, Blackout
+│   ├── model.py                 TradeIdee, Beobachtung, CRV
+│   ├── store.py                 SQLite: Tabellen `ideen` und `observations`
+│   ├── pipeline.py              vorbereiten / baue_idee / protokolliere
+│   ├── kalender.py              Abdeckungsgrenze vor dem Wirtschaftskalender
+│   └── __main__.py              python -m ideas (Einzellauf für die Aufgabenplanung)
 │
 ├── live_bot/                    Legacy: Tradovate + Telegram + Anthropic
 │   ├── main.py                  Einstiegspunkt + CLI
@@ -398,6 +412,178 @@ dann als nicht verfügbar aus, statt so zu tun, als gäbe es keine Termine.
 
 ---
 
+## 8. Ideen-Protokollierung (Etappe C)
+
+`ideas/` schreibt regelbasiert erkannte Setups in eine eigene SQLite-Datei
+(`data/ideas.sqlite3`), getrennt vom Kerzenspeicher. Ziel ist ein auswertbarer
+Datensatz statt Erinnerung — die Auswertung selbst ist Etappe D und **existiert
+noch nicht**.
+
+> **Noch nicht eingeplant.** Der Einzellauf `python -m ideas` ist gebaut und
+> getestet (Abschnitt 8.7), steht aber in **keiner Aufgabenplanung** — nichts
+> ruft ihn regelmäßig auf. Es ist bislang **keine einzige echte Idee
+> protokolliert**.
+
+### 8.1 Die vier Setup-Familien
+
+| Schlüssel | Was | Art | Backtest-Strategie |
+|---|---|---|---|
+| `pdh_pdl_bruch` | Bruch des Vortageshochs bzw. -tiefs | Fortsetzung | `prev_day_breakout` |
+| `ib_bruch` | Bruch der Initial Balance der ersten RTH-Stunde | Fortsetzung | `ib_breakout` |
+| `vwap_reversion` | Rückkehr zum VWAP nach weiter Abweichung | Reversion | `vwap_reversion` |
+| `flaggen_ausbruch` | Ausbruch aus der Konsolidierung nach Impuls | Fortsetzung | `flag_breakout` |
+
+**Jede Familie ist eine Backtest-Strategie, keine zweite Implementierung.**
+`ideas/setups.py` baut die Regel-Objekte über `build_strategy()` aus
+`backtest/strategies/library.py`; die Erkennung wertet sie über denselben
+`BarContext` aus, den auch die Engine benutzt. Ein Test prüft diese Zuordnung
+(`test_jede_setup_familie_verweist_auf_eine_backtest_strategie`), ein zweiter
+verhindert die Rückkehr eigener Erkenner
+(`test_ideas_modul_hat_keine_eigenen_erkenner_mehr`). Das ist dieselbe
+Invariante wie bei `common/indicators.py`, nur eine Ebene höher: sonst
+protokollierte der Bot etwas anderes, als der Backtest später nachrechnet.
+
+Acht weitere Familien (BOS, CHoCH, RSI-Divergenz, Doppeltop/-boden, Dreieck,
+Range-Kompression, Gap-Fill, Gap-and-Go) sind spezifiziert, aber bewusst **nicht
+gebaut** — keine davon ist gegen echte Daten geprüft.
+
+### 8.2 Die vier Filter haben drei Ausgänge
+
+`ideas/filters.py`: ADX (Fortsetzung braucht Trend, Reversion braucht Range),
+Liquiditätsfenster, Dünnzone, Termin-Blackout.
+
+Jeder Filter endet **durch**, **abgelehnt** oder **nicht prüfbar**. Der dritte
+Ausgang ist der Punkt: ist der Wirtschaftskalender nicht erreichbar, wird die
+Idee mit `blackout_nicht_pruefbar` markiert und **nicht** stillschweigend
+durchgewinkt. Ein Ausfall darf nie wie Entwarnung aussehen.
+
+Abgelehnte Ideen werden trotzdem gespeichert (`speichere_gefilterte: true`).
+Sonst ließe sich später weder prüfen, ob ein Filter zu scharf steht, noch
+beantworten, wie viele Ideen ein Regelwerk verhindert hätte.
+
+### 8.3 Zwei Logs, strikt getrennt
+
+| Tabelle | Inhalt | Auswertung |
+|---|---|---|
+| `ideen` | regelbasiert erkannte Setups (`quelle = regel`) | ja |
+| `observations` | freie Beobachtungen ohne Regel dahinter | **nie** |
+
+`lade_fuer_auswertung()` nennt die Tabelle `observations` nicht einmal; ein
+Quelltext-Test hält das fest. Eine Beobachtung ist kein Trade — sie hat weder
+Einstieg noch Stop noch CRV.
+
+### 8.4 Was bewusst NICHT gespeichert wird
+
+**Kein Ergebnisfeld.** Gewinn oder Verlust entsteht erst durch
+`evaluate_past_ideas` unter einem bestimmten Regelwerk. Stünde ein Ergebnis im
+Log, gäbe es zwei Wahrheiten, je nachdem wann man hinsieht.
+
+Damit die Auswertung trotzdem **nachspielen** kann, trägt jede Idee
+`atr_referenz`, `stop_atr` und `ziel_atr` mit. Das Feld `entry` ist der
+**Schlusskurs der Signalkerze**, nicht der Fill — gefüllt wird zur Eröffnung
+der Folgekerze, genau wie in der Backtest-Engine. Ohne die drei ATR-Felder wäre
+das R-Vielfache relativ zum echten Fill nicht rekonstruierbar.
+
+`erstellt_utc` ist ebenfalls der **Schlusszeitpunkt der Signalkerze**, nicht der
+Schreibzeitpunkt — nur so ist die Idee gegen die Kerzen in `ntbridge.sqlite3`
+nachvollziehbar.
+
+### 8.5 `profil` ist Herkunft, kein Steuerungsfeld
+
+|  | hält fest | wann |
+|---|---|---|
+| `profil` (Feld an der Idee) | was **tatsächlich** war — welches Konto | beim Protokollieren |
+| `rules` (Parameter von `evaluate_past_ideas`) | was **gewesen wäre** — welches Regelwerk | beim Auswerten |
+
+Deshalb filtert `lade_fuer_auswertung()` **nicht** nach `profil`, außer man
+verlangt es ausdrücklich: die interessante Frage ist, welche Setups auch unter
+Prop-Firm-Regeln tragen, und die beantwortet man, indem man alle Ideen durch
+beide Regelwerke rechnet.
+
+> **Namensfalle.** Erlaubt sind `sim_frei`, `lucid_challenge`, `lucid_funded` —
+> **nicht** `demo`. Unter `tradovate:` steht bereits `environment: demo`, das ist
+> die Broker-Umgebung und hat hiermit nichts zu tun. `Config.validate()` bricht
+> bei jedem anderen Wert ab; ein Tippfehler würde die spätere Auswertung sonst
+> still in zwei Gruppen zerlegen.
+
+### 8.6 Abbrechen statt schweigen
+
+- `ideas/setups.py::pruefe_konfiguration()` bricht ab, wenn ein Setup-Schlüssel
+  unbekannt ist oder **alle** Familien abgeschaltet sind — eine Konfiguration,
+  die nie auslösen kann, soll nicht so aussehen wie "keine Signale".
+- `ideas/erkennung.py::pruefe_spalten()` wirft `FehlendeSpalte`, wenn eine
+  benötigte Spalte fehlt. Ohne diese Prüfung bliebe das betroffene Setup stumm.
+  Deshalb stehen `ib_high`/`ib_low` ausdrücklich in `zusatzspalten`: sie kommen
+  aus `common/levels.py`, nicht aus `compute_indicators`.
+- Eine in sich unschlüssige Idee (Stop auf der falschen Seite) wirft
+  `UngueltigeIdee` und landet als `verworfen` im Protokollbericht, statt
+  übersprungen zu werden.
+
+Die Prüfung sitzt **in `ideas.setups`, nicht in `Config.validate()`**. Stünde
+sie dort, zöge `common` einen Import aus `ideas` — eine Schichtumkehr, über die
+der MCP-Server still `ideas` samt `backtest.strategies` in seine Importhülle
+bekam. Ein eigener Test hält `Config.validate` frei davon.
+
+### 8.7 Aufruf
+
+```bash
+.venv\Scripts\python.exe -m ideas                  # ein Lauf über die jüngsten Kerzen
+.venv\Scripts\python.exe -m ideas --probelauf      # rechnen, aber nichts schreiben
+.venv\Scripts\python.exe -m ideas --kein-kalender  # ohne Blackout-Abfrage
+.venv\Scripts\python.exe -m ideas --symbol MNQ --bars 2000
+```
+
+Der Lauf geht **einmal** durch und beendet sich; für den Dauerbetrieb gehört er
+in die Windows-Aufgabenplanung, genau wie `pruefe_datenluecken.py`. Ein
+Dauerprozess hätte eigenen Zustand, eigene Absturzszenarien und ein eigenes
+Neustartproblem — ein Einzellauf liest, was da ist, schreibt was fehlt, und ist
+fertig. Der Speicher ist idempotent, ein Lauf zu viel schadet also nicht.
+
+**Mindestens täglich, besser stündlich.** Der Blackout-Filter kann nur über die
+letzten Tage Auskunft geben (Abschnitt 8.8). Wer einmal im Monat aufholt, bekommt
+für fast alle Ideen „Blackout nicht prüfbar" — protokolliert, aber weniger wert.
+
+Programmatisch:
+
+```python
+from common.config import Config
+from ideas.pipeline import protokolliere
+from ideas.store import IdeenStore
+
+cfg = Config.load("config.yaml")
+with IdeenStore(cfg.ideas.datenbank) as store:
+    bericht = protokolliere(df, "MNQ", cfg, store)   # df = 5m-Kerzen aus ntbridge
+    print(bericht.to_dict())
+```
+
+`protokolliere()` erkennt, filtert und speichert in einem Lauf und gibt einen
+`Protokollbericht` zurück (erzeugt / gefiltert / neu gespeichert / verworfen).
+Überlappende Läufe sind unschädlich: `ab_zeitpunkt` spart die Filterarbeit, der
+UNIQUE-Index fängt Wiederholungen ohnehin ab.
+
+Die Schwellenwerte stehen unter `ideas:` in `config.yaml` (Abschnitt 11).
+
+### 8.8 Der Kalender kennt nur die letzten Tage
+
+`ideas/kalender.py` liegt als **Abdeckungsgrenze** vor dem Wirtschaftskalender.
+Grund: Forex Factory liefert im Wesentlichen die laufende Woche. Fragt man die
+Schnittstelle nach einem drei Wochen alten Zeitpunkt, findet sie dort keinen
+Termin und meldet `blackout.aktiv = false`. Das sieht aus wie „geprüft, alles
+frei", ist aber „der Kalender kennt diesen Zeitraum gar nicht" — dieselbe
+Verwechslung von Ausfall und Entwarnung wie in Abschnitt 7.
+
+Zeitpunkte jenseits von `ideas.filter.blackout_max_alter_tage` (Vorgabe 7) werden
+deshalb gar nicht erst angefragt und als **nicht prüfbar** vermerkt. Der Lauf
+meldet am Ende, wie oft das vorkam. Zukünftige Zeitpunkte sind unproblematisch —
+dort stehen die Termine ja.
+
+`ideas` importiert `mcp_server` dabei **nicht**: die Blackout-Schicht kennt nur
+ein Protokoll (`Terminquelle`), die konkrete `CalendarService`-Klasse wird erst
+in `ideas/__main__.py` verdrahtet. Sonst wüchsen die beiden Oberschichten
+zusammen.
+
+---
+
 ## 9. Legacy: Telegram-Bot und /analyse
 
 Der ursprüngliche Pfad: Tradovate-WebSocket → Alarm-Bedingungen → Anthropic-API →
@@ -564,7 +750,27 @@ indicators:
     consolidation_lookback: 10
     consolidation_max_atr: 1.2
     breakout_buffer_atr: 0.1
+
+ideas:                           # Etappe C, siehe Abschnitt 8
+  enabled: true
+  profil: sim_frei               # NICHT "demo" - siehe Namensfalle unten
+  datenbank: "data/ideas.sqlite3"
+  instrumente: ["MNQ"]
+  timeframe: "5m"
+  bars: 1500
+  crv_schwelle: 1.5              # darunter: markiert, aber trotzdem gespeichert
+  speichere_gefilterte: true     # sonst fehlt der Vergleichsmaßstab
+  setups:
+    pdh_pdl_bruch: { aktiv: true, puffer_punkte: 1.0, stop_atr: 1.5, ziel_atr: 3.0 }
+    ib_bruch:      { aktiv: true, puffer_punkte: 1.0, stop_atr: 1.5, ziel_atr: 3.0 }
+    vwap_reversion: { aktiv: true, abweichung_atr: 1.5, stop_atr: 1.5, ziel_atr: 2.0 }
+    flaggen_ausbruch: { aktiv: true, stop_atr: 1.2, ziel_atr: 2.5 }
 ```
+
+`stop_atr` / `ziel_atr` sind ATR-Vielfache ab Einstieg — **dieselbe Bedeutung**
+wie `stop_loss_atr` / `take_profit_atr` in der Backtest-Engine, damit Protokoll
+und Backtest dasselbe rechnen. Fehlt eine Familie unter `setups:`, gelten die
+Vorgabewerte aus `IdeenSetupParameter`.
 
 > **`candle_buffer_size` nicht blind verkleinern.**
 > Vortageshoch und -tief brauchen die komplette Vorsession **plus** die laufende.
@@ -608,7 +814,7 @@ Payload. Wichtige Typen: `ntbridge.started`, `ntbridge.bars.accepted`,
 ## 13. Tests
 
 ```bash
-.venv\Scripts\python.exe -m pytest              # alles (326)
+.venv\Scripts\python.exe -m pytest              # alles (378)
 .venv\Scripts\python.exe -m pytest -v
 .venv\Scripts\python.exe -m pytest tests/test_ntbridge.py
 .venv\Scripts\python.exe -m pytest -k lookahead -v
@@ -631,6 +837,10 @@ Abgedeckt sind unter anderem:
 - MCP: **kein Anthropic-Aufruf** in `mcp_server/` (AST-basiert), kein Umbiegen
   von `sys.stdout`, Schlüsselmenge der Payloads
 - Konfiguration: zu kleiner Kerzenpuffer wird beim Start abgefangen
+- Ideen (`test_ideas.py`): jede Setup-Familie verweist auf eine
+  Backtest-Strategie, keine eigenen Erkenner, die Auswertung liest nie das
+  Exploration-Log, fehlende Spalte bricht laut ab, Erkennung sieht nie in die
+  Zukunft, IB-Bruch löst vor Ablauf des IB-Fensters nicht aus
 
 Die Netzwerkschichten (WebSocket, REST, Telegram, Anthropic) sind bewusst nicht
 mit Mocks nachgebaut — dort testet man sonst vor allem die eigenen Mocks. Sie
@@ -671,6 +881,16 @@ kein `actual`-Feld — daher die Aufteilung: Forex Factory liefert den Terminpla
 FRED die Ist-Werte. Ist der Kalender nicht erreichbar, steht
 `calendar_available: false` mit Begründung da — **niemals** "keine Termine". Ein
 Ausfall darf nie wie Entwarnung aussehen.
+
+**Die Ideen-Protokollierung läuft in keinem Dauerprozess.**
+`ideas.pipeline.protokolliere()` ist gebaut und getestet, wird aber von nichts
+regelmäßig aufgerufen — es ist bislang keine einzige echte Idee protokolliert.
+Die Auswertung (Etappe D: `evaluate_past_ideas`, `get_performance_report`)
+existiert noch nicht.
+
+**Es wurde nie auf echten Marktdaten backgetestet.** Die einzige Datendatei
+`data/DEMO_1m.csv` ist ein synthetischer Zufallspfad zum Ausprobieren der CLI.
+Aus ihr lassen sich **keine** Aussagen über die Güte einer Strategie ableiten.
 
 **Kontraktrollover.** Ein zusammengesetzter Frontmonat-Chart hat an den Rolltagen
 Preissprünge. Wer über Rollover hinweg backtestet, sollte back-adjusted Daten
