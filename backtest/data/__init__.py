@@ -22,10 +22,6 @@ def create_provider(name: str, **kwargs: object) -> DataProvider:
     key = name.lower()
     if key == "csv":
         return CsvDataProvider(**kwargs)  # type: ignore[arg-type]
-    if key == "tradovate":
-        from backtest.data.tradovate_provider import TradovateDataProvider
-
-        return TradovateDataProvider(**kwargs)  # type: ignore[arg-type]
     raise DataProviderError(
-        f"Unbekannte Datenquelle {name!r}. Verfuegbar: 'csv', 'tradovate'."
+        f"Unbekannte Datenquelle {name!r}. Verfuegbar: 'csv'."
     )
