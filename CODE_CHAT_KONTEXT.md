@@ -2,7 +2,8 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-22 (Nachmittagslauf). Geprüft gegen den tatsächlichen Projektordner.
+Stand: 2026-08-22 (nach Entfernung des Legacy-Pfads). Gegen den tatsächlichen
+Projektordner geprüft, Testzahlen auf Windows **gemessen**.
 
 ---
 
@@ -33,37 +34,40 @@ beiden aufgegangen und entfernt.
 | `ntbridge/` (Empfänger + SQLite-Store) | **fertig** | ja, **mit echten NT8-Daten verifiziert** |
 | `ninjatrader/ClaudeBridge.cs` v1.0.1 | **fertig** | **in NT8 kompiliert, läuft live** |
 | `mcp_server/` (3 Tools) | **fertig, an Claude Desktop angebunden** | ja |
-| `backtest/` | **fertig** | ja, **nie auf echten Daten gerechnet** |
-| `live_bot/` (Legacy: Tradovate + Telegram) | lauffähig, **nicht Zielsystem** | ja |
+| `backtest/` | **fertig**, nur noch CSV-Quelle | ja, **nie auf echten Daten gerechnet** |
 | `ideas/` (Etappe C) | **4 Setup-Familien fertig, Einstiegspunkt `python -m ideas` da**, aber noch in keiner Aufgabenplanung eingetragen | ja, 44 Tests |
 | Etappe D, Lucid-Simulation | **existiert nicht** | — |
 
-**Testsuite: erwartet 378 Tests.** `.venv\Scripts\python.exe -m pytest`
-
-Der Lauf vom 22.08. (nachmittags) fand im Linux-Sandkasten statt und konnte
-`pytest` nicht ausführen (Abschnitt 11). Die 8 neu hinzugekommenen Tests wurden
-dort **einzeln** über einen Direktlauf ausgeführt (8/8 grün) plus Gegenprobe;
-die Gesamtzahl 378 = 370 + 8 ist gerechnet, nicht gemessen. **Bei der nächsten
-Gelegenheit auf Windows einmal komplett laufen lassen.**
+**Testsuite: 316 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
 
 | Datei | Tests |
 |---|---|
-| `test_mcp_snapshot.py` | 43 |
+| `test_mcp_snapshot.py` | 44 |
+| `test_ideas.py` | 44 |
 | `test_levels_structure.py` | 39 |
 | `test_ntbridge.py` | 37 |
-| `test_ideas.py` | **44** |
-| `test_on_demand.py` | 35 |
-| `test_live_bot.py` | 29 |
 | `test_instruments_sessions.py` | 26 |
 | `test_event_risk.py` / `test_patterns.py` | je 22 |
 | `test_extended_indicators.py` | 21 |
 | `test_structure.py` | 17 |
-| `test_indicators.py` / `test_metrics_and_splits.py` | je 15 |
+| `test_metrics_and_splits.py` | 16 |
+| `test_indicators.py` | 15 |
 | `test_engine.py` | 13 |
 
-Verlauf: 124 → … → 286 → 326 → 332 → 335 → 329 → 334 → **370**.
-Der Rückgang auf 329 war beabsichtigt: ein parametrisierter Test über acht
-Moduldateien wurde durch zwei gezielte, stärkere ersetzt.
+Verlauf: 124 → … → 326 → 334 → 370 → 373 → **316**.
+
+**Der Rückgang ist keine Regression.** Mit dem Legacy-Pfad fielen
+`test_live_bot.py` (29) und `test_on_demand.py` (35) weg — 64 Tests für Code,
+den es nicht mehr gibt. Gegengerechnet kamen 7 hinzu: der repo-weite
+Kostentest, die von `candle_buffer_size` nach `ideas.bars` umgezogene
+Puffer-Prüfung samt Gegenprobe, und die Tests zu `DeviationReentry`.
+373 − 64 + 7 = 316.
+
+**Erledigt: die offene Messung.** Eine frühere Fassung dieser Datei nannte
+„erwartet 378 Tests" — gerechnet, nicht gemessen, weil jener Lauf in einem
+Linux-Sandkasten stattfand und `pytest` dort nicht startete. Der Lauf auf
+Windows ist nachgeholt; die Zahlen oben sind gemessen. Die 378 waren ohnehin
+gegenstandslos, da sie den entfernten Legacy-Pfad mitzählten.
 
 **Bekannte Flakiness:** `test_ntbridge.py::test_empfaenger_lehnt_falschen_pfad_ab`
 fiel einmal mit `ConnectionAbortedError` (WinError 10053) aus und war isoliert
@@ -155,7 +159,6 @@ SQLite → MCP → Claude Desktop.
 4. Lucid-Regelsimulation.
 5. MCP-Startzeit: pandas verzögert importieren.
 6. Etappe E: Dauerbetrieb-Härtung.
-7. Entscheidung: Legacy-Pfad `live_bot/` samt Tradovate entfernen? (Abschnitt 7)
 
 ---
 
@@ -173,17 +176,12 @@ NinjaTrader 8 Chart
                  └─ Claude Desktop  <- Interpretation NUR hier
 ```
 
-**Seit 21.08.2026 importiert `mcp_server/` ausschließlich aus `common/` und
-`ntbridge/`** — kein `live_bot`, kein Tradovate. Zwei Tests sichern das
-(Abschnitt 5.3).
+Daneben liest `ideas/` denselben Speicher und protokolliert regelbasiert
+(Abschnitt 6). **Keiner der beiden Wege ruft die Anthropic-API auf** — seit dem
+22.08.2026 für das gesamte Repository getestet (Abschnitt 5.3).
 
-### Legacy-Pfad (lauffähig, nicht Ziel)
-
-```
-Tradovate WebSocket -> live_bot/market/ -> Alarme -> Anthropic-API -> Telegram
-```
-
-Kostet Token je Alarm.
+**Der Legacy-Pfad (Tradovate → `live_bot/` → Anthropic-API → Telegram) ist am
+22.08.2026 entfernt worden**, Abschnitt 7.
 
 ---
 
@@ -227,6 +225,8 @@ Kostet Token je Alarm.
 | Datei | Inhalt |
 |---|---|
 | `setups.py` | **Setup-Bibliothek.** 4 Familien, jede auf eine `RuleStrategy` abgebildet. `pruefe_konfiguration()` bricht bei unbekanntem Schlüssel oder durchweg abgeschalteten Familien ab |
+| `__main__.py` | `python -m ideas` — ein Protokollierungslauf, `--probelauf`, `--kein-kalender` |
+| `kalender.py` | Abdeckungsgrenze vor dem Wirtschaftskalender (Abschnitt 8.17) |
 | `erkennung.py` | läuft über die Kerzen und wertet die Regel-Objekte über `BarContext` aus; `pruefe_spalten()`, `Erkennungsbericht` |
 | `filters.py` | vier Filter, **drei** Ausgänge (durch / abgelehnt / nicht prüfbar), `Filterbilanz.kontext` |
 | `model.py` | `TradeIdee` (Haupt-Log), `Beobachtung` (Exploration-Log), `berechne_crv` |
@@ -306,7 +306,7 @@ der Grund, den Etappe-C-Zwischenstand zu ersetzen statt fortzuschreiben
 (Kommission prozentual statt USD je Seite, keine Kontraktmultiplikatoren);
 `vectorbt` macht zustandsabhängige Regeln schwer debugbar.
 
-### 5.3 `mcp_server` ohne `live_bot` — und ein transitiv prüfender Test
+### 5.3 Transitiv prüfender Kostentest (seit 22.08. repo-weit)
 
 Bis 21.08.2026 importierte `bars.py` fünf `live_bot`-Module, gebraucht nur von
 `TradovateBarSource`. Der Kostengarantie-Test prüfte je Datei nur deren **eigene**
@@ -429,26 +429,54 @@ echte Idee protokolliert.
 
 ---
 
-## 7. Offene Entscheidung: Legacy-Pfad entfernen?
+## 7. Legacy-Pfad entfernt (22.08.2026)
 
-Der Nutzer sagte am 21.08.2026: *„tradovate ist raus brauche dazu nichts mehr."*
-Umgesetzt ist daraufhin die **Entkopplung des Zielsystems** (5.3). Die
-vollständige Entfernung ist **bewusst nicht** erfolgt, weil sie weiter reicht,
-als der Satz eindeutig deckt:
+**Entschieden und umgesetzt.** Diese Frage stand seit dem 21.08.2026 offen, weil
+der Satz *„tradovate ist raus brauche dazu nichts mehr"* nicht eindeutig deckte,
+wie weit die Entfernung reichen sollte. Laurin hat am 22.08.2026 ausdrücklich
+entschieden: der gesamte Pfad geht.
 
-| Betroffen | Umfang |
+Entfernt in vier Commits auf dem Branch `legacy-entfernen`:
+
+| Was | Umfang |
 |---|---|
-| `live_bot/tradovate/` | 1007 Zeilen |
-| `backtest/data/tradovate_provider.py` | 126 Zeilen |
-| `live_bot/` gesamt (Alarme, Telegram, `/analyse`) | hängt vollständig daran |
-| Tests | `test_live_bot.py` (29) + `test_on_demand.py` (35) = **64** |
-| `config.yaml` | `Config.from_dict` **verlangt** den `tradovate:`-Abschnitt |
+| `live_bot/` | 20 Dateien, 3868 Zeilen |
+| `backtest/data/tradovate_provider.py` | samt Registrierung in der Factory |
+| `tests/test_live_bot.py`, `tests/test_on_demand.py` | 64 Tests |
+| `config.yaml` | Abschnitte `tradovate`, `alerts`, `claude`, `notify` |
+| `common/config.py` | 6 Klassen, `with_environment`, `require_tradovate` |
 
-Zudem hält `NORMALER_CHAT_KONTEXT.md` fest, der Legacy-Pfad *„bleibt bestehen,
-ist aber nicht mehr das Ziel"* — eine dokumentierte frühere Entscheidung.
-**Widerspruch festgestellt, nicht stillschweigend aufgelöst.** Zu klären.
+`Secrets` trägt nur noch `FRED_API_KEY`.
 
----
+### 7.1 Zwei Dinge, die dabei NICHT verlorengehen durften
+
+**Der `on_demand`-Abschnitt konnte nicht ersatzlos weg.** Die Arbeitsanweisung
+nannte ihn unter den zu löschenden, aber `mcp_server/snapshot.py` liest von dort
+Swing-Stärke, Lookback, Zonen und Trendparameter. Nach der Rangfolge schlägt der
+Code die Anweisung — deshalb behalten, auf die sechs tatsächlich genutzten
+Felder eingedampft und zu **`analyse`** umbenannt. Ein Abschnitt, der nach dem
+gelöschten `/analyse`-Kommando des Telegram-Bots heißt, wäre irreführend.
+
+**Die Vortagesmarken-Zusicherung ist umgezogen, nicht gestrichen.** Sie hing an
+`market.candle_buffer_size` und den Vortages-Alarmen. Der Alarmpfad ist weg, die
+Gefahr nicht: bleiben `prev_session_high`/`-low` NaN, löst `pdh_pdl_bruch`
+**nie** aus, ohne Fehlermeldung. `Config.validate()` prüft das jetzt an
+`ideas.bars`, skaliert nach `ideas.timeframe`.
+
+`market.candle_buffer_size` und `warmup_bars` bleiben als Felder erhalten, werden
+aber **von keinem laufenden Prozess mehr ausgewertet** — der MCP-Server holt über
+`DEFAULT_BAR_COUNTS`, die Ideen-Protokollierung über `ideas.bars`.
+
+### 7.2 Verlorene Zusicherungen aus `test_on_demand.py`
+
+Mit der Datei sind drei Zusagen entfallen, die vorher einzeln getestet waren:
+Disclaimer in der Claude-Antwort, Schlüsselmenge der Payloads, Verbot direkter
+Handelsempfehlungen.
+
+Sie sind **durch Entfernung gegenstandslos**, nicht ungeprüft: es gibt keinen
+Claude-Aufruf mehr, den sie absichern könnten. An ihre Stelle tritt der
+repo-weite Kostentest (Abschnitt 9) — er sichert die stärkere Zusage, dass
+überhaupt nirgends mehr ein Anthropic-Import steht.
 
 ## 8. Bugs und Fehlerlehren
 
@@ -490,16 +518,23 @@ Fachwissen prüfbar ist (Profil gegen `profile_erlaubt`, „mindestens eine
 Familie aktiv"). Ein eigener Test hält `Config.validate` frei von
 `ideas`-Importen.
 
-### 8.16 BOM in einer Quelldatei
+### 8.16 BOM in einer Quelldatei — Ursache gefunden
 
-`backtest/strategies/library.py` trug plötzlich ein UTF-8-BOM — **nicht** aus
-einem Commit; es tauchte im Arbeitsverzeichnis auf. Folge: `ast.parse` warf
-`SyntaxError: invalid non-printable character U+FEFF`, und **beide**
-Kostengarantie-Tests fielen aus, ohne dass an ihrer Zusage etwas dran war.
+`backtest/strategies/library.py` trug plötzlich ein UTF-8-BOM, das aus keinem
+Commit stammte. Folge: `ast.parse` warf `SyntaxError: invalid non-printable
+character U+FEFF`, und **beide** Kostengarantie-Tests fielen aus, ohne dass an
+ihrer Zusage etwas dran war.
 
-Zwei Lehren: Die ASCII-Konvention ist kein Stilwunsch — ein AST-basierter Test
-bricht daran. Und ein Testfehlschlag im Importhüllen-Test kann eine
-**Parse**-Ursache haben statt einer fachlichen; die Fehlermeldung zuerst lesen.
+**Die Ursache stand am 22.08.2026 fest:** `Set-Content -Encoding UTF8` schreibt
+unter **Windows PowerShell 5.1 grundsätzlich mit BOM**. Aufgefallen ist es beim
+Zurücknehmen einer Gegenprobe — dieselbe Datei war danach kaputt, obwohl der
+Inhalt stimmte.
+
+**Regel daraus:** Quelldateien nie über `Set-Content` zurückschreiben, sondern
+über `git checkout <datei>`. Für Änderungen die Datei-Werkzeuge nehmen.
+
+Zweite Lehre: Ein Fehlschlag im Importhüllen-Test kann eine **Parse**-Ursache
+haben statt einer fachlichen. Erst die Fehlermeldung lesen, dann suchen.
 
 ### 8.11 Vortagesmarken (behoben, `cd5bcc6`)
 
@@ -561,18 +596,24 @@ IB-Lookahead-Sperre (Kerze um 09:30 kennt sonst `ib_high` von 10:30).
 
 **Nicht entfernen:**
 
-- `test_mcp_pfad_erreicht_keine_anthropic_api` — transitive Hülle, sichert die
-  Kostenanforderung.
-- `test_mcp_pfad_zieht_kein_live_bot_mehr` — hält das Zielsystem vom Legacy-Pfad
-  frei.
+- `test_kein_modul_im_projekt_erreicht_die_anthropic_api` — seit 22.08.2026
+  **repo-weit**, nicht mehr nur `mcp_server/`. Sichert die Kostenanforderung.
+  Gegenprobe beim Bau durchgeführt: ein testweise eingefügtes
+  `import anthropic` lässt ihn fallen.
+- `test_kein_modul_im_projekt_importiert_live_bot` — ein verbliebener Import
+  wäre ein ImportError zur Laufzeit, den kein Test bemerkt, solange das Modul
+  nicht angefasst wird.
 - AST-Test gegen `sys.stdout = sys.stderr`.
 - `test_kein_lookahead_...` — Backtest-Ausführungsmodell.
 - `test_angeschnittene_vorsession_gilt_nicht_als_vollstaendig` und
   `test_levelframe_ueberspringt_angeschnittenen_timeframe`.
 - `test_zweiter_start_bricht_ab_statt_still_danebenzulaufen`.
 - `test_initial_balance_ist_waehrend_des_fensters_noch_nicht_bekannt`.
-- Tests auf Schlüsselmenge der Claude-Payloads, Disclaimer und Verbot direkter
-  Handelsempfehlungen.
+- ~~Tests auf Schlüsselmenge der Claude-Payloads, Disclaimer und Verbot
+  direkter Handelsempfehlungen~~ — mit `test_on_demand.py` entfallen. **Durch
+  Entfernung gegenstandslos**, nicht ungeprüft: es gibt keinen Claude-Aufruf
+  mehr, den sie absichern könnten. Ersetzt durch den repo-weiten Kostentest
+  (Abschnitt 7.2).
 
 Aus `test_ideas.py` (Etappe C):
 
@@ -695,3 +736,62 @@ Git-Diff und kein Chatprotokoll.
 **Hochladen ins Claude-Projekt:** Die dortige Kopie ist eingefroren und
 aktualisiert sich **nicht**. Nach Meilensteinen beide Kontextdateien neu
 hochladen; das Datum in der Kopfzeile verrät, ob die Kopie noch stimmt.
+
+---
+
+## 14. Stand bei Sitzungsende (22.08.2026)
+
+### Fertig und committet
+
+Branch **`legacy-entfernen`**, fünf Commits, **316 Tests grün** (auf Windows
+gemessen, nicht gerechnet).
+
+| Commit | Inhalt |
+|---|---|
+| `57e0c08` | `live_bot/`, Tradovate-Provider, zwei Testdateien entfernt |
+| `31b0d60` | Konfiguration bereinigt, `on_demand` → `analyse`, Puffer-Prüfung umgezogen |
+| `c68b4b6` | Kostentest repo-weit, Gegenprobe durchgeführt |
+| `78f494c` | README auf den Stand nach der Entfernung |
+
+Der Branch ist **nicht** nach `main` gemerged — das ist bewusst offen gelassen.
+
+### Was auf Laurin wartet
+
+1. **`flaggen_ausbruch` kann nie auslösen.** An echten MNQ-5m-Daten gemessen:
+   die schmalste Konsolidierung über 864 Kerzen hat `Range/ATR = 1.39`, die
+   Schwelle `consolidation_max_atr` steht auf `1.2`. `flag_in_consolidation` ist
+   **0 von 864**. Die Schwelle stammt aus der 1m-Konfiguration.
+   Das Setup steht als aktiv in der Config und liefert garantiert nichts —
+   genau die Sorte stiller Ausfall, die dieses Projekt teuer bezahlt hat.
+   **Keine Zahl geraten**, weil Setup-Schwellen laut Spezifikation Trading-Logik
+   sind. Drei Wege: Schwelle für 5m anheben (müsste über 1.4 liegen, Median ist
+   2.94), das Setup auf 1m protokollieren, oder auf `aktiv: false` setzen.
+2. **Branch mergen?** `legacy-entfernen` wartet auf `main`.
+3. **Die 8 weiteren Setup-Familien** — alle oder schrittweise?
+
+### Halbfertig
+
+**Nichts.** Jeder Commit lässt die Suite grün.
+
+Was **gebaut, aber nicht in Betrieb** ist: `python -m ideas` läuft, hängt aber an
+keiner geplanten Aufgabe. Es ist weiterhin **keine einzige echte Idee
+protokolliert**. Bewusst nicht eingerichtet, solange Punkt 1 offen ist — sonst
+sammelt die Aufgabe ab sofort Daten mit einem Setup, das garantiert leer bleibt.
+
+### Was als nächstes dran wäre
+
+1. Punkt 1 klären, dann die geplante Aufgabe einrichten (mindestens täglich,
+   besser stündlich — die Blackout-Prüfung deckt nur die letzten 7 Tage ab).
+2. **Etappe D ist verfrüht.** Ohne geloggte Ideen ließe sich
+   `evaluate_past_ideas` nur gegen synthetische Daten testen. Laurin hat die
+   Reihenfolge so angefordert, wollte aber ausdrücklich darauf hingewiesen
+   werden. Der Datenbestand ist die Voraussetzung, nicht die Kür.
+3. MCP-Startzeit: pandas verzögert importieren (7,5 s → nahezu sofort).
+4. Erster Backtest auf echten MNQ-Daten, rein informativ. **Nur 1m/5m/15m** —
+   die Tagesserie hat eine Lücke 31.07.–12.08., der 1d-ATR ist dadurch ein
+   Artefakt von rund 650 Punkten.
+
+### Kleinkram, noch offen
+
+- `kumulatives_delta.reason` nennt Tradovate als Quelle.
+- Docstring in `mcp_server/context.py` begründet mit Tradovate-Login-Drosselung.
