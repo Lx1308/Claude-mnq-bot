@@ -5,7 +5,7 @@ laufen über einen lokalen Empfänger in eine SQLite-Datenbank und werden von ei
 **MCP-Server** an **Claude Desktop** geliefert — Level, Indikatoren über mehrere
 Zeitebenen, Marktstruktur, Muster, Terminrisiko.
 
-Dazu ein getrenntes Backtesting-Framework und ein älterer Telegram-/Alarm-Pfad.
+Dazu ein getrenntes Backtesting-Framework.
 
 > **Kein Handelssystem.** Das Projekt liest Marktdaten, rechnet und stellt Zahlen
 > bereit. Es gibt **keinen einzigen Aufruf eines Order-Endpunkts** — bewusst
@@ -25,12 +25,11 @@ Dazu ein getrenntes Backtesting-Framework und ein älterer Telegram-/Alarm-Pfad.
 6. [MCP-Server in Claude Desktop](#6-mcp-server-in-claude-desktop)
 7. [Terminal-Dump ohne Claude Desktop](#7-terminal-dump-ohne-claude-desktop)
 8. [Ideen-Protokollierung (Etappe C)](#8-ideen-protokollierung-etappe-c)
-9. [Legacy: Telegram-Bot und /analyse](#9-legacy-telegram-bot-und-analyse)
-10. [Backtesting](#10-backtesting)
-11. [Konfiguration im Detail](#11-konfiguration-im-detail)
-12. [Logging](#12-logging)
-13. [Tests](#13-tests)
-14. [Bekannte Grenzen](#14-bekannte-grenzen)
+9. [Backtesting](#9-backtesting)
+10. [Konfiguration im Detail](#10-konfiguration-im-detail)
+11. [Logging](#11-logging)
+12. [Tests](#12-tests)
+13. [Bekannte Grenzen](#13-bekannte-grenzen)
 
 ---
 
@@ -63,21 +62,27 @@ hält den laufenden Betrieb kostenfrei. Ein Test hält das fest
 | `get_event_risk` | Wirtschaftstermine und Blackout-Fenster |
 | `list_instruments` | Welche Instrumente das Register kennt |
 
-### Zwei getrennte Wege
+### Ein Weg, zwei Nutzungsarten
 
-Das Projekt ist über die Zeit gewachsen und hat deshalb **zwei** Pfade:
+```
+NinjaTrader → ntbridge → SQLite ─┬─→ MCP → Claude Desktop   (auf Zuruf)
+                                 └─→ ideas/                 (regelbasiert)
+```
 
-| Pfad | Zustand | Kosten |
-|---|---|---|
-| **NinjaTrader → ntbridge → MCP → Claude Desktop** | **Zielsystem** | keine laufenden |
-| Tradovate → live_bot → Anthropic-API → Telegram | Legacy, lauffähig | Token je Alarm |
+Beide lesen dieselbe Datenbasis. Der MCP-Server liefert auf Anfrage eine
+Momentaufnahme; `ideas/` (Abschnitt 8) protokolliert im Hintergrund
+regelbasiert Trade-Ideen.
 
-Der Legacy-Pfad ist absichtlich erhalten geblieben, ist aber nicht mehr das Ziel.
-Abschnitt 9 beschreibt ihn.
+**Keiner von beiden ruft die Anthropic-API auf.** Interpretiert wird
+ausschließlich in der Claude-Desktop-Unterhaltung über das bestehende Abo.
+Seit dem 22.08.2026 prüft ein Test das für das **gesamte** Repository, nicht
+mehr nur für den MCP-Pfad — es gibt keine Stelle mehr, die die API rufen
+dürfte.
 
-Daneben liegt `ideas/` (Abschnitt 8): dieselbe Datenbasis, aber nicht auf Zuruf,
-sondern regelbasiert protokollierend. Auch dieser Weg ruft die Anthropic-API
-nicht auf.
+> **Entfernt am 22.08.2026:** Ein älterer Pfad (Tradovate → `live_bot/` →
+> Anthropic-API → Telegram) mit Alarmen und einem `/analyse`-Bericht wurde
+> vollständig entfernt. Er kostete Token je Alarm und war nicht mehr das
+> Ziel. Wer ihn in älteren Notizen erwähnt findet: er existiert nicht mehr.
 
 ---
 
@@ -128,15 +133,6 @@ Claude chart bot/
 │   ├── pipeline.py              vorbereiten / baue_idee / protokolliere
 │   ├── kalender.py              Abdeckungsgrenze vor dem Wirtschaftskalender
 │   └── __main__.py              python -m ideas (Einzellauf für die Aufgabenplanung)
-│
-├── live_bot/                    Legacy: Tradovate + Telegram + Anthropic
-│   ├── main.py                  Einstiegspunkt + CLI
-│   ├── on_demand_report.py      /analyse: Bericht auf Zuruf
-│   ├── tradovate/               auth, rest, contracts, md_socket
-│   ├── market/                  candles, feed, state
-│   ├── alerts/                  conditions, cooldown
-│   ├── ai/claude_client.py      Anthropic Messages API
-│   └── notify/                  notifier, telegram_commands
 │
 ├── backtest/
 │   ├── cli.py                   list / run / compare / optimize / fetch
@@ -398,14 +394,14 @@ Optionen: `--timeframes 1m,5m,15m` · `--bars N` · `--no-bars` · `--json` ·
 copy .env.example .env
 ```
 
-Für das **Zielsystem** wird davon nur eine Variable gebraucht:
+Es wird genau eine Variable gebraucht:
 
 | Variable | Wofür | Nötig für |
 |---|---|---|
 | `FRED_API_KEY` | Ist-Werte der Wirtschaftstermine | `get_event_risk` |
-| `ANTHROPIC_API_KEY` | nur Legacy-Telegram-Pfad | Abschnitt 9 |
-| `TELEGRAM_BOT_TOKEN` / `TELEGRAM_CHAT_ID` | nur Legacy | Abschnitt 9 |
-| `TRADOVATE_*` | nur Legacy | Abschnitt 9 |
+
+Das ist **die einzige** Variable, die das Projekt noch kennt. `ANTHROPIC_API_KEY`,
+`TELEGRAM_*` und `TRADOVATE_*` sind mit dem Legacy-Pfad am 22.08.2026 entfallen.
 
 Ohne `FRED_API_KEY` läuft alles weiter — `get_event_risk` weist die Ist-Werte
 dann als nicht verfügbar aus, statt so zu tun, als gäbe es keine Termine.
@@ -500,11 +496,13 @@ verlangt es ausdrücklich: die interessante Frage ist, welche Setups auch unter
 Prop-Firm-Regeln tragen, und die beantwortet man, indem man alle Ideen durch
 beide Regelwerke rechnet.
 
-> **Namensfalle.** Erlaubt sind `sim_frei`, `lucid_challenge`, `lucid_funded` —
-> **nicht** `demo`. Unter `tradovate:` steht bereits `environment: demo`, das ist
-> die Broker-Umgebung und hat hiermit nichts zu tun. `Config.validate()` bricht
-> bei jedem anderen Wert ab; ein Tippfehler würde die spätere Auswertung sonst
-> still in zwei Gruppen zerlegen.
+> **Warum nicht `demo`.** Erlaubt sind `sim_frei`, `lucid_challenge`,
+> `lucid_funded`. Der eigene Wertebereich stammt aus der Zeit, als die
+> `config.yaml` unter `tradovate:` ein `environment: demo` führte und beides
+> verwechselbar war; der Abschnitt ist seit dem 22.08.2026 entfallen, die
+> präzisere Benennung bleibt. `Config.validate()` bricht bei jedem anderen Wert
+> ab — ein Tippfehler würde die spätere Auswertung sonst still in zwei Gruppen
+> zerlegen.
 
 ### 8.6 Abbrechen statt schweigen
 
@@ -582,65 +580,9 @@ ein Protokoll (`Terminquelle`), die konkrete `CalendarService`-Klasse wird erst
 in `ideas/__main__.py` verdrahtet. Sonst wüchsen die beiden Oberschichten
 zusammen.
 
----
+## 9. Backtesting
 
-## 9. Legacy: Telegram-Bot und /analyse
-
-Der ursprüngliche Pfad: Tradovate-WebSocket → Alarm-Bedingungen → Anthropic-API →
-Telegram. Er ist lauffähig und bleibt erhalten, **kostet aber Token je Alarm**
-und ist nicht mehr das Ziel.
-
-```bash
-.venv\Scripts\python.exe -m live_bot.main --test-notification   # nur Zustellweg prüfen
-.venv\Scripts\python.exe -m live_bot.main                        # Demo-Umgebung
-```
-
-**Alarm-Bedingungen** (in `config.yaml` einzeln schaltbar, mit eigenem Cooldown):
-
-| Schlüssel | Auslöser |
-|---|---|
-| `prev_day_high_cross` | Schlusskurs kreuzt das Vortageshoch von unten (mit Tick-Puffer) |
-| `prev_day_low_cross` | Schlusskurs kreuzt das Vortagestief von oben |
-| `rsi_exit_overbought` | RSI fällt von ≥ 70 wieder darunter |
-| `rsi_exit_oversold` | RSI steigt von ≤ 30 wieder darüber |
-| `flag_breakout` | Impuls → enge Range → Schlusskurs außerhalb der Range |
-
-Alle Bedingungen sind **Flankenerkennungen**: sie feuern beim Übergang, nicht
-dauerhaft.
-
-**An Claude gehen ausschließlich berechnete Kennzahlen** — keine Rohdaten, keine
-Tickströme, keine Bilder. Was genau übertragen wird, steht an genau zwei Stellen:
-`build_metrics_payload()` und `build_report_payload()` in
-`live_bot/ai/claude_client.py`, beide mit Test.
-
-### /analyse
-
-```
-/analyse            Bericht zum laufenden Symbol
-/analyse NQ         Bericht zu einem anderen Produkt (Frontmonat)
-/analyse ESZ5       Bericht zu einem konkreten Kontrakt
-/help               Kurze Befehlsübersicht
-```
-
-Der Bericht liefert `LAGE`, `STRUKTUR`, zwei gegenläufige Szenarien, `MARKEN`
-(Einstiegszone, Stop mit Herleitung, Ziel, Risiko in Punkten **und** USD je
-Kontrakt, CRV) und eine als Szenario formulierte `EINSCHAETZUNG`.
-
-**Der Prompt verbietet ausdrücklich:** direkte Handlungsanweisungen, Empfehlungen
-zur Kontraktanzahl, sowie Prozentangaben zu Wahrscheinlichkeiten, welche die
-Daten nicht hergeben. Ergibt sich kein CRV von mindestens 1:1.5, soll der Bericht
-das sagen, statt Marken zu erzwingen. Am Ende steht immer ein Disclaimer; fehlt
-er in der Antwort, ergänzt ihn der Code.
-
-**Live-Umgebung ist doppelt gesichert:** `allow_live_environment: true` in der
-`config.yaml` **und** `--i-know-this-is-live` beim Start. Beides fehlt absichtlich
-in der Standardkonfiguration.
-
----
-
-## 10. Backtesting
-
-### 10.1 Strategien ansehen und testen
+### 9.1 Strategien ansehen und testen
 
 ```bash
 .venv\Scripts\python.exe -m backtest.cli list
@@ -658,7 +600,7 @@ Eigene CSV nach `data/<SYMBOL>_1m.csv` legen. Erwartete Spalten:
 `timestamp,open,high,low,close,volume` (Zeitstempel ohne Zeitzone werden als UTC
 gelesen).
 
-### 10.2 Parametersuche — mit Schutzriegel
+### 9.2 Parametersuche — mit Schutzriegel
 
 ```bash
 .venv\Scripts\python.exe -m backtest.cli optimize --symbol NQZ5 \
@@ -680,7 +622,7 @@ erst danach geschnitten. Würde man den OOS-Block isoliert vorbereiten, hätten
 dessen erste ~50 Kerzen keinen gültigen SMA(50) und die Strategie bliebe dort
 stumm — ein stiller Verlust an OOS-Zeitraum.
 
-### 10.3 Eigene Strategie schreiben
+### 9.3 Eigene Strategie schreiben
 
 ```python
 from backtest.strategies.base import ColumnAbove, CrossesAbove, CrossesBelow, RuleStrategy
@@ -699,7 +641,7 @@ In `backtest/strategies/library.py` unter `STRATEGY_LIBRARY` eintragen.
 `BarContext` gibt bewusst nur die aktuelle und die vorherige Zeile frei —
 Look-ahead ist damit strukturell ausgeschlossen.
 
-### 10.4 Ausführungsmodell
+### 9.4 Ausführungsmodell
 
 - Regeln werden auf dem **Schlusskurs** ausgewertet, ausgeführt wird zur
   **Eröffnung der Folgekerze**.
@@ -722,7 +664,7 @@ siehe [`docs/BACKTESTING_ENTSCHEIDUNG.md`](docs/BACKTESTING_ENTSCHEIDUNG.md).
 
 ---
 
-## 11. Konfiguration im Detail
+## 10. Konfiguration im Detail
 
 Alles Wesentliche steckt in `config.yaml`, Secrets ausschließlich in `.env`.
 Vorrang: **CLI > .env > YAML**.
@@ -738,10 +680,15 @@ ntbridge:
 
 market:
   product: MNQ
-  candle_buffer_size: 3000       # siehe Kasten - nicht blind verkleinern
-  warmup_bars: 2880
   tick_size: 0.25
   point_value: 2.0               # MNQ = 2, NQ = 20, ES = 50
+  # candle_buffer_size / warmup_bars stammen aus der Zeit des Live-Bots und
+  # werden von keinem laufenden Prozess mehr ausgewertet.
+
+analyse:                         # hiess bis 22.08.2026 "on_demand"
+  swing_strength: 3
+  swing_lookback: 120
+  max_zones: 3
 
 indicators:
   flag:
@@ -791,19 +738,19 @@ sind auf diesem Modell nicht erlaubt.
 
 ---
 
-## 12. Logging
+## 11. Logging
 
 Zwei Dateien parallel in `logs/` (rotierend), je Prozess ein Paar:
 
 | Datei | Zweck |
 |---|---|
-| `bot.log` / `ntbridge.log` | Menschenlesbar |
-| `events.jsonl` / `ntbridge_events.jsonl` | Eine JSON-Zeile je Ereignis |
+| `ntbridge.log` / `ideas.log` | Menschenlesbar |
+| `ntbridge_events.jsonl` / `ideas_events.jsonl` | Eine JSON-Zeile je Ereignis |
 
 Jedes Ereignis hat einen Typ im Schema `bereich.aktion` und einen strukturierten
 Payload. Wichtige Typen: `ntbridge.started`, `ntbridge.bars.accepted`,
-`ntbridge.bars.rejected`, `alert.triggered`, `claude.response`,
-`notify.telegram.failed`, `feed.reconnect_scheduled`.
+`ntbridge.bars.rejected`, `ideen.lauf`, `ideen.verworfen`,
+`ideen.blackout.ausserhalb_abdeckung`.
 
 ```bash
 .venv\Scripts\python.exe -c "import json;[print(json.loads(l)['payload']) for l in open('logs/ntbridge_events.jsonl',encoding='utf-8') if 'rejected' in l]"
@@ -811,10 +758,10 @@ Payload. Wichtige Typen: `ntbridge.started`, `ntbridge.bars.accepted`,
 
 ---
 
-## 13. Tests
+## 12. Tests
 
 ```bash
-.venv\Scripts\python.exe -m pytest              # alles (378)
+.venv\Scripts\python.exe -m pytest              # alles (316)
 .venv\Scripts\python.exe -m pytest -v
 .venv\Scripts\python.exe -m pytest tests/test_ntbridge.py
 .venv\Scripts\python.exe -m pytest -k lookahead -v
@@ -834,22 +781,25 @@ Abgedeckt sind unter anderem:
 - IS/OOS: chronologische Teilung, `OutOfSampleViolation` beim Fehlgriff
 - Marktstruktur: Swing-Erkennung inkl. des Randfalls "letzte Kerzen können noch
   kein bestätigtes Extrem sein", Zonen-Zusammenfassung, BOS/CHoCH
-- MCP: **kein Anthropic-Aufruf** in `mcp_server/` (AST-basiert), kein Umbiegen
-  von `sys.stdout`, Schlüsselmenge der Payloads
-- Konfiguration: zu kleiner Kerzenpuffer wird beim Start abgefangen
+- Kosten: **kein Anthropic-Import im gesamten Projekt** (AST-basiert, seit dem
+  22.08.2026 repo-weit statt nur in `mcp_server/`), kein Umbiegen von
+  `sys.stdout`, Schlüsselmenge der Payloads
+- Konfiguration: zu wenig `ideas.bars` für die Vortagesmarken wird beim Start
+  abgefangen, skaliert nach Timeframe
 - Ideen (`test_ideas.py`): jede Setup-Familie verweist auf eine
   Backtest-Strategie, keine eigenen Erkenner, die Auswertung liest nie das
   Exploration-Log, fehlende Spalte bricht laut ab, Erkennung sieht nie in die
   Zukunft, IB-Bruch löst vor Ablauf des IB-Fensters nicht aus
 
-Die Netzwerkschichten (WebSocket, REST, Telegram, Anthropic) sind bewusst nicht
-mit Mocks nachgebaut — dort testet man sonst vor allem die eigenen Mocks. Sie
-sind stattdessen so gebaut, dass jeder Fehler abgefangen und protokolliert statt
-eskaliert wird.
+Die verbliebenen Netzwerkschichten (Forex Factory, FRED) sind bewusst nicht mit
+Mocks nachgebaut — dort testet man sonst vor allem die eigenen Mocks. Sie sind
+stattdessen so gebaut, dass jeder Fehler abgefangen und protokolliert statt
+eskaliert wird, und ein Ausfall wird als `calendar_available: false` ausgewiesen
+statt als „keine Termine".
 
 ---
 
-## 14. Bekannte Grenzen
+## 13. Bekannte Grenzen
 
 **Antwortzeit 10–30 Sekunden.** Für den Auslöser eines 1-Minuten-Einstiegs zu
 langsam. Der Nutzen liegt in der Vorbereitung und in der späteren Auswertung.
