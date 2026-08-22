@@ -39,3 +39,8 @@ datenluecken_log.txt
 Thumbs.db
 .idea/
 .vscode/
+
+# Dukascopy-Naeherungsdaten (waechst auf viele GB, jederzeit neu ladbar)
+data/dukascopy_*.sqlite3
+data/dukascopy_*.sqlite3-shm
+data/dukascopy_*.sqlite3-wal
