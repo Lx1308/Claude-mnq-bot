@@ -4,6 +4,7 @@
 Für künftige Claude-Chat-Sessions ohne Zugriff auf den alten Verlauf.
 
 **Stand: 22. August 2026** — gegen den tatsächlichen Code verifiziert.
+**Ergänzt 22. August 2026: Legacy-Pfad (Tradovate/Telegram/Alarme) entfernt.**
 **Ergänzt 21. August 2026 (nachts): Etappe A und B erstmals mit echten
 NT8-Live-Marktdaten verifiziert (siehe Abschnitt 17).**
 **Ergänzt 22. August 2026: Profil-Begriff entflochten (Abschnitt 8) — `profil`
@@ -81,11 +82,13 @@ Laurin, Privattrader. Intraday-Futures, hauptsächlich **MNQ**, gelegentlich
 
 Mehrfach betont: **ohne laufende Kosten**.
 
-- Der MCP-Server ruft **niemals** die Anthropic-API auf. Interpretation passiert
-  in der Claude-Desktop-Unterhaltung über das bestehende Abo. Ein Test sichert
-  das ab.
-- Der ältere Telegram-/Alert-Pfad ruft die API auf und kostet Token. Bleibt
-  bestehen, ist aber nicht mehr das Ziel.
+- **Nichts im Projekt ruft die Anthropic-API auf.** Interpretation passiert in
+  der Claude-Desktop-Unterhaltung über das bestehende Abo. Seit dem 22.08.2026
+  prüft ein Test das für das **gesamte** Repository, nicht mehr nur für den
+  MCP-Server — es gibt keine Stelle mehr, die die API rufen dürfte.
+- Der ältere Telegram-/Alert-Pfad kostete Token je Alarm und ist am 22.08.2026
+  **vollständig entfernt** worden. Die frühere Notiz „bleibt bestehen, ist aber
+  nicht mehr das Ziel" ist damit aufgehoben.
 - Einzige akzeptierte Ausgabe: ~4 USD/Monat CME-Marktdaten bei NinjaTrader.
   MNQ (CME Index) und MGC (COMEX Metals) liegen in verschiedenen Börsengruppen —
   eventuell zwei Pakete nötig.
@@ -119,9 +122,11 @@ wäre trotzdem sinnvoll, wurde aber noch nicht gemacht.
 ZUERST prüfen, welche Konto- und Kostenvoraussetzungen sie hat. Der
 Tradovate-Umweg kostete erhebliche Arbeit, weil das zu spät geprüft wurde.
 
-**Altlast:** Der Tradovate-Code liegt weiterhin im Projekt (`live_bot/tradovate/`,
-`backtest/data/tradovate_provider.py`, `tradovate:`-Abschnitt in `config.yaml`).
-Das ist kein Widerspruch — der alte Pfad bleibt lauffähig, ist aber nicht Ziel.
+**Altlast erledigt (22.08.2026):** Der Tradovate-Code ist entfernt —
+`live_bot/` vollständig, `backtest/data/tradovate_provider.py`, der
+`tradovate:`-Abschnitt in `config.yaml` und alle `TRADOVATE_*`-Variablen aus der
+`.env`. Wer die Altlast in älteren Notizen erwähnt findet: es gibt sie nicht
+mehr.
 
 ---
 
@@ -318,7 +323,7 @@ mcp_server/             Tool 1 (get_market_snapshot), Tool 2 (get_event_risk),
                         list_instruments, cli.py (Terminal-Dump),
                         calendar_provider.py (Forex Factory + FRED)
 ntbridge/               Empfänger + SQLite-Speicher (Etappe B) — LIVE VERIFIZIERT
-live_bot/               Alert-System, Telegram, on_demand_report (Legacy)
+ideas/                  Regelbasierte Ideen-Protokollierung (Etappe C)
 backtest/               Eigene Event-Engine, Strategien, Metriken, Splits
 ninjatrader/            ClaudeBridge.cs (v1.0.1) — KOMPILIERT UND LIVE VERIFIZIERT
 ```
