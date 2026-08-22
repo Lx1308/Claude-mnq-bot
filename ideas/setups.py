@@ -41,11 +41,14 @@ beide auch im Backtest rechenbar.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Callable
+from typing import TYPE_CHECKING, Callable
 
 from backtest.strategies.base import RuleStrategy
 from backtest.strategies.library import build_strategy
 from common.config import IdeenSetupParameter
+
+if TYPE_CHECKING:
+    from common.config import IdeasConfig
 
 # Art des Setups. Der ADX-Filter entscheidet danach, ob Trend oder Range
 # gefordert wird: ein Bruch in der flachen Range ist meistens ein
@@ -181,6 +184,38 @@ def hole_setup(schluessel: str) -> SetupDefinition:
     return definition
 
 
+def pruefe_konfiguration(cfg: "IdeasConfig") -> None:
+    """Startpruefung der Ideen-Konfiguration gegen die Setup-Bibliothek.
+
+    Steht hier und nicht in ``Config.validate``, weil ``common`` die
+    Basisschicht ist und nichts aus ``ideas`` importieren soll - sonst
+    haenge auch die Importhuelle des MCP-Servers mit daran.
+
+    Bricht ab statt zu warnen: ein Schluessel, den die Bibliothek nicht
+    kennt, sieht in der ``config.yaml`` aus wie eine konfigurierte Familie,
+    loest aber nie aus. Das waere genau die Art stiller Ausfall, die dieses
+    Projekt wiederholt teuer bezahlt hat.
+    """
+    from common.config import ConfigError
+
+    unbekannt = sorted(set(cfg.setups) - set(SETUP_BIBLIOTHEK))
+    if unbekannt:
+        raise ConfigError(
+            f"ideas.setups enthaelt unbekannte Schluessel: {', '.join(unbekannt)}. "
+            f"Verfuegbar: {', '.join(sorted(SETUP_BIBLIOTHEK))}. "
+            "Ein unbekannter Schluessel wirkt wie eine konfigurierte Familie, "
+            "loest aber nie aus."
+        )
+
+    if not any(
+        cfg.setup_parameter(schluessel).aktiv for schluessel in SETUP_BIBLIOTHEK
+    ):
+        raise ConfigError(
+            "Keine einzige Setup-Familie ist aktiv. Die Protokollierung liefe "
+            "dann dauerhaft ohne Ergebnis."
+        )
+
+
 __all__ = [
     "ALLE_SETUPS",
     "ART_FORTSETZUNG",
@@ -193,4 +228,5 @@ __all__ = [
     "SetupDefinition",
     "UnbekanntesSetup",
     "hole_setup",
+    "pruefe_konfiguration",
 ]

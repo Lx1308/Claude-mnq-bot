@@ -25,7 +25,7 @@ niemand haelt sie faelschlich fuer geprueft.
 from __future__ import annotations
 
 import math
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Callable, Protocol
 
@@ -194,6 +194,10 @@ class Filterbilanz:
     abgelehnt: bool
     gruende: tuple[str, ...]
     ungeprueft: tuple[str, ...]
+    #: Werte, auf denen die Entscheidung beruhte - fuer die spaetere
+    #: Nachvollziehbarkeit. Ohne sie liesse sich eine Ablehnung im
+    #: Nachhinein nicht mehr beurteilen, nur noch zur Kenntnis nehmen.
+    kontext: dict[str, Any] = field(default_factory=dict)
 
 
 def pruefe_alle(
@@ -210,12 +214,21 @@ def pruefe_alle(
     spaetere Auswertung ist interessant, ob eine Idee an einem oder an vier
     Filtern gescheitert waere.
     """
-    ergebnisse = (
-        filter_adx(art, jetzt, cfg),
-        filter_liquiditaet(zeitpunkt, instrument, cfg),
-        filter_duennzone(zeitpunkt, instrument, cfg),
-        filter_blackout(zeitpunkt, cfg, blackout_pruefer),
-    )
+    adx = filter_adx(art, jetzt, cfg)
+    liquiditaet = filter_liquiditaet(zeitpunkt, instrument, cfg)
+    duennzone = filter_duennzone(zeitpunkt, instrument, cfg)
+    blackout = filter_blackout(zeitpunkt, cfg, blackout_pruefer)
+    ergebnisse = (adx, liquiditaet, duennzone, blackout)
+
+    kontext: dict[str, Any] = {
+        "setup_art": art,
+        "adx": _zahl(jetzt.get("adx")),
+        "liquide": is_liquid_window(zeitpunkt, instrument),
+        "duennzone": is_thin_window(zeitpunkt, instrument),
+        # Nicht "blackout: false" bei einem Ausfall - das waere eine
+        # Freigabe aus einem Ausfall heraus. None heisst "nicht beantwortet".
+        "blackout": None if blackout.ungeprueft else blackout.abgelehnt,
+    }
 
     gruende = tuple(e.grund for e in ergebnisse if e.abgelehnt and e.grund)
     ungeprueft = tuple(e.ungeprueft for e in ergebnisse if e.ungeprueft)
@@ -223,6 +236,7 @@ def pruefe_alle(
         abgelehnt=any(e.abgelehnt for e in ergebnisse),
         gruende=gruende,
         ungeprueft=ungeprueft,
+        kontext=kontext,
     )
 
 

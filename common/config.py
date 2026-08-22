@@ -776,19 +776,14 @@ class Config:
                     "zerlegen. Hinweis: 'demo' ist hier bewusst KEIN gueltiger "
                     "Wert - das ist die Tradovate-Umgebung unter tradovate.environment."
                 )
-            from ideas.setups import SETUP_BIBLIOTHEK
-
-            unbekannt = sorted(set(self.ideas.setups) - set(SETUP_BIBLIOTHEK))
-            if unbekannt:
-                raise ConfigError(
-                    f"ideas.setups enthaelt unbekannte Schluessel: {', '.join(unbekannt)}. "
-                    f"Verfuegbar: {', '.join(sorted(SETUP_BIBLIOTHEK))}. "
-                    "Ein unbekannter Schluessel wirkt sonst wie eine konfigurierte "
-                    "Familie, loest aber nie aus."
-                )
-            if not any(
-                self.ideas.setup_parameter(schluessel).aktiv
-                for schluessel in SETUP_BIBLIOTHEK
+            # Die Pruefung der Setup-SCHLUESSEL steht bewusst nicht hier,
+            # sondern in ``ideas.setups.pruefe_konfiguration``. Ein Import
+            # von ``ideas`` an dieser Stelle waere eine Schichtumkehr -
+            # ``common`` ist die Basis, ``ideas`` liegt darueber - und wuerde
+            # ausserdem ``ideas`` samt ``backtest.strategies`` in die
+            # Importhuelle des MCP-Servers ziehen, die bewusst schmal ist.
+            if self.ideas.setups and not any(
+                parameter.aktiv for parameter in self.ideas.setups.values()
             ):
                 raise ConfigError(
                     "ideas.enabled ist true, aber keine einzige Setup-Familie ist "
