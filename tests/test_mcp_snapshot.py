@@ -124,18 +124,24 @@ TIMEFRAMES = ["1m", "5m", "15m", "1h", DAILY]
 
 MCP_MODULES = sorted((PROJECT_ROOT / "mcp_server").rglob("*.py"))
 
-# Pakete, deren Import im MCP-Pfad Kosten erzeugen wuerde.
+# Pakete, deren Import Kosten erzeugen wuerde.
 VERBOTENE_WURZELN = {"anthropic"}
 
-# Projektmodule, ueber die ein solcher Import hereinkommen koennte.
-VERBOTENE_PROJEKTMODULE = {
-    "live_bot.ai.claude_client",
-    "live_bot.ai",
-    "live_bot.notify.notifier",
-    "backtest.cli",
-}
+# Seit der Entfernung des Legacy-Pfads (22.08.2026) gibt es im gesamten
+# Projekt keinen legitimen Anthropic-Aufruf mehr. Die Liste bleibt leer und
+# ist der Ort, an dem eine begruendete Ausnahme stuende.
+VERBOTENE_PROJEKTMODULE: set[str] = set()
 
-PROJEKT_PAKETE = {"common", "live_bot", "ntbridge", "backtest", "mcp_server", "ideas"}
+PROJEKT_PAKETE = {"common", "ntbridge", "backtest", "mcp_server", "ideas"}
+
+# Alle Python-Dateien des Projekts ausser Tests und venv. Der Kostentest
+# laeuft seit dem 22.08.2026 ueber das GESAMTE Repository, nicht mehr nur
+# ueber mcp_server/ - es gibt keinen Pfad mehr, der die API rufen duerfte.
+ALLE_PROJEKT_MODULE = sorted(
+    pfad
+    for paket in sorted(PROJEKT_PAKETE)
+    for pfad in (PROJECT_ROOT / paket).rglob("*.py")
+)
 
 
 def _imported_modules(path: Path) -> set[str]:
@@ -217,19 +223,54 @@ def test_mcp_pfad_erreicht_keine_anthropic_api():
     )
 
 
-def test_mcp_pfad_zieht_kein_live_bot_mehr():
-    """Das Zielsystem haengt nicht mehr am Legacy-Pfad.
+def test_kein_modul_im_projekt_erreicht_die_anthropic_api():
+    """Die Kostengarantie gilt seit dem 22.08.2026 fuer das GANZE Projekt.
 
-    Kein Selbstzweck: ueber ``live_bot`` kaeme jede kuenftige Abhaengigkeit
-    des Alarm-Pfads in den Importweg des MCP-Servers und koennte ihn beim
-    Start mitreissen - bei einem Prozess, den Claude Desktop startet, sieht
-    man das nur im Log.
+    Vorher war sie auf ``mcp_server/`` beschraenkt, weil der Legacy-Pfad die
+    API legitim rief (Alarm-Kommentare, /analyse-Bericht). Mit seiner
+    Entfernung gibt es keine berechtigte Aufrufstelle mehr - also darf auch
+    nirgends mehr ein Import stehen.
+
+    Die weitere Fassung faengt einen Fall, den die alte durchgelassen haette:
+    ein Anthropic-Import in ``backtest/`` oder ``ideas/`` waere zwar nie vom
+    MCP-Server aus erreichbar gewesen, haette aber trotzdem Token gekostet,
+    sobald jemand das Modul benutzt.
+
+    Gegenprobe beim Bau: ein testweise in ideas/setups.py eingefuegtes
+    "import anthropic" laesst diesen Test fallen und nennt den Fundort.
     """
-    erreichbar, weg = _transitive_huelle(MCP_MODULES)
-    treffer = {m for m in erreichbar if m.split(".")[0] == "live_bot"}
+    treffer = {
+        str(pfad.relative_to(PROJECT_ROOT)): sorted(
+            modul
+            for modul in _imported_modules(pfad)
+            if modul.split(".")[0] in VERBOTENE_WURZELN
+        )
+        for pfad in ALLE_PROJEKT_MODULE
+    }
+    treffer = {datei: module for datei, module in treffer.items() if module}
 
-    assert not treffer, "live_bot ist wieder im MCP-Pfad: " + "; ".join(
-        f"{modul} ueber {' -> '.join(weg[modul])}" for modul in sorted(treffer)
+    assert not treffer, "Anthropic-Import im Projekt gefunden: " + "; ".join(
+        f"{datei}: {', '.join(module)}" for datei, module in sorted(treffer.items())
+    )
+
+
+def test_kein_modul_im_projekt_importiert_live_bot():
+    """Der Legacy-Pfad ist entfernt - kein Rest darf ihn noch importieren.
+
+    Faende sich noch ein Import, waere er ein ImportError zur Laufzeit, den
+    kein Test bemerkt haette, solange das Modul nicht angefasst wird.
+    """
+    treffer = {
+        str(pfad.relative_to(PROJECT_ROOT)): sorted(
+            modul for modul in _imported_modules(pfad)
+            if modul.split(".")[0] == "live_bot"
+        )
+        for pfad in ALLE_PROJEKT_MODULE
+    }
+    treffer = {datei: module for datei, module in treffer.items() if module}
+
+    assert not treffer, "live_bot wird noch importiert: " + "; ".join(
+        f"{datei}: {', '.join(module)}" for datei, module in sorted(treffer.items())
     )
 
 
