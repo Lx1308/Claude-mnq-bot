@@ -1186,3 +1186,44 @@ Löschen). Der Commit dieser Änderung entstand deshalb erneut über einen
 alternativen Index (`GIT_INDEX_FILE`), `write-tree`/`commit-tree` und ein
 direktes Schreiben von `refs/heads/main`. Folge wie beim letzten Mal: kein
 Reflog-Eintrag. Die Aufräumanweisung aus Abschnitt 16 gilt unverändert.
+
+---
+
+## 18. Arbeitspaket 4 (Dukascopy-Vollabzug) ist abgeschlossen — nachgemessen 23.08.2026
+
+Der im Hintergrund laufende Vollabzug ist **fertig**, nicht mehr laufend. Gegen
+`data/dukascopy_nas100_1m.sqlite3` (367 MB) gemessen:
+
+| Kennzahl | Wert |
+|---|---|
+| Minutenkerzen (`bars`) | 3 179 672 |
+| Zeitraum (`ts_utc`) | 2016-08-22T06:01Z bis 2026-08-21T20:15Z |
+| Quittierte Stunden (`geholte_stunden`) | 87 010 |
+| Tabellen | `bars`, `geholte_stunden`, `herkunft` |
+
+Die Herkunftstabelle traegt die Naeherungskennzeichnung vollstaendig
+(`ist_naeherung = true`, `symbol = USATECHIDXUSD`, `preis_faktor = 1000.0`,
+Warntext). Invariante 10 ist damit auf der Datenseite erfuellt.
+
+**Der Bestand ist zehn Jahre tief und trotzdem nicht nutzbar** — genau der
+Befund aus MASTERPLAN X.1: `create_provider` kennt nur `"csv"`, es gibt keinen
+`DukascopyDataProvider`. Arbeitspaket 4 ist also nicht mehr eine Frage der
+Laufzeit, sondern wartet ausschliesslich auf die P0-Entscheidung.
+
+### Testsuite weiterhin nicht nachgezogen
+
+Die Gegenprobe aus Abschnitt 17 steht unveraendert aus. In der Linux-Umgebung
+ist `pytest` **nicht installierbar** (der Paketproxy antwortet mit 403), und
+das Windows-venv ist von dort nicht aufrufbar. Auszufuehren bleibt im
+Projektordner:
+
+```
+.venv\Scripts\python.exe -m pytest
+```
+
+### Es gibt keine ausfuehrende Sitzung mehr
+
+Bestaetigt: `local_143554db-...` taucht in keiner Sitzungsliste auf. Alle
+aufgefuehrten Sitzungen sind Laeufe der geplanten Aufgabe selbst. Eine neue
+Arbeitssitzung (`claude-opus-5`) muss gestartet werden; die beiden Git-Sperr-
+dateien aus Abschnitt 16 sind vorher zu loeschen.
