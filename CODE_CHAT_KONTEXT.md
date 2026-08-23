@@ -46,13 +46,14 @@ beiden aufgegangen und entfernt.
 | `ideas/` (Etappe C) | **4 Setup-Familien fertig, Einstiegspunkt `python -m ideas` da**, aber noch in keiner Aufgabenplanung eingetragen | ja, 44 Tests |
 | Etappe D, Lucid-Simulation | **existiert nicht** | — |
 
-**Testsuite: 361 Tests, alle grün** (23.08.2026 auf Windows gemessen).
+**Testsuite: 380 Tests, alle grün** (23.08.2026 auf Windows gemessen).
 `.venv\Scripts\python.exe -m pytest`
 
 | Datei | Tests |
 |---|---|
 | `test_ideas.py` | 50 |
-| `test_mcp_snapshot.py` | 44 |
+| `test_mcp_snapshot.py` | 46 |
+| `test_kosten.py` | 17 |
 | `test_levels_structure.py` | 39 |
 | `test_ntbridge.py` | 37 |
 | `test_instruments_sessions.py` | 26 |
@@ -63,7 +64,7 @@ beiden aufgegangen und entfernt.
 | `test_indicators.py` | 15 |
 | `test_walkforward.py` | 12 |
 
-Verlauf: 124 → … → 370 → 373 → 316 → 337 → 342 → 343 → **361**.
+Verlauf: 124 → … → 316 → 337 → 342 → 343 → 361 → **380**.
 
 **Der Rückgang ist keine Regression.** Mit dem Legacy-Pfad fielen
 `test_live_bot.py` (29) und `test_on_demand.py` (35) weg — 64 Tests für Code,
@@ -118,7 +119,11 @@ SQLite → MCP → Claude Desktop.
    NT8-Tageskerze 29300.50, der letzte 1m-Schluss derselben Session 29317.00 —
    16,5 Punkte. Normal bei Futures (Settlement statt letztem Trade), aber
    relevant, falls Level je aus dem Tages- statt dem Intraday-Frame kommen.
-3. **MCP-Serverstart dauert ~7,5 Sekunden.** Gemessen über einen echten
+3. ~~**MCP-Serverstart dauert ~7,5 Sekunden.**~~ **Behoben am 23.08.2026**,
+   siehe Abschnitt 24. Handshake jetzt 1,73 s. Die frühere Beschreibung war in
+   zwei Punkten falsch und steht unten korrigiert.
+
+   *Ursprünglicher Text:* **MCP-Serverstart dauert ~7,5 Sekunden.** Gemessen über einen echten
    stdio-Handshake. Cowork und Code starten je eine **eigene** Kopie des Servers
    und laufen dabei in einen Timeout; Claude Desktop hält seine Instanz offen und
    ist deshalb unauffällig. Ursache ist fast ausschließlich der Importpfad
@@ -1713,3 +1718,70 @@ nachgemessen. Drei Befunde, alle bestätigend:
 technisch naheliegendste Arbeit und ist als Erreichbarkeitslücke eingestuft —
 sie umzusetzen hieße aber, die P0-Reihenfolge zu wählen, und genau das ist
 Laurins Entscheidung (Master-Auftrag, rückfragepflichtiger Punkt d).
+
+
+---
+
+## 24. Handelskosten und Startzeit (23.08.2026)
+
+### 24.1 Kostenprofile statt Pauschale
+
+`backtest/kosten.py`. Bis zum 23.08. rechnete der Backtest mit
+`commission_per_side: 2.50` — einer Zahl **ohne Herkunftsangabe**, die drei
+Dinge verdeckte, die sich unterschiedlich verhalten:
+
+| Posten | Verhalten |
+|---|---|
+| Broker-Kommission | verhandelbar, ändert sich beim Brokerwechsel |
+| Börse / Clearing / NFA | **nicht** verhandelbar, bleiben gleich |
+| Slippage | **keine Gebühr** — Ausführungsqualität, steckt im Füllkurs |
+
+Wer sie zusammenwirft, hält Kosten für beeinflussbar, die es nicht sind.
+
+**Drei Profile:** `private_ninjatrader` (0,95/Seite, belegt), `lucid`
+(0,50/Seite, **Annahme**), `pauschale_alt` (2,50/Seite, zum Nachrechnen).
+
+**Die Aufteilung wird nicht erfunden.** Belegt ist nur die Summe, deshalb
+bleiben `broker_kommission_je_seite` und die anderen Posten `None`. Erfundene
+Einzelposten, die zufällig richtig aufsummieren, sähen aus wie eine Recherche.
+`__post_init__` prüft, dass eine *angegebene* Aufteilung zur Summe passt, und
+lehnt ein Profil **ohne Quellenangabe** ab — genau diese Angabe fehlte der
+Altpauschale, weshalb sich nie feststellen ließ, ob sie stimmte.
+
+**Nachgewiesen:** `vwap_trend` auf dem DEMO-Datensatz ergibt unter allen drei
+Profilen **identisch 70 Trades**; nur die Netto-P&L unterscheidet sich
+(374,06 / 437,06 / 157,06 USD), auf den Cent passend zur Kostendifferenz. Ein
+Profil ändert also **nur** die Kosten — sonst verglichen zwei Läufe zwei
+verschiedene Strategien.
+
+`--kostenprofil` in der CLI erlaubt einen zweiten Lauf ohne Config-Änderung.
+Der Bericht weist Profil, Quelle und Annahmestatus aus.
+
+> **Folge für die Basisvermessung:** Sie lief unter der Altpauschale und ist
+> damit **zu pessimistisch**. Der Bruttobefund bleibt gültig.
+
+### 24.2 Startzeit — und zwei Korrekturen
+
+pandas wird nicht mehr beim Serverstart geladen:
+
+- `mcp_server/bars.py` braucht es nur in Typannotationen → `TYPE_CHECKING`.
+- `DEFAULT_BARS_IN_OUTPUT` von `snapshot.py` nach `bars.py` verschoben.
+  `server.py` braucht die Konstante als Vorgabewert einer Signatur — allein ihr
+  Import zog pandas herein.
+- `build_snapshot_payload` wird erst in der Werkzeugfunktion importiert.
+
+**Gemessen:** Handshake **2,6 s → 1,73 s**, Module **1190 → 751**.
+
+**Zwei Korrekturen an der früheren Diagnose in dieser Datei:**
+
+1. Die genannten **7,5 s waren eine Kaltmessung.** Warm waren es 2,6 s.
+2. Warm dominiert **nicht pandas**, sondern die Bibliothek `mcp.server`
+   selbst — sie lädt ihren Client-Code mit (`mcp.client` über
+   `mcp.client._input_required`). Daran lässt sich von hier aus nichts ändern.
+
+Der Gewinn liegt vor allem im **Kaltstart**, wo pandas rund 18 von 30 Sekunden
+ausmachte. Warm sind es 0,9 s.
+
+**Lehre:** Eine Startzeit einmal kalt und einmal warm messen, bevor man die
+Ursache benennt. Der Unterschied betrug hier den Faktor drei und zeigte auf
+einen anderen Schuldigen.

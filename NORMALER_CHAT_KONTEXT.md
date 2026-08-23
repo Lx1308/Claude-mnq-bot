@@ -630,62 +630,81 @@ NinjaTrader funktioniert — ist bestanden.
 
 ---
 
-## 18. OFFENE FRAGEN AN LAURIN
+## 18. ENTSCHIEDENE FRAGEN (23.08.2026)
 
-**Stand 23.08.2026.** Diese Punkte blockieren Entscheidungen und lassen sich
-nicht aus Code oder Dokumentation ableiten.
+Die fünf Punkte, die hier als offen standen, hat Laurin am 23.08.2026
+entschieden. Sie bleiben mit der Begründung stehen, damit später nachvollziehbar
+ist, **warum** so entschieden wurde.
 
-### 18.1 Sind die angesetzten Handelskosten realistisch?
+### 18.1 Handelskosten — ENTSCHIEDEN: parametrisieren statt pauschal
 
-Die Basisvermessung rechnet mit **2,50 USD je Seite** Kommission plus 1 Tick
-Slippage, also **5,00 USD Round-Turn**. Bei MNQ mit 2 USD je Punkt muss ein
-Setup damit **2,5 Punkte** verdienen, nur um bei null zu landen.
+Die pauschale Annahme von 2,50 USD je Seite ist ersetzt. Es gibt jetzt
+**benannte Kostenprofile**:
 
-Für Micro-Kontrakte ist das hoch — Discount-Broker liegen eher bei 0,50–1,50
-je Seite. **Was zahlst du tatsächlich?** Der Wert steht in `config.yaml` unter
-`backtest.commission_per_side` und verändert jedes Ergebnis der Vermessung
-erheblich.
+| Profil | je Seite | Round Turn | Status |
+|---|---|---|---|
+| `private_ninjatrader` | 0,95 USD | 1,90 USD | **belegt** (Laurin, NinjaTrader-Free-Modell) |
+| `lucid` | 0,50 USD | 1,00 USD | **Annahme**, extern nicht verifiziert |
+| `pauschale_alt` | 2,50 USD | 5,00 USD | Altbestand, nur zum Nachrechnen |
 
-### 18.2 MGC im Instrument-Register belassen?
+**Getrennt modelliert**, weil sich die Posten unterschiedlich verhalten:
+Broker-Kommission (verhandelbar), Börsen-/Clearing-/NFA-Gebühren (nicht
+verhandelbar), Slippage (gar keine Gebühr, sondern Ausführungsqualität).
 
-Der Override sagt, MGC sei vollständig raus. **Erfüllt ist das schon heute**,
-soweit es zählt: MGC wird nicht analysiert, gespeichert oder protokolliert.
+Die **Aufteilung** der 0,95 USD ist nicht belegt und wird deshalb **nicht
+erfunden** — die Einzelposten bleiben leer, bis eine Abrechnung vorliegt.
 
-**Nicht erfüllt:** MGC steht weiter im Register (`common/instruments.py`) und in
-14 Testfällen. Die Empfehlung in `MASTERPLAN.md` C.2 ist, das so zu lassen —
-der MGC-Verfallstest ist der **einzige** Nachweis, dass `expiry_rule`
-instrumentspezifisch ist und nicht eine hartverdrahtete MNQ-Annahme
-(Bug-Lehre 9). Fällt er weg, kann die MNQ-Regel später still falsch werden.
+Dasselbe Setup ist unter jedem Profil rechenbar, ohne die Strategie
+anzufassen; der Bericht weist aus, womit gerechnet wurde. Nachgewiesen am
+DEMO-Datensatz: identische 70 Trades, nur die Netto-P&L unterscheidet sich.
 
-**Deine Entscheidung:** Register-Eintrag behalten (Empfehlung) oder komplett
-entfernen?
+> **Folge für die Basisvermessung vom 23.08.2026:** Sie lief unter der
+> Altpauschale. Die dortigen Nettozahlen sind damit **zu pessimistisch** — bei
+> `prev_day_breakout` lagen die Kosten bei 5,00 USD je Trade, unter
+> `private_ninjatrader` wären es 1,90. Der Bruttobefund („keine messbare
+> Kante") bleibt davon unberührt, er war schon vor Kosten leicht negativ.
 
-### 18.3 Research-Engine vor Etappe D?
+### 18.2 MGC im Register — ENTSCHIEDEN: bleibt
 
-Ursprünglich war Etappe D (`evaluate_past_ideas`) als Nächstes vorgesehen. Nach
-der Basisvermessung ist die Empfehlung **geändert**: Etappe D würde vier Setups
-auswerten, die brutto keine Kante zeigen. Eine Einzelfaktor-Research würde
-stattdessen systematisch suchen, unter **welchen Bedingungen** überhaupt eine
-entsteht — und das ist auf den zehn Jahren Näherungshistorie sofort rechenbar.
+Der Register-Eintrag in `common/instruments.py` und die 14 Testfälle bleiben.
+MGC wird weiterhin **nicht** analysiert, gespeichert oder protokolliert.
 
-**Deine Entscheidung:** Reihenfolge nach dem Dauerlauf — D oder Research?
+**Begründung:** Der MGC-Verfallstest ist der einzige Nachweis, dass
+`expiry_rule` instrumentspezifisch ist und nicht eine hartverdrahtete
+MNQ-Annahme (Bug-Lehre 9). Fällt er weg, kann die MNQ-Regel später still
+falsch werden.
 
-### 18.4 MCP-Startzeit jetzt beheben?
+### 18.3 Reihenfolge — ENTSCHIEDEN: Research vor Etappe D
 
-Der Server braucht **7,5 Sekunden** bis zur ersten Antwort, fast ausschließlich
-pandas-Import. Cowork und Code laufen dabei in einen Timeout; Claude Desktop
-hält seine Instanz offen und ist unauffällig. Abgegrenzter Eingriff: pandas
-verzögert importieren.
+Die Einzelfaktor-Research hat Vorrang vor `evaluate_past_ideas`. Grund: Die
+Basisvermessung zeigte, dass die vier Setups **brutto** keine Kante haben.
+Etappe D würde also vier Setups auswerten, bei denen es nichts auszuwerten
+gibt. Research sucht stattdessen, unter **welchen Bedingungen** überhaupt eine
+Kante entsteht — und das ist auf den zehn Jahren Näherungshistorie sofort
+rechenbar.
 
-### 18.5 Parallele Sitzungen auf einem Arbeitsbaum
+Der Etappenplan in `MASTERPLAN.md` R ist entsprechend: **C+ → I (Research
+Einzelfaktor) → D**, nicht mehr C+ → D → I.
 
-Am 22. und 23.08.2026 kam es dreimal zu Zwischenfällen: verwaiste Git-Sperren
-(vier Stück, bis zu 24 h alt), ein halb ausgeführter `checkout`, ein veralteter
-Index. Jedes Mal ging es gut, weil vor dem Eingriff geprüft wurde — **das ist
-Glück, kein Verfahren.** Solange zwei Sitzungen denselben Arbeitsbaum
-beschreiben, ist Datenverlust eine Frage der Zeit.
+### 18.4 MCP-Startzeit — ENTSCHIEDEN und umgesetzt
 
-**Empfehlung:** immer nur eine schreibende Sitzung.
+pandas wird nicht mehr beim Serverstart geladen, sondern erst beim ersten
+Werkzeugaufruf. Handshake **2,6 s → 1,73 s**, Modulzahl 1190 → 751.
+
+> **Zwei Korrekturen an der früheren Diagnose:** Die genannten 7,5 s waren eine
+> **Kaltmessung**; warm waren es 2,6 s. Und warm dominiert **nicht** pandas,
+> sondern die Bibliothek `mcp.server` selbst, die ihren Client-Code mitlädt —
+> daran lässt sich von hier aus nichts ändern. Der Gewinn liegt vor allem im
+> Kaltstart, wo pandas rund 18 von 30 Sekunden ausmachte.
+
+### 18.5 Parallele Sitzungen — WEITERHIN OFFEN
+
+**Der einzige Punkt, der nicht entschieden ist.** Am 22. und 23.08.2026 kam es
+zu vier verwaisten Git-Sperren (bis zu 24 h alt), einem halb ausgeführten
+`checkout` und einem veralteten Index. Jedes Mal ging es gut, weil vor dem
+Eingriff geprüft wurde — **das ist Glück, kein Verfahren.**
+
+**Empfehlung bleibt:** immer nur eine schreibende Sitzung.
 
 ---
 

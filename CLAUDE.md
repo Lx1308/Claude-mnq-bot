@@ -71,7 +71,7 @@ das **repo-weit**.
 Immer das venv des Projekts verwenden:
 
 ```bash
-.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 361)
+.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 380)
 .venv\Scripts\python.exe -m pytest tests/test_engine.py      # eine Datei
 .venv\Scripts\python.exe -m pytest -k lookahead -v           # einzelne Tests nach Namensmuster
 .venv\Scripts\python.exe -m pytest tests/test_ideas.py::test_deviation_reentry_feuert_nur_beim_uebertritt
@@ -265,7 +265,20 @@ es verraten** — die Reihe sah lückenlos und plausibel aus. Aufgefallen ist es
 erst im Kreuzvergleich gegen echte MNQ-Kerzen: r = −0,06 statt +0,95. Eine neue
 Quelle deshalb immer auf **Änderungen** gegenprüfen, nicht auf Niveaus.
 
-### 10. Näherungen werden gekennzeichnet
+### 10. Handelskosten sind ein benanntes Profil, keine Zahl
+
+`backtest/kosten.py`. Broker-Kommission, nicht verhandelbare Börsengebühren und
+Slippage verhalten sich unterschiedlich und werden getrennt geführt. Slippage
+ist **keine Gebühr**, sondern Ausführungsqualität — sie steckt im Füllkurs.
+
+Jedes Profil trägt `quelle` und `ist_annahme`. Eine Aufschlüsselung, die nicht
+belegt ist, bleibt `None`, statt mit plausiblen Zahlen gefüllt zu werden.
+
+Ein Profilwechsel darf **nur** die Kosten ändern. Muss dafür die Strategie
+angefasst werden, vergleicht man zwei verschiedene Strategien. Jeder Bericht
+weist aus, womit gerechnet wurde.
+
+### 11. Näherungen werden gekennzeichnet
 
 Delta bleibt `null` mit Begründung statt geschätzt zu werden. Volume Profile
 trägt `naeherung: true`. Die Dukascopy-Historie ist ein Index-CFD und kein
@@ -275,7 +288,7 @@ MNQ-Futures; die Einschränkung steht in der erzeugten Datei selbst (Tabelle
 Eine Schätzung, die aussieht wie eine Messung, ist in diesem Projekt der
 schwerste Fehler.
 
-### 11. Konfiguration und Startprüfungen
+### 12. Konfiguration und Startprüfungen
 
 Schwellenwerte ausschließlich in `config.yaml`, Secrets ausschließlich in
 `.env` — nichts davon im Code. Umgebungs-Vorrang: CLI > `.env` > YAML.
@@ -297,7 +310,7 @@ Basisvermessung, siehe `docs/BASISVERMESSUNG_2026-08-23.md`.
 Diese Prüfungen nicht abschwächen — jede existiert wegen eines konkreten
 stillen Ausfalls.
 
-### 12. Erweiterungspunkte
+### 13. Erweiterungspunkte
 
 - **Datenquellen**: `DataProvider` implementieren und in
   `backtest/data/__init__.py::create_provider` registrieren. `finalize()` in

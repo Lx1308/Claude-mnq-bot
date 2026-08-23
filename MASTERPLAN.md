@@ -400,10 +400,19 @@ einzelnen Marktphase hängt.
 **Parameter-Robustheit:** Ein Parameter, dessen Ergebnis bei ±10 % einbricht,
 ist ein Zufallsfund. Gesucht sind **Plateaus, keine Spitzen**.
 
-**Zwei Zahlen gehören in jeden Bericht**, sonst ist er irreführend:
+**Drei Zahlen gehören in jeden Bericht**, sonst ist er irreführend:
 1. **Anzahl geprüfter Hypothesen.**
 2. **Anzahl Trades je Kategorie** — unter Laurins Schwelle von 20 gilt
    ausdrücklich „zu wenig Daten", nicht „schwaches Ergebnis".
+3. **Das verwendete Kostenprofil** (seit 23.08.2026, siehe `backtest/kosten.py`).
+   Dieselbe Strategie ist unter 0,50 und unter 2,50 USD je Seite ein völlig
+   anderes Geschäft — bei `prev_day_breakout` machten die Kosten 5,00 USD je
+   Trade gegen 2,00 USD Bruttoverlust aus. Ein Ergebnis ohne diese Angabe
+   lässt sich nicht einordnen.
+
+**Jede Research-Aussage muss unter beiden Profilen geprüft werden**
+(`private_ninjatrader` und `lucid`). Ein Setup, das nur unter dem günstigeren
+trägt, ist keine Kante, sondern eine Kostenwette.
 
 ---
 
@@ -565,10 +574,10 @@ gebaut, D–F offen. Neue Etappen setzen **nach** C an.
 | **B** | Empfänger + SQLite + BarSource | **abgeschlossen**, live verifiziert |
 | **C** | Regelbasierte Ideen-Protokollierung | **gebaut**, nicht in Betrieb |
 | **C+** | **Dauerlauf + Betriebsnachweis** | **NEU, P0** |
-| **D** | `evaluate_past_ideas`, `get_performance_report` | offen, braucht C+ |
+| **D** | `evaluate_past_ideas`, `get_performance_report` | offen, **nach I** (Entscheidung 18.3) |
 | **G** | Feature Store | **NEU**, braucht C+ |
 | **H** | Regime Engine | **NEU**, braucht G |
-| **I** | Research Engine, Einzelfaktor | **NEU**, braucht G+H |
+| **I** | Research Engine, Einzelfaktor | **NEU**, braucht G+H — **vor D** |
 | **J** | Research, Zwei-/Mehrfaktor | **NEU**, braucht I |
 | **K** | Live-Monitoring und Drift | **NEU**, braucht D + Wochen an Daten |
 | **E** | Dauerbetrieb-Härtung | offen, sinnvoll parallel zu K |
@@ -581,9 +590,13 @@ gebaut, D–F offen. Neue Etappen setzen **nach** C an.
   lässt sich nachbauen, vergangene Marktdaten nicht. Bei ~13 Ideen je Woche
   über 8 Kategorien braucht Laurins Schwelle von 20 je Kategorie **Monate**.
   Jeder Tag Verzögerung verschiebt jede spätere Etappe um einen Tag.
-- **D vor Research**, weil `evaluate_past_ideas` die Frage „hat dieses Setup
-  einen Erwartungswert" schon für die vier vorhandenen Familien beantwortet.
-  Research verallgemeinert das — ohne D fehlt der Maßstab.
+- **Research vor D** — **geändert am 23.08.2026 durch Laurins Entscheidung
+  (18.3).** Ursprünglich stand hier „D vor Research", weil
+  `evaluate_past_ideas` den Maßstab setzen sollte. Die Basisvermessung hat das
+  Argument entwertet: die vier Setups haben **brutto** keine Kante. Etappe D
+  würde also vier Setups auswerten, bei denen es nichts auszuwerten gibt.
+  Research sucht stattdessen, unter **welchen Bedingungen** überhaupt eine
+  entsteht — und ist auf den zehn Jahren Näherungshistorie sofort rechenbar.
 - **G vor H vor I**, weil Regime auf Features beruht und Research auf beidem.
 - **K spät**, weil Drift-Erkennung Vergleichsdaten über Wochen braucht.
 - **L zuletzt**, weil die Vintage-Modellierung aufwendig ist und ohne sie jede
@@ -594,11 +607,12 @@ gebaut, D–F offen. Neue Etappen setzen **nach** C an.
 ## S. Abhängigkeiten
 
 ```
-A ──> B ──> C ──> C+ ──┬──> D ──────────────> K
-                       │                      ▲
-                       └──> G ──> H ──> I ──> J
-                                              │
-                            L (unabhängig, P3)┘
+A ──> B ──> C ──> C+ ──> G ──> H ──> I ──┬──> J
+                                          └──> D ──> K
+
+                            L (unabhängig, P3)
+
+Geändert am 23.08.2026: D hängt jetzt hinter I, nicht davor (Entscheidung 18.3).
 ```
 
 | Etappe | braucht zwingend | Grund |
