@@ -49,3 +49,5 @@ data/dukascopy_*.sqlite3-wal
 # FUSE unter diesem Namen weitergefuehrt. Sie gehoert niemandem und darf nicht
 # ins Repository.
 .fuse_hidden*
+data/DUKA_5m.csv
+data/DUKA_5m.csv.HERKUNFT.txt

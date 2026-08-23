@@ -1757,8 +1757,13 @@ verschiedene Strategien.
 `--kostenprofil` in der CLI erlaubt einen zweiten Lauf ohne Config-Änderung.
 Der Bericht weist Profil, Quelle und Annahmestatus aus.
 
-> **Folge für die Basisvermessung:** Sie lief unter der Altpauschale und ist
-> damit **zu pessimistisch**. Der Bruttobefund bleibt gültig.
+> **Folge für die Basisvermessung:** Sie lief unter der Altpauschale und war
+> damit zu pessimistisch. **Neulauf am 23.08.2026 nachgeholt**, siehe
+> `docs/NEULAUF_KOSTENPROFIL_2026-08-23.md`: alle fünf Strategien bleiben
+> negativ, aber deutlich weniger. `prev_day_breakout` in-sample geht von
+> −4,40 auf **−1,30 USD je Trade**, Profit-Faktor 0,96. Die Trade-Zahlen sind
+> identisch geblieben — der Nachweis, dass ein Profilwechsel nur die Kosten
+> ändert.
 
 ### 24.2 Startzeit — und zwei Korrekturen
 
