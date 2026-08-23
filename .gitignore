@@ -44,3 +44,8 @@ Thumbs.db
 data/dukascopy_*.sqlite3
 data/dukascopy_*.sqlite3-shm
 data/dukascopy_*.sqlite3-wal
+
+# Reste des Linux-Mounts: eine geloeschte, aber noch geoeffnete Datei wird von
+# FUSE unter diesem Namen weitergefuehrt. Sie gehoert niemandem und darf nicht
+# ins Repository.
+.fuse_hidden*

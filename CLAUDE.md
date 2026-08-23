@@ -59,7 +59,7 @@ das **repo-weit**.
 Immer das venv des Projekts verwenden:
 
 ```bash
-.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 349)
+.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 361)
 .venv\Scripts\python.exe -m pytest tests/test_engine.py      # eine Datei
 .venv\Scripts\python.exe -m pytest -k lookahead -v           # einzelne Tests nach Namensmuster
 .venv\Scripts\python.exe -m pytest tests/test_ideas.py::test_deviation_reentry_feuert_nur_beim_uebertritt
@@ -84,7 +84,14 @@ Betrieb und Backtest:
 .venv\Scripts\python.exe -m backtest.cli compare --symbol DEMO --csv data\DEMO_1m.csv
 .venv\Scripts\python.exe -m backtest.cli optimize --symbol DEMO --csv data\DEMO_1m.csv \
     --strategy vwap_trend --grid "stop_loss_atr=1.0,1.5,2.0"
+.venv\Scripts\python.exe -m backtest.cli walkforward --symbol DEMO --csv data\DEMO_1m.csv \
+    --strategy vwap_trend --train-bars 2000 --test-bars 1000
 ```
+
+`walkforward` rechnet mit **festen** Parametern und sucht im Trainingsfenster
+nichts — es ist ein abschnittsweiser Out-of-Sample-Lauf, kein Walk-Forward mit
+Optimierung, und der Bericht sagt das auch. Die Fenstergrößen haben bewusst
+keinen Vorgabewert.
 
 `data/DEMO_1m.csv` ist ein **synthetischer** Zufallspfad zum Ausprobieren der
 CLI ohne Zugangsdaten — keine Grundlage für Aussagen über Strategien.

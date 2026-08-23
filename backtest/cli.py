@@ -4,6 +4,8 @@
     python -m backtest.cli run      --symbol NQZ5 --strategy prev_day_breakout
     python -m backtest.cli compare  --symbol NQZ5 --strategy prev_day_breakout --strategy vwap_trend
     python -m backtest.cli optimize --symbol NQZ5 --strategy prev_day_breakout --grid "rsi_max=60,65,70"
+    python -m backtest.cli walkforward --symbol NQZ5 --strategy vwap_trend \
+        --train-bars 5000 --test-bars 1000
     python -m backtest.cli fetch    --symbol NQZ5 --bars 5000
 """
 
@@ -31,6 +33,8 @@ from backtest.engine import Backtester, CostModel
 from backtest.metrics import compute_metrics, format_metrics
 from backtest.splits import split_data
 from backtest.strategies.library import STRATEGY_LIBRARY, build_strategy
+from backtest.walkforward import bericht_text, export_walkforward
+from backtest.walkforward import lauf as walkforward_lauf
 from common.config import Config, ConfigError
 from common.logging_setup import setup_logging
 
@@ -256,6 +260,40 @@ def command_optimize(config: Config, args: argparse.Namespace) -> int:
     return 0
 
 
+def command_walkforward(config: Config, args: argparse.Namespace) -> int:
+    """Rollierende Testfenster ueber die gesamte geladene Historie.
+
+    Hier wird bewusst NICHT ueber ``split_data`` geschnitten: der Sinn des
+    Laufs ist gerade, die gesamte Historie in viele Fenster zu zerlegen. Es
+    findet auch keine Parametersuche statt - deshalb wird auch kein
+    Out-of-Sample-Zeitraum verbraucht.
+    """
+    data = load_data(config, args)
+    backtester = make_backtester(config)
+    strategy = build_strategy(args.strategy, **parse_params(args.param))
+
+    bericht = walkforward_lauf(
+        backtester,
+        data,
+        strategy,
+        train_bars=args.train_bars,
+        test_bars=args.test_bars,
+        step_bars=args.step_bars,
+    )
+
+    print()
+    print(strategy.describe())
+    print()
+    print(bericht_text(bericht))
+
+    if args.output:
+        geschrieben = export_walkforward(bericht, args.output)
+        print(f"\nErgebnisse geschrieben nach: {Path(args.output).resolve()}")
+        for schluessel, pfad in geschrieben.items():
+            print(f"  {schluessel}: {pfad.name}")
+    return 0
+
+
 # ---------------------------------------------------------------------------
 # Argument-Parser
 # ---------------------------------------------------------------------------
@@ -322,6 +360,36 @@ def build_parser() -> argparse.ArgumentParser:
     optimize_parser.add_argument("--top", type=int, default=15)
     optimize_parser.add_argument("--output", help="Zielverzeichnis")
     optimize_parser.set_defaults(handler=command_optimize)
+
+    walkforward_parser = subparsers.add_parser(
+        "walkforward",
+        help="Rollierende Testfenster ueber die gesamte Historie (feste Parameter)",
+        description=(
+            "Rechnet eine Strategie mit FESTEN Parametern ueber viele "
+            "aufeinanderfolgende Testfenster. Es wird im Trainingsfenster nichts "
+            "gesucht - der Lauf zeigt, wie stabil eine Parameterwahl ueber die "
+            "Zeit ist, und bestaetigt keine."
+        ),
+    )
+    add_data_args(walkforward_parser)
+    walkforward_parser.add_argument("--strategy", required=True, choices=sorted(STRATEGY_LIBRARY))
+    walkforward_parser.add_argument("--param", action="append", help="key=value (mehrfach moeglich)")
+    # Bewusst ohne Vorgabewert: die sinnvolle Fenstergroesse haengt an der
+    # Kerzenlaenge und am Zeitraum. Ein stiller Vorgabewert liesse einen Lauf
+    # entstehen, dessen Fensterwahl niemand bewusst getroffen hat.
+    walkforward_parser.add_argument(
+        "--train-bars", type=int, required=True, help="Kerzen Vorlauf je Fenster"
+    )
+    walkforward_parser.add_argument(
+        "--test-bars", type=int, required=True, help="Kerzen Testfenster"
+    )
+    walkforward_parser.add_argument(
+        "--step-bars",
+        type=int,
+        help="Versatz zwischen Fenstern; ohne Angabe gleich --test-bars (keine Ueberlappung)",
+    )
+    walkforward_parser.add_argument("--output", help="Zielverzeichnis fuer CSV-Export")
+    walkforward_parser.set_defaults(handler=command_walkforward)
 
     return parser
 

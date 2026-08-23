@@ -2,13 +2,13 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-23 (Basisvermessung der Strategiebibliothek, Abschnitt 21 —
-`ib_breakout` war ein stiller Ausfall, die Robustheitskennzahl log; davor
-Testsuite in der Linux-Sandbox lauffähig gemacht, Abschnitt 20,
-Qualitätsmessung der Dukascopy-Näherungshistorie, Abschnitt 19, und zwei
-bereinigte Tradovate-Defekte; Inhalt sonst 2026-08-22 nach Entfernung des
-Legacy-Pfads).
-Gegen den tatsächlichen Projektordner geprüft. **Testzahlen:** 349, gemessen am
+Stand: 2026-08-23 (`walkforward`-Kommando, Abschnitt 22 — Masterplan X.2; davor
+Basisvermessung der Strategiebibliothek, Abschnitt 21, wo `ib_breakout` als
+stiller Ausfall auffiel und die Robustheitskennzahl log; Testsuite in der
+Linux-Sandbox lauffähig gemacht, Abschnitt 20, Qualitätsmessung der
+Dukascopy-Näherungshistorie, Abschnitt 19, und zwei bereinigte
+Tradovate-Defekte; Inhalt sonst 2026-08-22 nach Entfernung des Legacy-Pfads).
+Gegen den tatsächlichen Projektordner geprüft. **Testzahlen:** 361, gemessen am
 23.08.2026 — allerdings in der Linux-Ersatzumgebung (Abschnitt 20), nicht unter
 dem Windows-venv. Der Windows-Lauf bleibt vor einer Freigabe auszuführen.
 
@@ -1525,3 +1525,101 @@ Bibliothek gegen die vorhandenen Spalten) und zwei in
 `tests/test_metrics_and_splits.py` (Robustheit ohne bzw. mit positivem
 In-Sample-Vorteil). Gegenprobe in der Linux-Ersatzumgebung gruen; der
 Windows-Lauf steht wie immer noch aus.
+
+---
+
+## 22. `walkforward`-Kommando: der tote Code hat einen Einstiegspunkt (23.08.2026)
+
+Der Masterplan führt das als **X.2** und als P1 direkt hinter dem
+Dukascopy-Provider: `backtest/splits.py::walk_forward_windows` war gebaut,
+getestet und wurde im Plan mehrfach als Kern der Confirmation-Phase
+vorausgesetzt — aufrufbar war es nur aus einem Python-Interpreter. Die CLI
+kannte `list`, `run`, `compare`, `optimize` und sonst nichts.
+
+Das ist eine Erreichbarkeitslücke, keine Entwurfsfrage, und berührt keinen der
+rückfragepflichtigen Bereiche (keine Entry-/Stop-/Ziel-Regeln, kein Umfang der
+Setup-Familien, nichts an der Ordersperre) — deshalb ohne Rückfrage erledigt.
+Die P0-Entscheidung selbst steht weiterhin bei Laurin.
+
+### Neu: `backtest/walkforward.py`
+
+- `lauf(...)` rechnet eine Strategie über alle rollierenden Testfenster und
+  liefert einen `WalkForwardBericht` mit einem `FensterErgebnis` je Fenster.
+- Die Indikatoren entstehen **einmal über die Gesamthistorie** und werden erst
+  danach geschnitten — dieselbe Begründung wie bei `compare.prepare_split`
+  (Invariante 5): ein isoliert vorbereitetes Fenster hätte in seinen ersten
+  Kerzen keinen gültigen SMA(50) und die Strategie bliebe dort stumm.
+- `bericht_text(...)` und `export_walkforward(...)` für Konsole und CSV.
+
+### Drei Entscheidungen, die dabei getroffen wurden
+
+**1. Es ist ausdrücklich kein Walk-Forward mit Optimierung.** Die Strategie
+läuft mit festen Parametern durch alle Fenster; im Trainingsfenster wird
+nichts gesucht. Das Trainingsfenster ist reiner **Vorlauf** und geht in keine
+Kennzahl ein. Genau so ist es auch beschriftet — `MODUS_FESTE_PARAMETER` steht
+im Bericht, und darunter der Satz, dass der Lauf keine Parameterwahl
+bestätigt. Eine Auswertung, die aussieht wie ein Walk-Forward, aber keine
+Optimierung enthält, wäre nach Invariante 10 eine Schätzung im Gewand einer
+Messung.
+
+Die Fassung **mit** Parametersuche je Fenster ist die nächste Stufe. Sie ist
+Research-Entwurf und gehört in den Masterplan-Strang, nicht in eine
+Nebenentscheidung.
+
+**2. Summen bleiben bei überlappenden Fenstern leer.** Bei
+`step_bars < test_bars` steckt dieselbe Kerze in mehreren Testfenstern; eine
+Summe über Trades oder Netto-P&L zählte sie mehrfach. `summe_trades` und
+`summe_netto` liefern dann `None`, und der Bericht **schreibt hin**, warum die
+Zeile fehlt — eine kommentarlos fehlende Zeile hält man für einen
+Darstellungsfehler statt für eine Aussage (dieselbe Überlegung wie bei
+`print_report` und der Robustheitskennzahl, Abschnitt 21).
+
+**3. Die Fenstergrößen haben keinen Vorgabewert.** `--train-bars` und
+`--test-bars` sind Pflichtargumente. Ein stiller Vorgabewert ließe einen Lauf
+entstehen, dessen Fensterwahl niemand bewusst getroffen hat — und die
+sinnvolle Größe hängt an Kerzenlänge und Zeitraum. `--step-bars` ist optional
+und entspricht ohne Angabe `--test-bars`, also keiner Überlappung.
+
+Die aussagekräftigste Zahl des Berichts ist **`anteil_positiver_fenster`**:
+eine Strategie, die insgesamt im Plus steht, aber nur in zwei von zwanzig
+Fenstern verdient hat, lebt von einer einzelnen Marktphase. `None` statt `0.0`,
+solange es keine Fenster gibt — „kein Fenster war positiv" und „es gab keine
+Fenster" sind verschiedene Aussagen.
+
+### Kein stiller Ausfall bei zu kurzer Historie
+
+`walk_forward_windows` liefert bei `train_bars + test_bars > len(df)`
+kommentarlos eine leere Liste. Das liest sich wie „die Strategie hat nichts
+gefunden" statt wie „die Historie reicht für diese Fenstergrößen nicht".
+`lauf(...)` prüft vorher und wirft `WalkForwardError` mit beiden Zahlen.
+
+### `pruefe_chronologie`
+
+Wirft, wenn ein Testfenster nicht hinter seinem Trainingsfenster liegt. Das ist
+ein Lookahead-Test, kein Formtest — bei vertauschter Reihenfolge liefe die
+Auswertung auf Daten, die zum Entscheidungszeitpunkt noch nicht existierten.
+
+### Tests
+
+349 -> **361**. `tests/test_walkforward.py`, zwölf Stück: Chronologie der
+Fenster und die Gegenprobe mit vertauschten Fenstern, Nicht-Überlappung bei
+`step_bars == test_bars`, ein Ergebnis je Fenster, Abbruch bei zu kurzer
+Historie, Modusangabe, Summen bei und ohne Überlappung, `None` statt `0.0` ohne
+Fenster, korrekte Zählung des positiven Anteils, und zwei auf der CLI (das
+Kommando existiert; ohne Fenstergrößen bricht der Parser ab).
+
+Zusätzlich von Hand gegen `data/DEMO_1m.csv` durchlaufen: zehn Fenster, Tabelle
+und Hinweistext erscheinen. Die **Zahlen daraus sind bedeutungslos** — DEMO ist
+ein synthetischer Zufallspfad.
+
+Gegenprobe in der Linux-Ersatzumgebung grün; der Windows-Lauf steht wie immer
+noch aus.
+
+### Weiterhin offen und weiterhin Laurins Entscheidung
+
+Der P0-Punkt (Ideen-Dauerlauf / Dukascopy-Provider / MCP-Startzeit) ist damit
+**nicht** vorweggenommen. Insbesondere hilft `walkforward` erst dann wirklich,
+wenn X.1 erledigt ist: über die Backtest-Seite erreichbar sind bislang nur
+CSV-Dateien aus `data/`, und das ist dort ausschließlich der synthetische
+`DEMO_1m.csv`. Ein Walk-Forward über zehn Jahre Näherungshistorie ist der erste
+Lauf, der etwas aussagen würde.

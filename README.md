@@ -622,6 +622,32 @@ erst danach geschnitten. Würde man den OOS-Block isoliert vorbereiten, hätten
 dessen erste ~50 Kerzen keinen gültigen SMA(50) und die Strategie bliebe dort
 stumm — ein stiller Verlust an OOS-Zeitraum.
 
+### 9.2b Walk-Forward — dieselbe Strategie über viele Zeitfenster
+
+```bash
+.venv\Scripts\python.exe -m backtest.cli walkforward --symbol NQZ5 \
+    --strategy vwap_trend --train-bars 5000 --test-bars 1000
+```
+
+Ein einzelner In-/Out-of-Sample-Schnitt sagt nur etwas über *eine* Marktphase
+aus. Der Lauf zerlegt die Historie stattdessen in viele aufeinanderfolgende
+Testfenster und weist die eigentlich interessante Größe aus: **wie viele**
+Fenster positiv waren, nicht nur die Summe über alles. Eine Strategie, die
+insgesamt im Plus steht, aber nur in zwei von zwanzig Fenstern verdient hat,
+lebt von einer einzelnen Marktphase.
+
+Drei Dinge, die der Bericht ausdrücklich sagt statt sie zu verschweigen:
+
+- **Im Trainingsfenster wird nichts gesucht.** Die Parameter stehen fest; das
+  Trainingsfenster ist reiner Vorlauf. Das ist damit ein abschnittsweiser
+  Out-of-Sample-Lauf, kein Walk-Forward *mit Optimierung* — und der Bericht
+  schreibt das über jede Ausgabe.
+- **Bei überlappenden Fenstern** (`--step-bars` kleiner als `--test-bars`)
+  bleiben Trade- und P&L-Summen leer, weil dieselben Trades sonst mehrfach
+  gezählt würden. Die Begründung steht an der Stelle der fehlenden Zeile.
+- **Fenstergrößen haben keinen Vorgabewert.** Ein stiller Standard ließe einen
+  Lauf entstehen, dessen Fensterwahl niemand bewusst getroffen hat.
+
 ### 9.3 Eigene Strategie schreiben
 
 ```python
