@@ -1,8 +1,10 @@
 """Schnittstelle fuer historische Datenquellen.
 
 Die Engine kennt ausschliesslich :class:`DataProvider`. Ob die Bars aus
-einer CSV, aus Tradovate oder spaeter aus einem kommerziellen Feed kommen,
-ist damit eine Konfigurationsentscheidung - keine Code-Aenderung.
+einer CSV, aus der Dukascopy-Naeherungshistorie oder spaeter aus einem
+kommerziellen Feed kommen, ist damit eine Konfigurationsentscheidung - keine
+Code-Aenderung. Registriert ist am 23.08.2026 nur ``csv``; ein Provider fuer
+die Dukascopy-Historie fehlt noch (MASTERPLAN Abschnitt X.1, P0).
 """
 
 from __future__ import annotations

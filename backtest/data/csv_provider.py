@@ -53,8 +53,12 @@ class CsvDataProvider(DataProvider):
         if not path.exists():
             raise DataProviderError(
                 f"CSV-Datei nicht gefunden: {path.resolve()}\n"
-                f"Tipp: mit 'python -m backtest.cli fetch --symbol {request.symbol}' "
-                f"Historie von Tradovate herunterladen."
+                f"Erwartet wird '{request.symbol.upper()}_"
+                f"{request.interval_minutes}m.csv' im Datenverzeichnis, oder ein "
+                f"expliziter Pfad ueber --csv. Es gibt kein Download-Kommando: "
+                f"die Dukascopy-Naeherungshistorie liegt in einer SQLite-Datei und "
+                f"ist ueber diesen Provider nicht erreichbar "
+                f"(MASTERPLAN Abschnitt X.1)."
             )
 
         raw = pd.read_csv(path)

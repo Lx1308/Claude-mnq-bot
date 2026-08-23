@@ -2,9 +2,10 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-23 (Nachprüfung des Branch-Stands; Inhalt sonst 2026-08-22,
-nach Entfernung des Legacy-Pfads). Gegen den tatsächlichen
-Projektordner geprüft, Testzahlen auf Windows **gemessen**.
+Stand: 2026-08-23 (zwei Tradovate-Defekte bereinigt; davor Nachprüfung des
+Branch-Stands, Inhalt sonst 2026-08-22 nach Entfernung des Legacy-Pfads).
+Gegen den tatsächlichen Projektordner geprüft, Testzahlen auf Windows
+**gemessen**.
 
 ---
 
@@ -1134,3 +1135,54 @@ del ".git\index.lock" ".git\HEAD.lock"
 
 Danach arbeitet Git wieder normal; ein weiterer `git commit` ist **nicht**
 nötig und würde nur einen leeren Commit versuchen.
+
+---
+
+## 17. Zwei Tradovate-Defekte bereinigt (23.08.2026)
+
+Der Masterplan führte sie als P0 mit Minutenaufwand (Abschnitt B, Zeilen zu
+`backtest/cli.py:276` und `backtest/data/csv_provider.py:57`). Beides sind
+Erreichbarkeits- beziehungsweise Wegweiser-Fehler, keine Entwurfsfragen, und
+sie berühren keinen der rückfragepflichtigen Bereiche — deshalb ohne Rückfrage
+erledigt.
+
+1. **`backtest/cli.py`** bot `--provider tradovate` an. `create_provider` kennt
+   nur `"csv"`; die Option lief also in einen `DataProviderError` statt gar
+   nicht erst wählbar zu sein. Jetzt `choices=("csv",)`. Gegenprobe:
+   `--provider tradovate` scheitert nun im Argumentparser mit
+   *invalid choice: 'tradovate' (choose from 'csv')*.
+
+2. **`backtest/data/csv_provider.py`** riet bei fehlender Datei zu
+   `python -m backtest.cli fetch --symbol …`, einem Kommando, das es nicht mehr
+   gibt, für einen Anbieter, den es nicht mehr gibt. Der Fehlertext nennt jetzt
+   die erwartete Namenskonvention, `--csv` als Alternative und sagt ausdrücklich,
+   dass es **kein** Download-Kommando gibt und die Dukascopy-Näherungshistorie
+   über diesen Provider nicht erreichbar ist (Verweis auf MASTERPLAN X.1).
+
+3. **`backtest/data/base.py`** nannte Tradovate im Modul-Docstring als Beispiel
+   einer austauschbaren Quelle. Ersetzt durch die Dukascopy-Historie, mit dem
+   Hinweis, dass am 23.08.2026 nur `csv` registriert ist.
+
+**Nicht angefasst:** die übrigen Tradovate-Nennungen in `common/config.py`,
+`common/contracts.py`, `common/instruments.py`, `mcp_server/bars.py`,
+`ntbridge/__init__.py`, `config.yaml` und `README.md`. Das sind
+Historien-Kommentare, die das *Warum* einer Entfernung festhalten — sie zu
+löschen würde die Begründung vernichten, nicht einen Defekt.
+
+**Verifikation eingeschränkt:** Der Lauf fand in einer Linux-Umgebung ohne
+`pytest` statt (Installation gesperrt). Geprüft wurden Import beider Module,
+der erzeugte Fehlertext, die Ablehnung der entfernten CLI-Option und die
+ASCII-Reinheit aller drei Dateien. **Die Testsuite ist auf Windows noch
+nachzuziehen:** `.venv\Scripts\python.exe -m pytest`. Erwartung: unverändert
+grün, da keine Testdatei die geänderten Zeichenketten prüft (`grep -rn
+tradovate tests/` trifft nur `test_ideas.py` und `test_ntbridge.py`, beide zur
+`environment: demo`-Namensfalle, und `test_mcp_snapshot.py` in einem Docstring).
+
+### Git-Sperrdateien weiterhin vorhanden
+
+`.git/index.lock` und `.git/HEAD.lock` liegen noch. Aus dieser Umgebung sind
+sie **nicht löschbar** (der Mount erlaubt Anlegen und Ändern, aber kein
+Löschen). Der Commit dieser Änderung entstand deshalb erneut über einen
+alternativen Index (`GIT_INDEX_FILE`), `write-tree`/`commit-tree` und ein
+direktes Schreiben von `refs/heads/main`. Folge wie beim letzten Mal: kein
+Reflog-Eintrag. Die Aufräumanweisung aus Abschnitt 16 gilt unverändert.

@@ -273,7 +273,10 @@ def build_parser() -> argparse.ArgumentParser:
     def add_data_args(target: argparse.ArgumentParser) -> None:
         target.add_argument("--symbol", required=True, help="z.B. NQZ5")
         target.add_argument("--interval", type=int, help="Kerzenlaenge in Minuten")
-        target.add_argument("--provider", choices=("csv", "tradovate"))
+        # Nur registrierte Quellen anbieten. "tradovate" stand hier noch, nachdem
+        # der Provider mit dem Legacy-Pfad entfallen war - die Option lief in
+        # einen DataProviderError statt gar nicht erst waehlbar zu sein.
+        target.add_argument("--provider", choices=("csv",))
         target.add_argument("--csv", help="Expliziter Pfad zu einer CSV-Datei")
         target.add_argument("--start", help="ISO-Datum, z.B. 2025-01-01")
         target.add_argument("--end", help="ISO-Datum")
