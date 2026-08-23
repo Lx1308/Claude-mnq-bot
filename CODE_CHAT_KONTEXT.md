@@ -1790,3 +1790,66 @@ ausmachte. Warm sind es 0,9 s.
 **Lehre:** Eine Startzeit einmal kalt und einmal warm messen, bevor man die
 Ursache benennt. Der Unterschied betrug hier den Faktor drei und zeigte auf
 einen anderen Schuldigen.
+
+
+---
+
+## 25. Faktorkatalog aus Internet-Recherche (23.08.2026)
+
+`docs/FAKTORKATALOG.md`. Kandidaten für die Einzelfaktor-Research, nach
+Evidenzstärke (A/B/C) und Rechenbarkeit aus **unseren** Daten geordnet.
+
+**Jeder Eintrag ist eine Hypothese, kein Erwartungswert.** Fremde Messungen auf
+fremden Daten. Der Katalog ist bewusst mit einer Warnung überschrieben: Wer 40
+Faktoren auf einem Datensatz prüft, findet rund zwei „signifikante" allein
+durch Zufall.
+
+### 25.1 Der Fund, der das Projekt direkt betrifft
+
+**Mesfin (2026), arXiv 2605.04004** — eine Falsifikationsstudie zu **genau
+unserem Fall**: MNQ, Fünfminutenkerzen, nur OHLCV, 947 Handelstage 2021–2025.
+**14 Signalfamilien geprüft, keine erfüllte alle Kriterien.** Bruttoerträge
+0,07 bis 1,50 Punkte je Trade.
+
+Das deckt sich mit unserer eigenen Messung (rund −1 Punkt brutto).
+
+**Aber die Kostenannahme ist der Hebel.** Die Studie verwirft alles unter
+**2 Punkten** Friktion. Unsere gemessenen Kosten:
+
+| Posten | Punkte |
+|---|---|
+| `private_ninjatrader` (1,90 USD RT) | 0,95 |
+| Slippage 1 Tick je Seite | 0,50 |
+| **Summe** | **≈ 1,45** |
+
+Ein Signal mit 1,50 Punkten brutto wäre bei Mesfin verworfen, bei uns knapp
+positiv. Kein Beleg für eine Kante — aber die Schwelle liegt nicht bei 2.
+
+**Konsequenz:** Der Zielkorridor ist eng. Reine OHLCV-Signale sind
+wahrscheinlich zu wenig; der Weg führt eher über **Konditionierung** — dasselbe
+Signal nur in bestimmten Regimen — als über neue Signalformen.
+
+### 25.2 Sofort prüfbar, ohne neue Datenquelle
+
+1. Intraday-Momentum (erste → letzte halbe Stunde), konditioniert auf
+   Volatilität und Volumen. Evidenz A, aber OOS-Verschwinden dokumentiert.
+2. Turn-of-Month als Regime-Achse. Evidenz A, in S&P-Futures der einzige
+   stabile Kalendereffekt.
+3. Gap-Größe × Overnight-Range als Zweifaktor. Beide Größen haben wir.
+4. ORB mit kürzeren Fenstern als Variante zu `ib_breakout`.
+5. **ADX-Schwellen aus der Verteilung ableiten** statt aus Konvention — die
+   Recherche liefert für die verwendeten 20/25 keine Begründung. Nach dem
+   `consolidation_max_atr`-Fund (Schwelle 1,2 war unerreichbar) ist das ein
+   konkreter Verdacht, kein allgemeiner Vorbehalt.
+
+### 25.3 Nicht rechenbar, Datenquelle fehlt
+
+VIX-Terminstruktur (erst prüfen, ob NT8 sie liefert) und Pre-FOMC-Drift
+(braucht Vintage-Historie, P3).
+
+### 25.4 Der Vorbehalt, der über alles gilt
+
+McLean und Pontiff (2016): Vorhersagbarkeit verschwindet **nach ihrer
+Veröffentlichung**. Je bekannter ein Effekt, desto wahrscheinlicher ist er
+wegarbitriert. Der Pre-FOMC-Drift ist das Lehrstück — nach 2015 angeblich
+verschwunden, in einer Analyse bis 2024 angeblich weiter vorhanden.
