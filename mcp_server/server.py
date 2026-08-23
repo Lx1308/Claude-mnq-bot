@@ -34,9 +34,8 @@ from mcp.server import MCPServer
 
 from common.instruments import UnknownInstrument, get_instrument, known_roots
 from common.logging_setup import log_event
-from mcp_server.bars import ALL_TIMEFRAMES, DAILY
+from mcp_server.bars import ALL_TIMEFRAMES, DAILY, DEFAULT_BARS_IN_OUTPUT
 from mcp_server.context import ServerContext
-from mcp_server.snapshot import DEFAULT_BARS_IN_OUTPUT, build_snapshot_payload
 
 log = logging.getLogger(__name__)
 
@@ -129,6 +128,10 @@ async def get_market_snapshot(
     )
 
     loaded = await source.load(symbol, selected)
+    # Erst hier importiert: snapshot.py zieht pandas herein, und das wird
+    # fuer den Handshake nicht gebraucht - nur fuer diesen Aufruf.
+    from mcp_server.snapshot import build_snapshot_payload
+
     payload = build_snapshot_payload(
         loaded,
         _context.config,

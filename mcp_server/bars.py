@@ -31,9 +31,22 @@ from __future__ import annotations
 import logging
 from dataclasses import dataclass, field
 from datetime import datetime, timezone
-from typing import Protocol
+from typing import TYPE_CHECKING, Protocol
 
-import pandas as pd
+# pandas wird hier NUR in Typannotationen gebraucht. Dank
+# ``from __future__ import annotations`` sind die Zeichenketten und loesen
+# keinen Import aus.
+#
+# Warum das zaehlt: der MCP-Server startet bei JEDEM Client neu. Auf kaltem
+# Dateisystem-Cache war pandas mit rund 18 von 30 Sekunden der groesste
+# Einzelposten des Startvorgangs - gebraucht wird es aber erst beim ersten
+# Werkzeugaufruf, nicht fuer den Handshake.
+#
+# Warm gemessen faellt das kaum ins Gewicht (0,8 s). Der eigentliche
+# Zeitfresser ist dann die Bibliothek ``mcp.server`` selbst, die ihren
+# Client-Code mitlaedt - daran laesst sich von hier aus nichts aendern.
+if TYPE_CHECKING:  # pragma: no cover - nur fuer Typpruefer
+    import pandas as pd
 
 from common.config import Config
 from common.instruments import Instrument, get_instrument
@@ -52,6 +65,11 @@ ALL_TIMEFRAMES = (*TIMEFRAME_MINUTES, DAILY)
 # Wie viele Bars je Timeframe geholt werden. Bemessen an EMA200 plus
 # Swing-Lookback, bei 5m/15m zusaetzlich so, dass zwei Handelssessions
 # hineinpassen (Voraussetzung fuer Vortageshoch/-tief).
+# Wie viele Kerzen der Snapshot ausgibt. Steht hier und nicht in
+# snapshot.py, weil server.py sie als Vorgabewert einer Signatur braucht -
+# und ein Import von snapshot.py zoege pandas in den Startvorgang.
+DEFAULT_BARS_IN_OUTPUT = 20
+
 DEFAULT_BAR_COUNTS: dict[str, int] = {
     "1m": 1500,
     "5m": 800,     # ~2.8 Sessions
@@ -257,6 +275,7 @@ class BarStoreProtocol(Protocol):
 
 __all__ = [
     "ALL_TIMEFRAMES",
+    "DEFAULT_BARS_IN_OUTPUT",
     "DAILY",
     "DEFAULT_BAR_COUNTS",
     "TIMEFRAME_MINUTES",

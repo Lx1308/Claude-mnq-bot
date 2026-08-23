@@ -678,3 +678,49 @@ def test_provenienz_meldet_angeschnittene_vorsession(mcp_config):
 
     assert je_tf["1m"]["vorsession_vollstaendig"] is False
     assert je_tf["5m"]["vorsession_vollstaendig"] is True
+
+
+def test_serverstart_laedt_pandas_nicht():
+    """Der MCP-Server startet bei JEDEM Client neu.
+
+    pandas wird erst beim ersten Werkzeugaufruf gebraucht, nicht fuer den
+    Handshake. Auf kaltem Dateisystem-Cache war es mit rund 18 von 30
+    Sekunden der groesste Einzelposten des Startvorgangs.
+
+    Gemessen am 23.08.2026: Handshake 2,6 s -> 1,73 s, Modulzahl 1190 -> 751.
+
+    Gegenprobe beim Bau: mit ``import pandas as pd`` auf Modulebene in
+    ``mcp_server/bars.py`` faellt dieser Test.
+    """
+    import subprocess
+    import sys
+
+    ergebnis = subprocess.run(
+        [
+            sys.executable,
+            "-c",
+            "import sys, mcp_server.server; "
+            "sys.exit(1 if 'pandas' in sys.modules else 0)",
+        ],
+        cwd=str(PROJECT_ROOT),
+        env={"PYTHONPATH": str(PROJECT_ROOT), "PATH": "", "SYSTEMROOT": r"C:\Windows"},
+        capture_output=True,
+    )
+    assert ergebnis.returncode == 0, (
+        "pandas wird beim Import von mcp_server.server geladen. Es gehoert "
+        "hinter TYPE_CHECKING oder in die Werkzeugfunktion - der Handshake "
+        "braucht es nicht."
+    )
+
+
+def test_konstante_liegt_pandas_frei_in_bars():
+    """DEFAULT_BARS_IN_OUTPUT ist Vorgabewert einer Signatur in server.py.
+
+    Laege sie in snapshot.py, zoege allein ihr Import pandas in den
+    Startvorgang - eine Konstante wuerde eine 800-ms-Bibliothek nachziehen.
+    """
+    from mcp_server.bars import DEFAULT_BARS_IN_OUTPUT as aus_bars
+    from mcp_server.snapshot import DEFAULT_BARS_IN_OUTPUT as aus_snapshot
+
+    # Eine Definition, zwei Zugaenge - kein zweiter Wert.
+    assert aus_bars == aus_snapshot

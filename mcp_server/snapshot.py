@@ -52,7 +52,8 @@ from mcp_server.bars import DAILY, BarSet, LoadedBars
 # Wie viele Rohkerzen je Timeframe mitgeliefert werden. Bewusst knapp:
 # der volle Satz waere 30-60 KB JSON je Aufruf und wuerde in jeder
 # Claude-Desktop-Unterhaltung spuerbar Kontext kosten.
-DEFAULT_BARS_IN_OUTPUT = 20
+# Definiert in bars.py, damit server.py sie ohne pandas erreicht.
+from mcp_server.bars import DEFAULT_BARS_IN_OUTPUT  # noqa: E402
 
 
 def _clean(value: Any) -> float | None:
