@@ -1133,10 +1133,18 @@ Arbeitsbaum ist sauber. Ein Reflog-Eintrag fehlt — das ist die einzige Folge.
 
 ```
 del ".git\index.lock" ".git\HEAD.lock"
+del /s ".git\objects\tmp_obj_*"
 ```
 
 Danach arbeitet Git wieder normal; ein weiterer `git commit` ist **nicht**
 nötig und würde nur einen leeren Commit versuchen.
+
+Die zweite Zeile räumt Reste auf: jeder Commit aus der Linux-Umgebung schreibt
+seine Objekte erfolgreich, kann die zugehörigen Temporärdateien danach aber
+nicht entfernen (derselbe fehlende Löschrechte-Mount). Git ignoriert sie, weil
+ihre Namen nicht dem Hash-Muster entsprechen — sie kosten nur Platz. Stand
+23.08.2026 liegen davon über 20 Stück im Objektspeicher. `git fsck` und
+`git gc` laufen dadurch nicht auf einen Fehler.
 
 ---
 
