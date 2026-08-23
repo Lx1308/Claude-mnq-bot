@@ -51,6 +51,81 @@ from backtest.engine import BacktestResult, Trade
 #: ist je Aufruf ueberschreibbar.
 MIN_TRADES_JE_GRUPPE = 20
 
+#: Signifikanzniveau VOR der Korrektur.
+ALPHA = 0.05
+
+
+# ---------------------------------------------------------------------------
+#  Statistik - ohne scipy
+# ---------------------------------------------------------------------------
+#
+# scipy ist keine Abhaengigkeit des Projekts. Die Normalapproximation waere
+# bequem, aber gerade tief im Verteilungsrand - und dorthin schiebt die
+# Bonferroni-Korrektur die Schwelle - weicht sie spuerbar ab. Deshalb die
+# echte t-Verteilung ueber die regularisierte unvollstaendige Betafunktion.
+
+def _betacf(a: float, b: float, x: float) -> float:
+    """Kettenbruch fuer die unvollstaendige Betafunktion (Lentz-Verfahren)."""
+    winzig, genauigkeit, max_schritte = 1e-30, 3e-16, 300
+    qab, qap, qam = a + b, a + 1.0, a - 1.0
+    c = 1.0
+    d = 1.0 - qab * x / qap
+    if abs(d) < winzig:
+        d = winzig
+    d = 1.0 / d
+    h = d
+    for m in range(1, max_schritte + 1):
+        m2 = 2 * m
+        # gerader Schritt
+        aa = m * (b - m) * x / ((qam + m2) * (a + m2))
+        d = 1.0 + aa * d
+        c = 1.0 + aa / c
+        if abs(d) < winzig:
+            d = winzig
+        if abs(c) < winzig:
+            c = winzig
+        d = 1.0 / d
+        h *= d * c
+        # ungerader Schritt
+        aa = -(a + m) * (qab + m) * x / ((a + m2) * (qap + m2))
+        d = 1.0 + aa * d
+        c = 1.0 + aa / c
+        if abs(d) < winzig:
+            d = winzig
+        if abs(c) < winzig:
+            c = winzig
+        d = 1.0 / d
+        delta = d * c
+        h *= delta
+        if abs(delta - 1.0) < genauigkeit:
+            break
+    return h
+
+
+def regularisierte_beta(a: float, b: float, x: float) -> float:
+    """I_x(a, b) - die regularisierte unvollstaendige Betafunktion."""
+    if x <= 0.0:
+        return 0.0
+    if x >= 1.0:
+        return 1.0
+    vorfaktor = math.exp(
+        math.lgamma(a + b) - math.lgamma(a) - math.lgamma(b)
+        + a * math.log(x) + b * math.log(1.0 - x)
+    )
+    if x < (a + 1.0) / (a + b + 2.0):
+        return vorfaktor * _betacf(a, b, x) / a
+    return 1.0 - vorfaktor * _betacf(b, a, 1.0 - x) / b
+
+
+def p_wert_zweiseitig(t_wert: float, freiheitsgrade: int) -> float:
+    """Zweiseitiger p-Wert einer t-Statistik."""
+    if freiheitsgrade <= 0:
+        return 1.0
+    if not math.isfinite(t_wert):
+        return 0.0 if abs(t_wert) > 0 else 1.0
+    x = freiheitsgrade / (freiheitsgrade + t_wert * t_wert)
+    return regularisierte_beta(freiheitsgrade / 2.0, 0.5, x)
+
 
 class OutOfSampleBeruehrung(RuntimeError):
     """Discovery hat Daten jenseits der Trainingsgrenze gesehen."""
@@ -89,6 +164,33 @@ class Gruppenergebnis:
     netto_usd_je_trade: float
     brutto_punkte_gesamt: float
     netto_usd_gesamt: float
+    #: Streuung der Bruttopunkte je Trade. Ohne sie ist keine Aussage ueber
+    #: Signifikanz moeglich - ein Mittelwert allein sagt nichts darueber, ob
+    #: er von null zu unterscheiden ist.
+    brutto_punkte_std: float = 0.0
+
+    @property
+    def t_statistik(self) -> float | None:
+        """t-Wert gegen die Nullhypothese "Erwartungswert null".
+
+        ACHTUNG - die Annahme dahinter: unabhaengige Trades. Sie ist in
+        Wahrheit verletzt, weil Trades zeitlich clustern und dasselbe
+        Marktregime teilen. Der t-Wert ist deshalb eher zu GROSS, die
+        Signifikanz eher ueberschaetzt. Das ist ein Argument fuer die
+        strenge Korrektur, nicht gegen sie.
+        """
+        if self.trades < 2 or self.brutto_punkte_std <= 0:
+            return None
+        return self.brutto_punkte_je_trade / (
+            self.brutto_punkte_std / math.sqrt(self.trades)
+        )
+
+    @property
+    def p_wert(self) -> float | None:
+        t_wert = self.t_statistik
+        if t_wert is None:
+            return None
+        return p_wert_zweiseitig(t_wert, self.trades - 1)
 
     @property
     def trefferquote(self) -> float:
@@ -177,6 +279,73 @@ class Discoverylauf:
         sind zwei "signifikante" Funde der Erwartungswert, nicht ein Ergebnis.
         """
         return sum(len(e.auswertbare_gruppen) for e in self.ergebnisse)
+
+    @property
+    def bonferroni_schwelle(self) -> float:
+        """Korrigiertes Signifikanzniveau: alpha geteilt durch die Hypothesenzahl.
+
+        **Laurins Entscheidung vom 23.08.2026:** Es wird streng korrigiert, und
+        keine Hypothese wird privilegiert - auch dann nicht, wenn die Literatur
+        zufaellig in dieselbe Richtung zeigt. Ein aufgeweichter Massstab, der
+        nachtraeglich fuer den Lieblingskandidaten gelockert wird, ist kein
+        Massstab.
+        """
+        n = self.gepruefte_hypothesen
+        return ALPHA / n if n else ALPHA
+
+    def signifikante(self) -> list[tuple[Faktorergebnis, Gruppenergebnis]]:
+        """Gruppen, die die KORRIGIERTE Schwelle unterschreiten."""
+        schwelle = self.bonferroni_schwelle
+        treffer = []
+        for erg in self.ergebnisse:
+            for gruppe in erg.auswertbare_gruppen:
+                p = gruppe.p_wert
+                if p is not None and p < schwelle:
+                    treffer.append((erg, gruppe))
+        return treffer
+
+    def statistikbericht(self) -> str:
+        """Der Teil, der ueber Signifikanz entscheidet."""
+        n = self.gepruefte_hypothesen
+        schwelle = self.bonferroni_schwelle
+        zeilen = [
+            "MULTIPLE-TESTING-KORREKTUR (Bonferroni)",
+            f"  Geprüfte Hypothesen        : {n}",
+            f"  Unkorrigiertes Niveau      : {ALPHA}",
+            f"  Korrigierte Schwelle       : {schwelle:.6f}  (alpha / {n})",
+            "",
+            "Alle auswertbaren Gruppen, nach p-Wert:",
+        ]
+
+        alle = []
+        for erg in self.ergebnisse:
+            for gruppe in erg.auswertbare_gruppen:
+                p = gruppe.p_wert
+                if p is not None:
+                    alle.append((p, erg, gruppe))
+        alle.sort(key=lambda x: x[0])
+
+        for p, erg, gruppe in alle:
+            bestanden = "JA " if p < schwelle else "nein"
+            # Bonferroni-korrigierter p-Wert, gedeckelt bei 1.
+            p_korr = min(1.0, p * n)
+            zeilen.append(
+                f"  {bestanden}  p={p:<10.6f} p_korr={p_korr:<10.4f} "
+                f"t={gruppe.t_statistik:>+6.2f}  "
+                f"{erg.strategie}/{erg.faktor}/{gruppe.auspraegung}"
+            )
+
+        treffer = self.signifikante()
+        zeilen.append("")
+        if treffer:
+            zeilen.append(f"{len(treffer)} Gruppe(n) unterschreiten die korrigierte Schwelle.")
+        else:
+            zeilen.append(
+                "KEINE Gruppe unterschreitet die korrigierte Schwelle. "
+                "Nach strengem Massstab ist damit nichts gefunden, was den "
+                "Out-of-Sample-Block rechtfertigen wuerde."
+            )
+        return "\n".join(zeilen)
 
     def bericht(self, min_trades: int = MIN_TRADES_JE_GRUPPE) -> str:
         zeilen: list[str] = []
@@ -323,7 +492,8 @@ def pruefe_faktor(
     gruppen: list[Gruppenergebnis] = []
     for auspraegung in sorted(eimer):
         trades = eimer[auspraegung]
-        brutto = sum(t.gross_points for t in trades)
+        punkte = np.array([t.gross_points for t in trades], dtype=float)
+        brutto = float(punkte.sum())
         netto = sum(t.pnl for t in trades)
         gruppen.append(
             Gruppenergebnis(
@@ -334,6 +504,8 @@ def pruefe_faktor(
                 netto_usd_je_trade=netto / len(trades),
                 brutto_punkte_gesamt=brutto,
                 netto_usd_gesamt=netto,
+                # ddof=1: Stichprobenstreuung, nicht Populationsstreuung.
+                brutto_punkte_std=float(punkte.std(ddof=1)) if len(punkte) > 1 else 0.0,
             )
         )
 
@@ -346,7 +518,10 @@ def pruefe_faktor(
 
 
 __all__ = [
+    "ALPHA",
     "MIN_TRADES_JE_GRUPPE",
+    "p_wert_zweiseitig",
+    "regularisierte_beta",
     "Discoverylauf",
     "Faktorergebnis",
     "Gruppenergebnis",

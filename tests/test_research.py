@@ -253,3 +253,115 @@ def test_bericht_nennt_die_hypothesenzahl_und_die_zufallserwartung():
     assert "Geprüfte Hypothesen" in text
     assert "Zufallstreffer" in text
     assert "keine Befund" in text or "kein Befund" in text
+
+
+# ---------------------------------------------------------------------------
+#  Statistik und Multiple-Testing-Korrektur
+# ---------------------------------------------------------------------------
+
+def test_t_verteilung_trifft_bekannte_werte():
+    """Ohne scipy selbst gerechnet — also gegen Lehrbuchwerte prüfen.
+
+    Die Normalapproximation wäre bequem, weicht aber tief im
+    Verteilungsrand ab — und genau dorthin schiebt Bonferroni die Schwelle.
+    """
+    from backtest.research import p_wert_zweiseitig
+
+    assert p_wert_zweiseitig(1.96, 100000) == pytest.approx(0.05, abs=1e-4)
+    assert p_wert_zweiseitig(2.576, 100000) == pytest.approx(0.01, abs=1e-4)
+    assert p_wert_zweiseitig(2.0, 10) == pytest.approx(0.0734, abs=1e-3)
+    assert p_wert_zweiseitig(0.0, 50) == pytest.approx(1.0)
+
+
+def test_bonferroni_schwelle_haengt_an_der_hypothesenzahl():
+    """Laurins Entscheidung: streng korrigieren, nichts privilegieren."""
+    from backtest.research import ALPHA, Discoverylauf
+
+    gross = [trade(14, 1.0) for _ in range(MIN_TRADES_JE_GRUPPE)]
+    gross += [trade(17, 1.0) for _ in range(MIN_TRADES_JE_GRUPPE)]
+    erg = pruefe_faktor(
+        lauf(gross), rahmen_mit("atr", [1.0]), "Tageszeit", faktor_tageszeit,
+        punktwert=2.0,
+    )
+    lauf_obj = Discoverylauf(ergebnisse=[erg])
+
+    assert lauf_obj.gepruefte_hypothesen == 2
+    assert lauf_obj.bonferroni_schwelle == pytest.approx(ALPHA / 2)
+
+
+def test_streuung_wird_erfasst_sonst_gibt_es_keine_signifikanz():
+    """Ein Mittelwert allein sagt nichts darüber, ob er von null abweicht."""
+    trades = [trade(14, 1.0, punkte=p) for p in (1.0, 2.0, 3.0, 4.0, 5.0)]
+    erg = pruefe_faktor(
+        lauf(trades), rahmen_mit("atr", [1.0]), "Tageszeit", faktor_tageszeit,
+        punktwert=2.0,
+    )
+    gruppe = erg.gruppen[0]
+    assert gruppe.brutto_punkte_std == pytest.approx(1.5811, abs=1e-3)
+    assert gruppe.t_statistik is not None
+
+
+def test_gruppe_ohne_streuung_hat_keine_t_statistik():
+    """Ein einzelner Trade erlaubt keine Aussage — None statt einer Zahl."""
+    erg = pruefe_faktor(
+        lauf([trade(14, 1.0)]), rahmen_mit("atr", [1.0]), "Tageszeit",
+        faktor_tageszeit, punktwert=2.0,
+    )
+    assert erg.gruppen[0].t_statistik is None
+    assert erg.gruppen[0].p_wert is None
+
+
+def test_schwaches_signal_besteht_die_korrigierte_schwelle_nicht():
+    """Der Kern der Entscheidung.
+
+    Ein Signal, das unkorrigiert signifikant wäre, fällt nach der Korrektur
+    durch. Genau dafür ist sie da.
+    """
+    import numpy as np
+    from backtest.research import ALPHA, Discoverylauf
+
+    rng = np.random.default_rng(42)
+    # Schwacher Vorteil: Mittelwert 0,3 bei Streuung 3 über 100 Trades.
+    # t ≈ 1 -> unkorrigiert nicht signifikant, erst recht nicht korrigiert.
+    werte = rng.normal(0.3, 3.0, 100)
+    trades = [trade(14, 1.0, punkte=float(w)) for w in werte]
+    erg = pruefe_faktor(
+        lauf(trades), rahmen_mit("atr", [1.0]), "Tageszeit", faktor_tageszeit,
+        punktwert=2.0,
+    )
+    lauf_obj = Discoverylauf(ergebnisse=[erg])
+
+    assert lauf_obj.signifikante() == []
+
+
+def test_starkes_signal_besteht_auch_korrigiert():
+    """Gegenprobe — sonst bliebe der Test oben auch grün, wenn nie etwas
+    besteht."""
+    import numpy as np
+    from backtest.research import Discoverylauf
+
+    rng = np.random.default_rng(7)
+    # Deutlicher Vorteil: Mittelwert 2,0 bei Streuung 1 über 100 Trades.
+    werte = rng.normal(2.0, 1.0, 100)
+    trades = [trade(14, 1.0, punkte=float(w)) for w in werte]
+    erg = pruefe_faktor(
+        lauf(trades), rahmen_mit("atr", [1.0]), "Tageszeit", faktor_tageszeit,
+        punktwert=2.0,
+    )
+    lauf_obj = Discoverylauf(ergebnisse=[erg])
+
+    assert len(lauf_obj.signifikante()) == 1
+
+
+def test_statistikbericht_nennt_schwelle_und_urteil():
+    """Beides gehört in den Bericht — die Schwelle allein reicht nicht."""
+    trades = [trade(14, 1.0, punkte=0.1) for _ in range(MIN_TRADES_JE_GRUPPE)]
+    erg = pruefe_faktor(
+        lauf(trades), rahmen_mit("atr", [1.0]), "Tageszeit", faktor_tageszeit,
+        punktwert=2.0,
+    )
+    text = Discoverylauf(ergebnisse=[erg]).statistikbericht()
+
+    assert "Bonferroni" in text
+    assert "Korrigierte Schwelle" in text
+    assert "p_korr" in text
