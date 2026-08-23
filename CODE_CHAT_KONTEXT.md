@@ -2,10 +2,12 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-23 (zwei Tradovate-Defekte bereinigt; davor Nachprüfung des
-Branch-Stands, Inhalt sonst 2026-08-22 nach Entfernung des Legacy-Pfads).
-Gegen den tatsächlichen Projektordner geprüft, Testzahlen auf Windows
-**gemessen**.
+Stand: 2026-08-23 (Qualitätsmessung der Dukascopy-Näherungshistorie, Abschnitt
+19; davor zwei Tradovate-Defekte bereinigt und Nachprüfung des Branch-Stands,
+Inhalt sonst 2026-08-22 nach Entfernung des Legacy-Pfads).
+Gegen den tatsächlichen Projektordner geprüft. **Achtung:** die Testzahlen in
+dieser Datei sind der letzte auf Windows gemessene Stand; die Gegenprobe nach
+den Änderungen vom 23.08.2026 steht aus (siehe Abschnitt 17/18).
 
 ---
 
@@ -1227,3 +1229,112 @@ Bestaetigt: `local_143554db-...` taucht in keiner Sitzungsliste auf. Alle
 aufgefuehrten Sitzungen sind Laeufe der geplanten Aufgabe selbst. Eine neue
 Arbeitssitzung (`claude-opus-5`) muss gestartet werden; die beiden Git-Sperr-
 dateien aus Abschnitt 16 sind vorher zu loeschen.
+
+---
+
+## 19. Qualitaetsmessung der Dukascopy-Naeherungshistorie (23.08.2026)
+
+Arbeitspaket 4 war zuvor nur *mengenmaessig* nachgemessen (Abschnitt 18:
+3 179 672 Kerzen, zehn Jahre, Herkunftstabelle vollstaendig). Was fehlte, war
+die **inhaltliche** Pruefung — und Invariante 9 verlangt sie ausdruecklich, weil
+der Ein-Minuten-Versatz seinerzeit an den Kursen selbst nicht sichtbar war.
+Gemessen wurde gegen eine Arbeitskopie der Datei; die produktive Datenbank wurde
+nur lesend geoeffnet. Kein Code im Projekt wurde dafuer geaendert.
+
+### 19.1 Formale Integritaet: fehlerfrei
+
+| Pruefung | Befund |
+|---|---|
+| `high < low` | 0 |
+| `high` kleiner als `open`/`close` | 0 |
+| `low` groesser als `open`/`close` | 0 |
+| Preis <= 0 | 0 |
+| Volumen < 0 oder = 0 | 0 |
+| Zeitindex streng aufsteigend und eindeutig | ja |
+| Zeitstempel mit Sekundenanteil != 0 | 0 |
+| Aufeinanderfolgende Kerzen genau 1 Minute auseinander | 99,81 % |
+
+Die groessten Luecken sind ausnahmslos Wochenenden und Feiertage (Weihnachten,
+Karfreitag, Zeitumstellungswochen: 73,8 h bis 82,1 h). Kein einziger
+unerklaerter Ausfall.
+
+Die Preisniveaus je Jahr folgen dem Nasdaq-100 plausibel: 4830 (2016),
+Corona-Tief 6638 (2020), Hoch 16 769 (2021), Tief 10 432 (2022), 22 538 (2025),
+27 232 im Mittel 2026. Der `preis_faktor = 1000.0` ist also richtig angewandt.
+
+### 19.2 Kreuzvergleich gegen echte MNQ-Kerzen: Ausrichtung bestaetigt
+
+Nach Invariante 9 auf **Veraenderungen** geprueft, nicht auf Niveaus, ueber die
+gesamte verfuegbare Ueberschneidung (4147 gemeinsame Minuten, 18.–21.08.2026):
+
+| Versatz | r |
+|---|---|
+| −1 Minute | −0,0170 |
+| **0** | **+0,9967** |
+| +1 Minute | −0,0206 |
+
+Eindeutig, und deutlich schaerfer als die +0,9492 der damaligen Stichprobe
+(Abschnitt 904 ff.). Die Beschriftungskonvention `closed="left", label="right"`
+ist ueber den Vollabzug hinweg korrekt durchgehalten.
+
+### 19.3 Neuer Befund: taegliche Handelspause 16:16–18:00 ET
+
+Der CFD ruht taeglich von **16:16 bis 18:00 ET** (105 Minuten, exakt und ohne
+Ausnahme ueber die letzten drei Jahre). MNQ handelt dagegen bis **17:00 ET**.
+
+Zwei Folgen, gegenlaeufig:
+
+1. **Gut:** Die erste Kerze nach der Pause traegt die Beschriftung **18:01 ET** —
+   genau der CME-Rollover aus Invariante 2. Auch die Sonntagseroeffnung liegt
+   auf 18:01 ET. Die Sessiongrenze selbst stimmt also, `common/sessions.py`
+   braucht fuer diese Quelle keine Sonderbehandlung.
+2. **Schlecht:** Die **letzten 45 Minuten jedes Handelstages (16:16–17:00 ET)
+   fehlen vollstaendig.** `prev_session_high` und `prev_session_low` werden auf
+   dieser Quelle daher systematisch aus einer um 45 Minuten verkuerzten Session
+   gebildet, und der Session-VWAP endet zu frueh. Das Setup `pdh_pdl_bruch`
+   haengt unmittelbar daran. Es ist **kein stiller Ausfall** — die Marken
+   entstehen, sie beziehen sich nur auf ein anderes Fenster als live.
+
+Zusaetzlich sind die ersten acht Minuten nach dem Rollover duenn besetzt
+(18:01–18:08 ET: rund 70–73 % der Referenzbesetzung, ab 18:09 ET wieder ueber
+99 %). Der Market Maker stellt dort nicht durchgaengig. Fruehe Session-VWAP-Werte
+ruhen auf entsprechend weniger Kerzen.
+
+### 19.4 Neuer Befund: die Spanne ist rund 7 % zu klein
+
+Auf denselben gemeinsamen Minuten, Ein-Minuten-Spanne (`high − low`) in Punkten:
+
+| | MNQ | Dukascopy | Verhaeltnis |
+|---|---|---|---|
+| Median | 9,75 | 9,01 | 0,92 |
+| 75 % | 14,75 | 13,63 | 0,92 |
+| 90 % | 21,50 | 20,11 | 0,94 |
+| Mittel | 12,05 | 11,23 | 0,93 |
+
+Korrelation der Spannen: r = +0,9956. Die Reihe atmet also im Takt, aber
+**flacher**. Ein ATR auf dieser Quelle faellt rund 7 % zu niedrig aus. Da
+Stops und Ziele im Projekt ATR-Vielfache sind, skalieren sie mit — die
+Verzerrung schlaegt dort durch, wo **absolute** Groessen dagegenstehen: das
+`CostModel` rechnet mit echtem Punktwert und Ticksize, also wiegen Kosten auf
+dieser Quelle relativ rund 7 % schwerer. Die Richtung ist konservativ; die
+Zahlen bleiben trotzdem nicht auf MNQ uebertragbar.
+
+Die **Basis** (MNQ minus CFD) lag im Messfenster bei 75,8 bis 94,4 Punkten und
+driftete in drei Tagen um rund 10 Punkte. Fuer Regeln auf absoluten
+Preisniveaus ist sie damit kein konstanter Versatz, den man herausrechnen
+koennte.
+
+### 19.5 Einschraenkung dieser Messung
+
+Der Kreuzvergleich stuetzt sich auf **drei Handelstage** — mehr echte
+MNQ-Minutenkerzen liegen in `ntbridge.sqlite3` nicht vor (4326 Kerzen,
+18.–21.08.2026). Die Ausrichtung (19.2) ist damit sicher belegt, die
+Groessenordnung der Spannen-Verzerrung (19.4) ist eine **Schaetzung aus kurzer
+Stichprobe** und sollte nachgemessen werden, sobald mehr Live-Historie
+vorliegt. Sie ist ausdruecklich keine Messung im Sinne von Invariante 10.
+
+**Fazit fuer die P0-Entscheidung:** Die Datei ist technisch einwandfrei und
+richtig ausgerichtet. Ein `DukascopyDataProvider` waere damit auf der Datenseite
+unbedenklich — er muesste aber die Pause 16:16–18:00 ET und die flachere Spanne
+in der erzeugten Ausgabe kennzeichnen, sonst saehe eine Naeherung aus wie eine
+Messung.
