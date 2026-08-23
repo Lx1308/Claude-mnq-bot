@@ -2,7 +2,8 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-22 (nach Entfernung des Legacy-Pfads). Gegen den tatsächlichen
+Stand: 2026-08-23 (Nachprüfung des Branch-Stands; Inhalt sonst 2026-08-22,
+nach Entfernung des Legacy-Pfads). Gegen den tatsächlichen
 Projektordner geprüft, Testzahlen auf Windows **gemessen**.
 
 ---
@@ -901,9 +902,31 @@ drosselt bei zu vielen Anfragen, mit exponentiellem Backoff über vier Versuche.
 ```
 
 Historie reicht bis mindestens 2015 zurück; 2014 liefert nichts mehr.
-**Der Vollabzug ist noch nicht gelaufen** — nur ein Probetag (1335 Kerzen).
-Die Datei ist in `.gitignore`, sie wächst auf viele GB und ist jederzeit neu
-ladbar.
+Die Datei ist in `.gitignore`, sie ist groß und jederzeit neu ladbar.
+
+**Der Vollabzug ist am 22.08.2026 gelaufen** (Stand 23.08.2026 gegen die Datei
+gemessen, nicht aus Notizen übernommen):
+
+| Kennzahl | Wert |
+|---|---|
+| Datei | `data/dukascopy_nas100_1m.sqlite3`, 384 MB |
+| Kerzen (`bars`) | 3 179 672 |
+| Abdeckung | 2016-08-22T06:01Z bis 2026-08-21T20:15Z |
+| geholte Stunden | 87 010 |
+| `herkunft` | 9 Einträge, `ist_naeherung = true` |
+
+Die Jahre 2017–2025 liegen bei 337 000–340 000 Kerzen und sind damit
+untereinander plausibel; 2016 (78 238) und 2026 (216 866) sind die
+angeschnittenen Randjahre. Der Startpunkt liegt bei zehn Jahren rückwärts, nicht
+bei den in 14.x erwähnten „mindestens 2015" — wer weiter zurück will, muss
+`--von` setzen.
+
+**Diese Zeilen standen bis zum 23.08.2026 im Widerspruch zur Datei**: hier
+stand „Vollabzug noch nicht gelaufen, nur ein Probetag (1335 Kerzen)", während
+die Datenbank bereits 3,18 Mio. Kerzen enthielt. Die Notiz war schlicht älter
+als der Download. **Lehre, wieder dieselbe:** eine Zustandsbeschreibung in einer
+Kontextdatei ist nur so lange wahr, wie niemand den Zustand ändert — vor dem
+Zitieren gegen die Datei prüfen.
 
 ---
 
@@ -950,10 +973,10 @@ Festgehalten, weil sie zeigen, wie schnell Notizen altern:
 
 ### Neu hinzugekommen: Dukascopy-Näherungsdaten
 
-Import, Speicher, Download und 21 Tests stehen (Abschnitt 14). **Der
-Zehn-Jahres-Vollabzug ist bewusst nicht gestartet** — er dauert auch parallel
-Stunden und lädt viele GB. Der Befehl steht in 14.3; ein Probetag lief
-fehlerfrei durch.
+Import, Speicher, Download und 21 Tests stehen (Abschnitt 14). ~~Der
+Zehn-Jahres-Vollabzug ist bewusst nicht gestartet.~~ — **überholt:** der Abzug
+ist am 22.08.2026 gelaufen und vollständig, 3 179 672 Kerzen von 2016-08-22 bis
+2026-08-21. Zahlen und Nachprüfung stehen in Abschnitt 14.
 
 ### Was auf Laurin wartet
 
@@ -962,10 +985,19 @@ fehlerfrei durch.
    gemessenen Verteilung abgeleitet (Bug 8.17). **Andere Setup-Parameter
    bleiben rückfragepflichtig.**
 
-2. **Branch mergen?** `legacy-entfernen` wartet auf `main`.
+2. ~~**Branch mergen?** `legacy-entfernen` wartet auf `main`.~~ — **hinfällig,
+   am 23.08.2026 gegen das Repository geprüft.** Es gibt nur noch den Branch
+   `main`; er enthält `57e0c08` und alle weiteren Legacy-Commits, das Reflog
+   zeigt den Wechsel `legacy-entfernen` → `main` auf demselben Commit
+   (`1d0e01d`). Der Arbeitsbaum ist sauber. Hier stand also eine Frage, die der
+   Code bereits beantwortet hatte — dieselbe Alterung wie beim „Kleinkram"
+   weiter unten.
 3. **Die 8 weiteren Setup-Familien** — alle oder schrittweise?
-4. **Dukascopy-Vollabzug starten?** Zehn Jahre sind viele GB und Stunden
-   Laufzeit. Der Download ist wiederaufnehmbar, also gefahrlos abbrechbar.
+4. ~~**Dukascopy-Vollabzug starten?**~~ — **hinfällig, am 23.08.2026 gegen die
+   Datei geprüft.** Der Abzug ist gelaufen: 3 179 672 Kerzen, 2016-08-22 bis
+   2026-08-21, 384 MB. Damit ist Arbeitspaket 4 auf der Datenseite fertig.
+   Offen bleibt die *Auswertung* — und die ist rein informativ, weil es ein
+   Index-CFD und kein MNQ-Futures ist (Invariante 10).
 
 ### Halbfertig
 
@@ -1014,3 +1046,24 @@ prüfen, nicht danach.
 
 Weiterhin auf der Platte, aber nicht in Git: ein leerer Ordner `live_bot/` mit
 `__pycache__`-Resten. Nicht gelöscht — Aufräumen im Dateisystem gehört Laurin.
+Am 23.08.2026 nachgesehen: die Unterordner `ai/`, `alerts/`, `market/`,
+`notify/`, `tradovate/` liegen dort noch, sämtlich nur `__pycache__`. Kein
+Quelltext, kein Import zeigt darauf.
+
+---
+
+## 16. Nachtrag 23.08.2026 — die Arbeitssitzung existiert nicht mehr
+
+Die autonome Claude-Code-Sitzung mit der ID `local_143554db-…`, an der die
+geplante Aufgabe „resume-project-work" ihre Anweisungen schickte, ist **nicht
+mehr auffindbar**. Sie steht in keiner Sitzungsliste; ein `continue` erreicht
+sie nicht. Der Arbeitsauftrag vom 22.08.2026 (Arbeitspakete 1–4) ist damit
+ohne ausführende Instanz.
+
+Was das **nicht** heißt: es ist nichts verloren. Der Arbeitsbaum ist sauber,
+alle Commits liegen auf `main`, die Kontextdateien beschreiben den Stand. Eine
+neue Sitzung kann aus `CLAUDE.md` und dieser Datei nahtlos weitermachen — genau
+dafür sind sie da.
+
+Zu klären ist nur, **welche** Sitzung: Laurins Vorgabe vom 22.08.2026 lautet,
+neue Sitzungen mit `claude-opus-5` zu starten.
