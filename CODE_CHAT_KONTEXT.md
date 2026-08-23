@@ -46,7 +46,7 @@ beiden aufgegangen und entfernt.
 | `ideas/` (Etappe C) | **4 Setup-Familien fertig, Einstiegspunkt `python -m ideas` da**, aber noch in keiner Aufgabenplanung eingetragen | ja, 44 Tests |
 | Etappe D, Lucid-Simulation | **existiert nicht** | — |
 
-**Testsuite: 380 Tests, alle grün** (23.08.2026 auf Windows gemessen).
+**Testsuite: 394 Tests, alle grün** (23.08.2026 auf Windows gemessen).
 `.venv\Scripts\python.exe -m pytest`
 
 | Datei | Tests |
@@ -54,6 +54,7 @@ beiden aufgegangen und entfernt.
 | `test_ideas.py` | 50 |
 | `test_mcp_snapshot.py` | 46 |
 | `test_kosten.py` | 17 |
+| `test_research.py` | 14 |
 | `test_levels_structure.py` | 39 |
 | `test_ntbridge.py` | 37 |
 | `test_instruments_sessions.py` | 26 |
@@ -1853,3 +1854,51 @@ McLean und Pontiff (2016): Vorhersagbarkeit verschwindet **nach ihrer
 Veröffentlichung**. Je bekannter ein Effekt, desto wahrscheinlicher ist er
 wegarbitriert. Der Pre-FOMC-Drift ist das Lehrstück — nach 2015 angeblich
 verschwunden, in einer Analyse bis 2024 angeblich weiter vorhanden.
+
+
+---
+
+## 26. Einzelfaktor-Research (23.08.2026)
+
+`backtest/research.py`, Etappe I. Umgesetzt nach Laurins Entscheidung 18.3,
+Research **vor** Etappe D.
+
+### 26.1 Was es beantwortet
+
+Nicht „trägt Setup X", sondern **„unter welchen Bedingungen trägt Setup X"**.
+Ein Setup, das im Trend trägt und in der Range verliert, sieht über alles
+gemittelt aus wie „kein Erwartungswert" — genau die Setups, die sich lohnen
+würden, sind so unsichtbar.
+
+Die tragende Kennzahl ist die **Spannweite brutto**: der Abstand zwischen
+bester und schlechtester auswertbarer Gruppe. Ein Faktor, dessen Gruppen alle
+gleich abschneiden, trennt nichts — egal wie gut oder schlecht das Niveau ist.
+
+### 26.2 Vier Zusicherungen, jede getestet
+
+| Zusicherung | Mechanismus |
+|---|---|
+| Discovery sieht den OOS-Block nie | `pruefe_nur_training` bricht ab |
+| Hypothesenzahl steht im Bericht | `Discoverylauf.gepruefte_hypothesen`, samt Zufallserwartung bei α = 0,05 |
+| Unter 20 Trades: **„zu wenig Daten"** statt einer Kennzahl | `Gruppenergebnis.genug_daten` |
+| Nicht zuordenbare Trades werden ausgewiesen | `nicht_zuordenbar` — eine hohe Zahl ist eine Aussage über den Faktor, keine Panne |
+
+**Brutto in Punkten ist die Research-Größe**, nicht Netto in USD. Kosten sind
+eine Konstante, die Kante nicht — und der Vergleich mit Mesfins Studie
+(Abschnitt 25) läuft ebenfalls über Bruttopunkte.
+
+### 26.3 Grenzen kommen aus der Verteilung
+
+`perzentilgrenzen()` leitet Schwellen aus den tatsächlichen Daten ab.
+`baue_faktor_perzentil()` nimmt sie entgegen, setzt sie aber **nicht selbst**.
+
+Nach dem `consolidation_max_atr`-Fund — Schwelle 1,2 war auf keiner Zeitebene
+erreichbar — ist eine geratene Grenze ein **konkreter Verdacht**, kein
+allgemeiner Vorbehalt.
+
+### 26.4 Noch nicht gebaut
+
+Zweifaktor und Mehrfaktor (Etappe J), Validierung gegen den zweiten Block,
+Walk-Forward über Faktoren. Die Reihenfolge ist Absicht: wer sofort
+kombiniert, findet Kombinationen, die auf den Trainingsdaten passen und sonst
+nirgends.

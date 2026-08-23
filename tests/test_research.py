@@ -1,0 +1,255 @@
+"""Tests der Einzelfaktor-Research.
+
+Schwerpunkt auf den Zusicherungen, die still brechen: keine OOS-Berührung,
+Hypothesenzählung, "zu wenig Daten" statt einer Kennzahl, und dass ein
+nicht zuordenbarer Trade nicht heimlich einer Gruppe zugeschlagen wird.
+"""
+
+from __future__ import annotations
+
+from datetime import datetime, timedelta, timezone
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from backtest.engine import BacktestResult, Trade
+from backtest.research import (
+    MIN_TRADES_JE_GRUPPE,
+    Discoverylauf,
+    OutOfSampleBeruehrung,
+    baue_faktor_perzentil,
+    faktor_tageszeit,
+    faktor_wochentag,
+    perzentilgrenzen,
+    pruefe_faktor,
+    pruefe_nur_training,
+)
+
+
+def trade(stunde_utc: int, pnl: float, punkte: float | None = None, tag: int = 20) -> Trade:
+    """Ein Trade zu einer bestimmten Stunde."""
+    ein = datetime(2026, 8, tag, stunde_utc, 0, tzinfo=timezone.utc)
+    return Trade(
+        direction=1,
+        entry_time=ein,
+        entry_price=100.0,
+        exit_time=ein + timedelta(minutes=15),
+        exit_price=101.0,
+        bars_held=3,
+        exit_reason="signal",
+        gross_points=pnl if punkte is None else punkte,
+        commission=1.9,
+        pnl=pnl,
+    )
+
+
+def lauf(trades: list[Trade]) -> BacktestResult:
+    return BacktestResult(
+        strategy_name="test_strategie",
+        strategy_description="",
+        trades=trades,
+    )
+
+
+def rahmen_mit(spalte: str, werte: list[float], start: str = "2026-08-20 12:00") -> pd.DataFrame:
+    index = pd.date_range(start, periods=len(werte), freq="1h", tz="UTC")
+    return pd.DataFrame({spalte: werte}, index=index)
+
+
+# ---------------------------------------------------------------------------
+#  Der OOS-Block bleibt unberührt
+# ---------------------------------------------------------------------------
+
+def test_discovery_auf_oos_daten_bricht_ab():
+    """Der einzige unabhängige Block ist einmalig und danach verbraucht.
+
+    Sieht Discovery ihn versehentlich, merkt es niemand — das Ergebnis wird
+    nur besser. Deshalb bricht das laut ab.
+    """
+    rahmen = rahmen_mit("atr", [1.0] * 10, start="2026-08-20 12:00")
+    grenze = pd.Timestamp("2026-08-20 15:00", tz="UTC")
+
+    with pytest.raises(OutOfSampleBeruehrung, match="einmalig"):
+        pruefe_nur_training(rahmen, grenze)
+
+
+def test_discovery_innerhalb_des_trainings_geht_durch():
+    """Gegenprobe — sonst bliebe der Test auch grün, wenn er immer würfe."""
+    rahmen = rahmen_mit("atr", [1.0] * 4, start="2026-08-20 12:00")
+    pruefe_nur_training(rahmen, pd.Timestamp("2026-08-21 00:00", tz="UTC"))
+
+
+def test_leerer_rahmen_ist_keine_beruehrung():
+    pruefe_nur_training(pd.DataFrame(), pd.Timestamp("2026-08-20", tz="UTC"))
+
+
+# ---------------------------------------------------------------------------
+#  Gruppierung
+# ---------------------------------------------------------------------------
+
+def test_tageszeit_trennt_die_sitzungsphasen():
+    """13:30 UTC ist 09:30 New York — Eröffnung."""
+    ergebnis = pruefe_faktor(
+        lauf([trade(13, 10.0), trade(17, -5.0), trade(20, 3.0), trade(2, 1.0)]),
+        rahmen_mit("atr", [1.0]),
+        "Tageszeit",
+        faktor_tageszeit,
+        punktwert=2.0,
+    )
+    bezeichnungen = [g.auspraegung for g in ergebnis.gruppen]
+    assert "1 Eroeffnung 09-11" in bezeichnungen
+    assert "2 Mittag 11-14" in bezeichnungen
+    assert "4 ausserhalb RTH" in bezeichnungen
+
+
+def test_wochentag_wird_in_boersenzeit_bestimmt():
+    """20.08.2026 ist ein Donnerstag."""
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0, tag=20)]),
+        rahmen_mit("atr", [1.0]),
+        "Wochentag",
+        faktor_wochentag,
+        punktwert=2.0,
+    )
+    assert ergebnis.gruppen[0].auspraegung == "4 Do"
+
+
+def test_nicht_zuordenbare_trades_werden_ausgewiesen():
+    """Sie dürfen nicht heimlich einer Gruppe zugeschlagen werden.
+
+    Eine hohe Zahl heißt, dass der Faktor für viele Trades gar nicht
+    definiert war — das ist eine Aussage über den Faktor, keine Panne.
+    """
+    faktor = baue_faktor_perzentil("adx", [20.0], ["niedrig", "hoch"])
+    # Der Rahmen hat keine Spalte "adx" -> nichts ist bestimmbar.
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0), trade(15, 2.0)]),
+        rahmen_mit("atr", [1.0, 1.0], start="2026-08-20 14:00"),
+        "ADX",
+        faktor,
+        punktwert=2.0,
+    )
+    assert ergebnis.gruppen == []
+    assert ergebnis.nicht_zuordenbar == 2
+
+
+def test_perzentilgrenzen_kommen_aus_der_verteilung():
+    """Nicht geraten. Nach dem consolidation_max_atr-Fund ist eine geratene
+    Grenze ein konkreter Verdacht, kein allgemeiner Vorbehalt."""
+    rahmen = rahmen_mit("atr", list(range(1, 101)))
+    unten, oben = perzentilgrenzen(rahmen, "atr", [33.0, 67.0])
+    assert 30 < unten < 40
+    assert 64 < oben < 72
+
+
+def test_perzentilgrenzen_auf_leerer_spalte_brechen_ab():
+    rahmen = pd.DataFrame(
+        {"atr": [float("nan")] * 3},
+        index=pd.date_range("2026-08-20", periods=3, freq="1h", tz="UTC"),
+    )
+    with pytest.raises(ValueError, match="keine gueltigen Werte"):
+        perzentilgrenzen(rahmen, "atr", [50.0])
+
+
+# ---------------------------------------------------------------------------
+#  „Zu wenig Daten" statt einer Kennzahl
+# ---------------------------------------------------------------------------
+
+def test_kleine_gruppe_meldet_zu_wenig_daten_statt_einer_zahl():
+    """Unter der Schwelle gilt „zu wenig Daten", nicht „schwaches Ergebnis".
+
+    Eine Kennzahl aus fünf Trades sieht aus wie eine Aussage und ist keine.
+    """
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0) for _ in range(3)]),
+        rahmen_mit("atr", [1.0]),
+        "Tageszeit",
+        faktor_tageszeit,
+        punktwert=2.0,
+    )
+    gruppe = ergebnis.gruppen[0]
+    assert gruppe.trades == 3
+    assert gruppe.genug_daten is False
+    assert "zu wenig Daten" in gruppe.zeile()
+
+
+def test_grosse_gruppe_zeigt_die_kennzahlen():
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0) for _ in range(MIN_TRADES_JE_GRUPPE)]),
+        rahmen_mit("atr", [1.0]),
+        "Tageszeit",
+        faktor_tageszeit,
+        punktwert=2.0,
+    )
+    gruppe = ergebnis.gruppen[0]
+    assert gruppe.genug_daten is True
+    assert "brutto" in gruppe.zeile()
+
+
+def test_spannweite_braucht_zwei_auswertbare_gruppen():
+    """Ein Faktor mit nur einer belastbaren Gruppe trennt nichts."""
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0) for _ in range(MIN_TRADES_JE_GRUPPE)] + [trade(17, 5.0)]),
+        rahmen_mit("atr", [1.0]),
+        "Tageszeit",
+        faktor_tageszeit,
+        punktwert=2.0,
+    )
+    assert ergebnis.spannweite_brutto is None
+
+
+def test_spannweite_misst_ob_der_faktor_trennt():
+    """Die eigentliche Research-Frage.
+
+    Ein Faktor, dessen Gruppen alle gleich abschneiden, ist wertlos — egal
+    wie gut oder schlecht das Niveau ist.
+    """
+    trades = (
+        [trade(14, 4.0, punkte=2.0) for _ in range(MIN_TRADES_JE_GRUPPE)]
+        + [trade(17, -4.0, punkte=-2.0) for _ in range(MIN_TRADES_JE_GRUPPE)]
+    )
+    ergebnis = pruefe_faktor(
+        lauf(trades), rahmen_mit("atr", [1.0]), "Tageszeit", faktor_tageszeit,
+        punktwert=2.0,
+    )
+    assert len(ergebnis.auswertbare_gruppen) == 2
+    assert ergebnis.spannweite_brutto == pytest.approx(4.0)
+
+
+# ---------------------------------------------------------------------------
+#  Hypothesen-Buchführung
+# ---------------------------------------------------------------------------
+
+def test_lauf_zaehlt_die_gepruefen_hypothesen():
+    """Ohne diese Zahl ist jede Signifikanzaussage wertlos.
+
+    Bei 40 Hypothesen und alpha = 0,05 sind zwei „signifikante" Funde der
+    Erwartungswert, nicht ein Ergebnis.
+    """
+    gross = [trade(14, 1.0) for _ in range(MIN_TRADES_JE_GRUPPE)]
+    gross += [trade(17, 1.0) for _ in range(MIN_TRADES_JE_GRUPPE)]
+    klein = [trade(20, 1.0) for _ in range(3)]
+
+    ergebnis = pruefe_faktor(
+        lauf(gross + klein), rahmen_mit("atr", [1.0]), "Tageszeit",
+        faktor_tageszeit, punktwert=2.0,
+    )
+    lauf_obj = Discoverylauf(ergebnisse=[ergebnis])
+
+    # Nur Gruppen MIT genug Daten zaehlen als gepruefte Hypothese.
+    assert lauf_obj.gepruefte_hypothesen == 2
+
+
+def test_bericht_nennt_die_hypothesenzahl_und_die_zufallserwartung():
+    """Beides gehört in den Bericht, nicht in eine Fußnote."""
+    trades = [trade(14, 1.0) for _ in range(MIN_TRADES_JE_GRUPPE)]
+    ergebnis = pruefe_faktor(
+        lauf(trades), rahmen_mit("atr", [1.0]), "Tageszeit", faktor_tageszeit,
+        punktwert=2.0,
+    )
+    text = Discoverylauf(ergebnisse=[ergebnis]).bericht()
+
+    assert "Geprüfte Hypothesen" in text
+    assert "Zufallstreffer" in text
+    assert "keine Befund" in text or "kein Befund" in text
