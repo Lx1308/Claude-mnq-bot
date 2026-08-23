@@ -162,6 +162,19 @@ class Backtester:
         if len(data) < 2:
             raise ValueError("Fuer einen Backtest werden mindestens zwei Kerzen benoetigt.")
 
+        fehlend = sorted(strategy.benoetigte_spalten() - set(data.columns))
+        if fehlend:
+            # Abbrechen statt stumm null Trades zu liefern: eine Regel auf einer
+            # nicht vorhandenen Spalte liest NaN und feuert nie. Das Ergebnis
+            # saehe aus wie "hat nicht gegriffen" statt wie ein Defekt.
+            raise ValueError(
+                "Strategie '%s' braucht Spalten, die der vorbereitete Datensatz "
+                "nicht enthaelt: %s.\nVorhanden sind: %s.\nEntweder erzeugt "
+                "common.indicators.compute_indicators diese Spalten nicht, oder "
+                "der Datensatz wurde nicht ueber Backtester.prepare geschickt."
+                % (strategy.name, ", ".join(fehlend), ", ".join(sorted(data.columns)))
+            )
+
         opens = data["open"].to_numpy(dtype=float)
         highs = data["high"].to_numpy(dtype=float)
         lows = data["low"].to_numpy(dtype=float)

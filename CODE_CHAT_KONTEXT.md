@@ -2,11 +2,13 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-23 (Testsuite in der Linux-Sandbox lauffähig gemacht, 343 Tests
-grün, Abschnitt 20; davor Qualitätsmessung der Dukascopy-Näherungshistorie,
-Abschnitt 19, und zwei bereinigte Tradovate-Defekte; Inhalt sonst 2026-08-22
-nach Entfernung des Legacy-Pfads).
-Gegen den tatsächlichen Projektordner geprüft. **Testzahlen:** 343, gemessen am
+Stand: 2026-08-23 (Basisvermessung der Strategiebibliothek, Abschnitt 21 —
+`ib_breakout` war ein stiller Ausfall, die Robustheitskennzahl log; davor
+Testsuite in der Linux-Sandbox lauffähig gemacht, Abschnitt 20,
+Qualitätsmessung der Dukascopy-Näherungshistorie, Abschnitt 19, und zwei
+bereinigte Tradovate-Defekte; Inhalt sonst 2026-08-22 nach Entfernung des
+Legacy-Pfads).
+Gegen den tatsächlichen Projektordner geprüft. **Testzahlen:** 349, gemessen am
 23.08.2026 — allerdings in der Linux-Ersatzumgebung (Abschnitt 20), nicht unter
 dem Windows-venv. Der Windows-Lauf bleibt vor einer Freigabe auszuführen.
 
@@ -1429,3 +1431,97 @@ ausgegeben.
   2. Dukascopy-Provider, 3. MCP-Startzeit) angeschrieben; eine Antwort steht
   aus. Bis dahin nur Arbeit, die keine der rueckfragepflichtigen Fragen
   beruehrt.
+
+---
+
+## 21. Arbeitspaket 3: Basisvermessung der Strategiebibliothek (23.08.2026)
+
+**Der ausfuehrliche Bericht steht in `docs/BASISVERMESSUNG_2026-08-23.md`.**
+Hier nur, was dauerhaft am Code haengt.
+
+### Werkzeuge
+
+- **`werkzeuge/python_linux.py`** (neu) startet ein beliebiges Projektmodul in
+  derselben Ersatzumgebung, die Abschnitt 20 fuer pytest aufgebaut hat. Es ruft
+  `pytest_linux.vorbereiten` auf, statt die Sammellogik ein zweites Mal
+  hinzuschreiben. Damit kann ein unbeaufsichtigter Lauf die Backtest-CLI
+  bedienen, nicht nur die Tests.
+- **`werkzeuge/dukascopy_export.py`** (neu) zieht einen CSV-Auszug aus
+  `data/dukascopy_nas100_1m.sqlite3`. **Das ist ausdruecklich kein
+  DataProvider** — ein richtiger Dukascopy-Provider ist P0 im Masterplan und
+  Laurins Entscheidung. Beim Verdichten auf groebere Kerzen rechnet das Skript
+  erst auf Startzeit zurueck und danach wieder auf die Schlusszeit
+  (Invariante 9); der Rundlauf ist gegen die Minutenkerzen nachgerechnet.
+- `pytest_linux.SCRATCH` traegt jetzt die Benutzerkennung im Namen. Jede
+  Sandbox laeuft unter einer eigenen Kennung, `/tmp` bleibt aber ueber
+  Sandbox-Grenzen liegen — der Rest eines frueheren Laufs gehoerte `nobody`,
+  `shutil.rmtree(..., ignore_errors=True)` schluckte den Fehler und
+  `copytree` fiel eine Ebene tiefer mit `FileExistsError` um, ohne die Ursache
+  zu nennen. Das `ignore_errors` ist mit raus.
+
+### Befund 1: `ib_breakout` war seit jeher tot — und es sah aus wie ein Ergebnis
+
+Die Strategie verlangt `ib_high`/`ib_low` aus
+`common.levels.initial_balance_per_session`; **`compute_indicators` erzeugt
+diese Spalten nicht**. `BarContext.value` loest einen unbekannten Spaltennamen
+zu NaN auf, `_valid` verwirft NaN, die Regel feuert nie. Ergebnis ueber zehn
+Jahre: null Trades, keine Warnung, kein Eintrag im Log.
+
+Behoben ist der **stille** Teil:
+
+- `Rule.benoetigte_spalten()` (`backtest/strategies/base.py`) meldet je Regel
+  die gebrauchten Spalten, rekursiv ueber `AllOf`/`AnyOf`/`Not`. Konstanten
+  zaehlen nicht mit (`_spaltennamen`).
+- `RuleStrategy.benoetigte_spalten()` fasst ueber alle vier Regelplaetze
+  zusammen.
+- `Backtester.run` prueft einmal vor der Hauptschleife und bricht mit Nennung
+  der fehlenden **und** der vorhandenen Spalten ab.
+
+**Nicht** entschieden — das beruehrt Invariante 1 und ist Architektur: ob die
+Initial Balance in `compute_indicators` aufgenommen wird.
+`test_jede_strategie_der_bibliothek_findet_ihre_spalten` fuehrt die Luecke als
+bekannt und erwartet und faellt um, sobald sie geschlossen wird. Dann gehoert
+der Eintrag aus der Liste, **nicht der Test entschaerft**.
+
+### Befund 2: die Robustheitskennzahl behauptete das Gegenteil
+
+`prev_day_breakout`: Ø-Trade -4,40 USD in-sample, -9,02 USD out-of-sample —
+und daneben stand `Robustheit OOS/IS: 2,05 -> stabil`. Der Quotient dreht bei
+negativem Nenner sein Vorzeichen um.
+
+`StrategyRun.robustness` liefert jetzt `None`, sobald der Ø-Trade in-sample
+nicht positiv ist; an einer Strategie, die schon in-sample verliert, gibt es
+nichts zu bestaetigen. `print_report` schreibt in dem Fall ausdruecklich
+"nicht aussagekraeftig" hin, statt die Zeile wegzulassen — eine fehlende Zeile
+haelt man fuer einen Darstellungsfehler statt fuer eine Aussage.
+
+### Befund 3: "% vom Hoch" beim Drawdown — festgehalten, nicht geaendert
+
+`8.539,68 USD (78037,8 % vom Hoch)`. Die Equity-Kurve startet bei null (reine
+P&L, kein Startkapital); steht der bisherige Hoechststand bei ein paar Cent,
+kommen fuenfstellige Prozentwerte heraus. Die Abfrage `peak_at_worst > 0` in
+`max_drawdown` greift zu spaet. Rechnerisch nicht falsch, nur nutzlos.
+
+Sinnvoll wuerde der Wert erst mit einem Startkapital im Modell — das ist eine
+Modellentscheidung, keine Fehlerkorrektur, und deshalb hier nur notiert.
+Solange gilt: die USD-Angabe lesen, die Prozentangabe ignorieren.
+
+### Die Zahlen in einem Satz
+
+Auf zehn Jahren Naeherungshistorie (5-Minuten-Kerzen, unveraenderte Parameter,
+**keine** Optimierung, deshalb ist der OOS-Zeitraum nicht verbraucht) ist jede
+Strategie netto negativ, Profitfaktoren 0,75 bis 0,87 — aber **vor Kosten**
+liegen vier von fuenf ungefaehr bei null, und die 6,00 USD Reibung je Round
+Turn machen den Unterschied aus. Die Break-even-Trefferquote liegt in allen
+zehn Faellen nur 3 bis 7 Prozentpunkte ueber der tatsaechlichen. Das stuetzt
+die Praemisse von Etappe C: der Hebel liegt in der **Auswahl**, nicht am Ein-
+und Ausstieg. Es ersetzt sie nicht — die Daten sind ein CFD, kein MNQ.
+
+### Tests
+
+343 -> **349**. Neu: vier in `tests/test_engine.py` (Abbruch bei fehlender
+Spalte, Sammeln ueber verschachtelte Regeln, Konstanten zaehlen nicht,
+Bibliothek gegen die vorhandenen Spalten) und zwei in
+`tests/test_metrics_and_splits.py` (Robustheit ohne bzw. mit positivem
+In-Sample-Vorteil). Gegenprobe in der Linux-Ersatzumgebung gruen; der
+Windows-Lauf steht wie immer noch aus.

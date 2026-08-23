@@ -46,8 +46,22 @@ class StrategyRun:
 
         Werte nahe 1 bedeuten: die Strategie verhaelt sich out-of-sample
         aehnlich wie in-sample. Deutlich unter 1 ist ein Overfitting-Verdacht.
+
+        NUR BEI POSITIVEM IN-SAMPLE-ERGEBNIS
+        ------------------------------------
+        Ist der Ø-Trade in-sample negativ, dreht der Quotient sein Vorzeichen
+        um und behauptet das Gegenteil dessen, was passiert ist. Am
+        23.08.2026 gemessen an ``prev_day_breakout``: Ø-Trade -4.40 USD
+        in-sample, -9.02 USD out-of-sample -- der Verlust hat sich also gut
+        verdoppelt, der Quotient stand bei 2.05 und der Report schrieb
+        "stabil" daneben.
+
+        Es gibt an einer Strategie, die schon in-sample verliert, auch nichts
+        zu bestaetigen: Robustheit ist die Frage, ob ein *gefundener* Vorteil
+        ausserhalb der Suchdaten Bestand hat. Ohne Vorteil ist die Frage
+        gegenstandslos, und die ehrliche Antwort ist ``None``.
         """
-        if self.in_sample_metrics.avg_trade == 0:
+        if self.in_sample_metrics.avg_trade <= 0:
             return None
         return self.out_of_sample_metrics.avg_trade / self.in_sample_metrics.avg_trade
 
@@ -293,4 +307,11 @@ def print_report(runs: Sequence[StrategyRun], table: pd.DataFrame) -> None:
                 else "auffaellig schwaecher out-of-sample (Overfitting-Verdacht)"
             )
             print(f"  Robustheit OOS/IS     : {run.robustness:.2f}  -> {verdict}")
+        elif run.in_sample_metrics.trades and run.in_sample_metrics.avg_trade <= 0:
+            # Nicht stillschweigend weglassen: das Fehlen der Zeile wuerde man
+            # fuer einen Darstellungsfehler halten statt fuer eine Aussage.
+            print(
+                "  Robustheit OOS/IS     : nicht aussagekraeftig "
+                "(schon in-sample kein positiver Ø-Trade)"
+            )
         print()

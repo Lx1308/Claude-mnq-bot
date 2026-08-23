@@ -66,6 +66,29 @@ class Rule(ABC):
     def describe(self) -> str:
         """Kurze, lesbare Beschreibung (landet im Report)."""
 
+    def benoetigte_spalten(self) -> set[str]:
+        """Spalten, ohne die diese Regel nicht arbeiten kann.
+
+        WARUM ES DAS GIBT
+        -----------------
+        :meth:`BarContext.value` loest einen unbekannten Spaltennamen zu NaN
+        auf, und :func:`_valid` verwirft NaN. Eine Regel auf einer Spalte, die
+        es gar nicht gibt, feuert deshalb **nie** - ohne Fehlermeldung, ohne
+        Warnung, ohne dass am Ergebnis etwas verdaechtig aussieht. Sie liefert
+        schlicht null Trades, und null Trades liest sich wie "die Idee hat in
+        diesem Zeitraum nicht gegriffen".
+
+        Genau so ist ``ib_breakout`` am 23.08.2026 aufgefallen: die Strategie
+        verlangt ``ib_high``/``ib_low``, ``common.indicators.compute_indicators``
+        erzeugt diese Spalten aber nicht, und ueber zehn Jahre Kursverlauf kam
+        exakt ein Trade zustande - keiner.
+
+        Der Rueckgabewert ist bewusst eine Menge von Spaltennamen und keine
+        Pruefung: pruefen tut :meth:`backtest.engine.Backtester.run`, einmal
+        vor der Hauptschleife.
+        """
+        return set()
+
     def __and__(self, other: "Rule") -> "AllOf":
         return AllOf(self, other)
 
@@ -92,6 +115,9 @@ class AllOf(Rule):
     def evaluate(self, ctx: BarContext) -> bool:
         return all(rule.evaluate(ctx) for rule in self._rules)
 
+    def benoetigte_spalten(self) -> set[str]:
+        return set().union(*(rule.benoetigte_spalten() for rule in self._rules)) if self._rules else set()
+
     def describe(self) -> str:
         return " UND ".join(f"({rule.describe()})" for rule in self._rules)
 
@@ -105,6 +131,9 @@ class AnyOf(Rule):
     def evaluate(self, ctx: BarContext) -> bool:
         return any(rule.evaluate(ctx) for rule in self._rules)
 
+    def benoetigte_spalten(self) -> set[str]:
+        return set().union(*(rule.benoetigte_spalten() for rule in self._rules)) if self._rules else set()
+
     def describe(self) -> str:
         return " ODER ".join(f"({rule.describe()})" for rule in self._rules)
 
@@ -115,6 +144,9 @@ class Not(Rule):
 
     def evaluate(self, ctx: BarContext) -> bool:
         return not self._rule.evaluate(ctx)
+
+    def benoetigte_spalten(self) -> set[str]:
+        return self._rule.benoetigte_spalten()
 
     def describe(self) -> str:
         return f"NICHT ({self._rule.describe()})"
@@ -140,6 +172,11 @@ def _valid(*values: float) -> bool:
     return not any(math.isnan(value) for value in values)
 
 
+def _spaltennamen(*bezuege: str | float | int) -> set[str]:
+    """Filtert aus Spalte-oder-Konstante-Argumenten die Spaltennamen heraus."""
+    return {bezug for bezug in bezuege if isinstance(bezug, str)}
+
+
 class ColumnAbove(Rule):
     """Spalte liegt ueber Referenz (Konstante oder andere Spalte)."""
 
@@ -151,6 +188,9 @@ class ColumnAbove(Rule):
     def evaluate(self, ctx: BarContext) -> bool:
         left, right = ctx.value(self._column), ctx.value(self._reference)
         return _valid(left, right) and left > right + self._offset
+
+    def benoetigte_spalten(self) -> set[str]:
+        return _spaltennamen(self._column, self._reference)
 
     def describe(self) -> str:
         suffix = f" + {self._offset}" if self._offset else ""
@@ -166,6 +206,9 @@ class ColumnBelow(Rule):
     def evaluate(self, ctx: BarContext) -> bool:
         left, right = ctx.value(self._column), ctx.value(self._reference)
         return _valid(left, right) and left < right - self._offset
+
+    def benoetigte_spalten(self) -> set[str]:
+        return _spaltennamen(self._column, self._reference)
 
     def describe(self) -> str:
         suffix = f" - {self._offset}" if self._offset else ""
@@ -187,6 +230,9 @@ class CrossesAbove(Rule):
             return False
         return before <= before_ref and now > now_ref + self._buffer
 
+    def benoetigte_spalten(self) -> set[str]:
+        return _spaltennamen(self._column, self._reference)
+
     def describe(self) -> str:
         suffix = f" (Puffer {self._buffer})" if self._buffer else ""
         return f"{self._column} kreuzt {self._reference} von unten{suffix}"
@@ -205,6 +251,9 @@ class CrossesBelow(Rule):
             return False
         return before >= before_ref and now < now_ref - self._buffer
 
+    def benoetigte_spalten(self) -> set[str]:
+        return _spaltennamen(self._column, self._reference)
+
     def describe(self) -> str:
         suffix = f" (Puffer {self._buffer})" if self._buffer else ""
         return f"{self._column} kreuzt {self._reference} von oben{suffix}"
@@ -222,6 +271,9 @@ class FlagBreakout(Rule):
     def evaluate(self, ctx: BarContext) -> bool:
         return bool(ctx.row.get(self._column, False))
 
+    def benoetigte_spalten(self) -> set[str]:
+        return {self._column}
+
     def describe(self) -> str:
         return f"Flaggen-Ausbruch nach {'oben' if self._direction == 'up' else 'unten'}"
 
@@ -236,6 +288,9 @@ class Rising(Rule):
         now, before = ctx.value(self._column), ctx.previous_value(self._column)
         return _valid(now, before) and now > before
 
+    def benoetigte_spalten(self) -> set[str]:
+        return {self._column}
+
     def describe(self) -> str:
         return f"{self._column} steigt"
 
@@ -249,6 +304,9 @@ class Falling(Rule):
     def evaluate(self, ctx: BarContext) -> bool:
         now, before = ctx.value(self._column), ctx.previous_value(self._column)
         return _valid(now, before) and now < before
+
+    def benoetigte_spalten(self) -> set[str]:
+        return {self._column}
 
     def describe(self) -> str:
         return f"{self._column} faellt"
@@ -293,6 +351,9 @@ class PreviousDeviationExceeds(Rule):
         if self._side == "above":
             return deviation >= threshold
         return deviation <= -threshold
+
+    def benoetigte_spalten(self) -> set[str]:
+        return _spaltennamen(self._column, self._reference, self._atr_column)
 
     def describe(self) -> str:
         richtung = "ueber" if self._side == "above" else "unter"
@@ -374,6 +435,9 @@ class DeviationReentry(Rule):
 
         return war_draussen and ist_drinnen and noch_nicht_durch
 
+    def benoetigte_spalten(self) -> set[str]:
+        return _spaltennamen(self._column, self._reference, self._atr_column)
+
     def describe(self) -> str:
         richtung = "unterhalb" if self._side == "below" else "oberhalb"
         return (
@@ -452,6 +516,20 @@ class RuleStrategy:
 
     #: Frei waehlbare Metadaten (Parameterwerte fuer den Report)
     params: dict[str, Any] = field(default_factory=dict)
+
+    def benoetigte_spalten(self) -> set[str]:
+        """Alle Spalten, die diese Strategie zum Arbeiten braucht.
+
+        Wird von :meth:`backtest.engine.Backtester.run` einmal vor der
+        Hauptschleife gegen den vorbereiteten Datensatz geprueft. Fehlt eine
+        Spalte, bricht der Lauf ab, statt stumm null Trades zu liefern -
+        siehe :meth:`Rule.benoetigte_spalten`.
+        """
+        spalten: set[str] = set()
+        for regel in (self.long_entry, self.long_exit, self.short_entry, self.short_exit):
+            if regel is not None:
+                spalten |= regel.benoetigte_spalten()
+        return spalten
 
     def describe(self) -> str:
         parts = [f"Strategie: {self.name}"]

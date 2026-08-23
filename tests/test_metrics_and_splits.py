@@ -214,6 +214,51 @@ def test_bars_per_session_skaliert_mit_dem_kerzenintervall(market_cfg):
     assert minuetlich.bars_for_previous_session == 2 * minuetlich.bars_per_session
 
 
+def test_robustheit_ist_ohne_positiven_in_sample_vorteil_keine_zahl():
+    """Der Befund vom 23.08.2026: der Quotient log, wenn beide Seiten negativ sind.
+
+    prev_day_breakout auf zehn Jahren Naeherungshistorie: Durchschnittstrade -4.40 USD
+    in-sample, -9.02 USD out-of-sample. Der Verlust hat sich mehr als
+    verdoppelt, der Quotient stand bei 2.05 und der Report nannte das
+    "stabil".
+    """
+    from backtest.compare import StrategyRun
+    from backtest.strategies.base import RuleStrategy
+
+    schlechter_is = make_result([-10.0, -10.0, 5.0])
+    noch_schlechter_oos = make_result([-30.0, -30.0, 5.0])
+
+    run = StrategyRun(
+        strategy=RuleStrategy(name="test"),
+        in_sample=schlechter_is,
+        out_of_sample=noch_schlechter_oos,
+        in_sample_metrics=compute_metrics(schlechter_is),
+        out_of_sample_metrics=compute_metrics(noch_schlechter_oos),
+    )
+
+    assert run.in_sample_metrics.avg_trade < 0
+    assert run.out_of_sample_metrics.avg_trade < run.in_sample_metrics.avg_trade
+    assert run.robustness is None
+
+
+def test_robustheit_wird_bei_positivem_in_sample_ergebnis_berechnet():
+    from backtest.compare import StrategyRun
+    from backtest.strategies.base import RuleStrategy
+
+    gut_is = make_result([30.0, -10.0, 10.0])           # Durchschnitt +10
+    halb_so_gut_oos = make_result([15.0, -10.0, 10.0])  # Durchschnitt +5
+
+    run = StrategyRun(
+        strategy=RuleStrategy(name="test"),
+        in_sample=gut_is,
+        out_of_sample=halb_so_gut_oos,
+        in_sample_metrics=compute_metrics(gut_is),
+        out_of_sample_metrics=compute_metrics(halb_so_gut_oos),
+    )
+
+    assert run.robustness == pytest.approx(0.5)
+
+
 def test_walk_forward_fenster_ueberlappen_nicht_zwischen_train_und_test():
     frame = make_ohlcv(list(range(1000)))
     windows = walk_forward_windows(frame, train_bars=200, test_bars=100)

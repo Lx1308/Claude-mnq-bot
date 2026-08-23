@@ -229,3 +229,57 @@ def test_engine_verlangt_mindestens_zwei_kerzen(backtester):
     frame = backtester.prepare(make_ohlcv([100.0] * 60))
     with pytest.raises(ValueError, match="mindestens zwei"):
         backtester.run(frame.iloc[:1], simple_strategy(), already_prepared=True)
+
+
+# ---------------------------------------------------------------------------
+# Fehlende Spalten: laut scheitern statt stumm nichts tun
+# ---------------------------------------------------------------------------
+
+def test_fehlende_spalte_bricht_ab_statt_stumm_null_trades_zu_liefern(backtester):
+    """Der Kern des Befunds vom 23.08.2026 (ib_breakout).
+
+    Eine Regel auf einer nicht vorhandenen Spalte liest NaN und feuert nie.
+    Ohne Pruefung sieht das Ergebnis aus wie "hat nicht gegriffen" statt wie
+    ein Defekt.
+    """
+    frame = backtester.prepare(make_ohlcv([100.0] * 60))
+    strategy = simple_strategy(long_entry=CrossesAbove("close", "gibt_es_nicht"))
+
+    with pytest.raises(ValueError, match="gibt_es_nicht"):
+        backtester.run(frame, strategy, already_prepared=True)
+
+
+def test_benoetigte_spalten_sammelt_ueber_verknuepfte_regeln():
+    """Auch tief verschachtelte Regeln muessen ihre Spalten melden."""
+    regel = (CrossesAbove("close", "vwap") & ColumnAbove("rsi", 50.0)) | ~CrossesBelow(
+        "close", "sma_fast"
+    )
+    strategy = RuleStrategy(name="verschachtelt", long_entry=regel)
+
+    assert strategy.benoetigte_spalten() == {"close", "vwap", "rsi", "sma_fast"}
+
+
+def test_konstanten_zaehlen_nicht_als_spalte():
+    strategy = RuleStrategy(name="konstante", long_entry=CrossesAbove("close", 105.0))
+    assert strategy.benoetigte_spalten() == {"close"}
+
+
+def test_jede_strategie_der_bibliothek_findet_ihre_spalten(backtester):
+    """Keine Strategie darf mangels Spalte stumm bleiben.
+
+    ``ib_breakout`` steht bewusst als erwarteter Fehlschlag drin: die Spalten
+    ``ib_high``/``ib_low`` erzeugt ``compute_indicators`` nicht. Faellt der
+    Test hier um, ist der Defekt behoben worden -- dann gehoert der Eintrag
+    aus der Liste heraus und nicht der Test entschaerft.
+    """
+    from backtest.strategies.library import STRATEGY_LIBRARY, build_strategy
+
+    frame = backtester.prepare(make_ohlcv([100.0 + i % 7 for i in range(400)]))
+    vorhanden = set(frame.columns)
+
+    bekannte_luecken = {"ib_breakout": {"ib_high", "ib_low"}}
+    for name in sorted(STRATEGY_LIBRARY):
+        fehlend = build_strategy(name).benoetigte_spalten() - vorhanden
+        assert fehlend == bekannte_luecken.get(name, set()), (
+            f"Strategie '{name}' verlangt Spalten, die es nicht gibt: {sorted(fehlend)}"
+        )

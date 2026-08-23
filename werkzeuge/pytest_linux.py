@@ -46,7 +46,11 @@ from pathlib import Path
 
 PROJEKTWURZEL = Path(__file__).resolve().parents[1]
 SITE_PACKAGES = PROJEKTWURZEL / ".venv" / "Lib" / "site-packages"
-SCRATCH = Path("/tmp/pytest_linux_pakete")
+# Die Kennung im Namen ist kein Schmuck: jede Sandbox laeuft unter einer
+# eigenen Benutzerkennung, /tmp bleibt aber ueber Sandbox-Grenzen hinweg
+# liegen. Ein Scratch-Ordner aus einem frueheren Lauf gehoert dann einer
+# fremden Kennung und ist weder loesch- noch beschreibbar.
+SCRATCH = Path("/tmp/pytest_linux_pakete-%d" % os.getuid())
 
 # Reine Python-Pakete aus dem Windows-venv. pandas und numpy stehen bewusst
 # nicht dabei: die tragen kompilierte Endungen (.pyd) und sind unter Linux
@@ -146,7 +150,17 @@ def vorbereiten() -> Path:
         )
 
     if SCRATCH.exists():
-        shutil.rmtree(SCRATCH, ignore_errors=True)
+        # Kein ignore_errors: ein nicht loeschbarer Rest brachte den Lauf
+        # sonst erst eine Ebene tiefer mit FileExistsError zu Fall, und die
+        # Meldung nannte die Ursache nicht.
+        try:
+            shutil.rmtree(SCRATCH)
+        except OSError as fehler:
+            raise SystemExit(
+                "Scratch-Verzeichnis %s laesst sich nicht raeumen: %s\n"
+                "Vermutlich ein Rest aus einer fremden Sandbox. Von Hand "
+                "loeschen oder eine andere Kennung verwenden." % (SCRATCH, fehler)
+            ) from fehler
     SCRATCH.mkdir(parents=True, exist_ok=True)
 
     fehlend = []

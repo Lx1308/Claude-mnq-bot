@@ -59,7 +59,7 @@ das **repo-weit**.
 Immer das venv des Projekts verwenden:
 
 ```bash
-.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 343)
+.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 349)
 .venv\Scripts\python.exe -m pytest tests/test_engine.py      # eine Datei
 .venv\Scripts\python.exe -m pytest -k lookahead -v           # einzelne Tests nach Namensmuster
 .venv\Scripts\python.exe -m pytest tests/test_ideas.py::test_deviation_reentry_feuert_nur_beim_uebertritt
@@ -108,6 +108,17 @@ ergänzt einen Minimalersatz für `exceptiongroup` und startet pytest darüber;
 pandas und numpy kommen aus der Linux-Umgebung. Es schreibt nur nach `/tmp`.
 Der Lauf ist eine **Gegenprobe, kein Ersatz** für den Windows-Lauf — er läuft
 unter einem anderen Python und anderen pandas/numpy-Versionen.
+
+Dasselbe gilt für den Rest des Projekts. `werkzeuge/python_linux.py` startet
+ein beliebiges Modul in derselben Ersatzumgebung:
+
+```bash
+python3 werkzeuge/python_linux.py -m backtest.cli list
+python3 werkzeuge/python_linux.py werkzeuge/dukascopy_export.py --minuten 5
+```
+
+Auch hier: Gegenprobe, kein Ersatz. Ergebnisse aus dieser Umgebung dürfen in
+der Dokumentation nicht als Windows-Lauf ausgegeben werden (Invariante 10).
 
 ## Architektur: die tragenden Invarianten
 
@@ -256,6 +267,14 @@ Sessions reicht (sonst blieben die Vortagesmarken NaN und `pdh_pdl_bruch` löste
 nie aus). `ideas.setups.pruefe_konfiguration` bricht bei unbekanntem
 Setup-Schlüssel ab.
 
+`Backtester.run` bricht ab, wenn eine Strategie eine Spalte verlangt, die der
+vorbereitete Datensatz nicht hat (`RuleStrategy.benoetigte_spalten`). Ohne die
+Prüfung liest die Regel NaN, feuert nie und liefert **null Trades ohne
+Fehlermeldung** — was sich liest wie „hat nicht gegriffen". Genau so war
+`ib_breakout` seit jeher tot (`ib_high`/`ib_low` entstehen in
+`compute_indicators` nicht); aufgefallen ist es erst am 23.08.2026 bei der
+Basisvermessung, siehe `docs/BASISVERMESSUNG_2026-08-23.md`.
+
 Diese Prüfungen nicht abschwächen — jede existiert wegen eines konkreten
 stillen Ausfalls.
 
@@ -291,3 +310,6 @@ stillen Ausfalls.
 - `docs/BACKTESTING_ENTSCHEIDUNG.md` — warum eine eigene Engine statt
   `backtesting.py` oder `vectorbt`; lies das, bevor du eine der beiden
   Bibliotheken vorschlägst
+- `docs/BASISVERMESSUNG_2026-08-23.md` — die Strategiebibliothek über zehn
+  Jahre Näherungshistorie, unverändert und ohne Optimierung; enthält den
+  `ib_breakout`-Befund und zwei Schwächen der Kennzahlen
