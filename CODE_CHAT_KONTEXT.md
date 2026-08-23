@@ -1089,3 +1089,76 @@ dafür sind sie da.
 
 Zu klären ist nur, **welche** Sitzung: Laurins Vorgabe vom 22.08.2026 lautet,
 neue Sitzungen mit `claude-opus-5` zu starten.
+
+---
+
+## 17. MASTERPLAN.md erstellt (23.08.2026)
+
+Der Master-Auftrag vom 22.08.2026 verlangte eine Bestandsaufnahme plus
+Masterplan fuer die langfristige Architektur. Da die dafuer vorgesehene
+Arbeitssitzung nicht mehr existiert (Abschnitt 16), ist `MASTERPLAN.md`
+stattdessen von der Watchdog-Instanz gegen den tatsaechlichen Code auf
+`main` (`3ca5fb5`) geschrieben worden — nicht gegen die Dokumentation.
+
+**Es ist ein Planungsdokument, keine Arbeitsanweisung.** Welcher P0-Punkt
+zuerst umgesetzt wird, entscheidet Laurin.
+
+### Was die Pruefung gegen den Code zutage foerderte
+
+Vier Befunde, die vorher nirgends standen:
+
+1. **`backtest/data/__init__.py::create_provider` kennt nur `csv`.** Der
+   Dukascopy-Speicher mit 3 179 672 Kerzen (384 MB) ist ueber den normalen
+   Backtest-Pfad **nicht erreichbar**. Die Daten liegen da, die Engine kommt
+   nicht dran. Schwerster der vier Befunde.
+2. **`backtest/cli.py:276`** bietet `--provider choices=("csv", "tradovate")`
+   an. Der Provider ist geloescht; der Aufruf braeche mit
+   `DataProviderError` ab. **Dieselbe Fehlerklasse wie das bereits behobene
+   `fetch`-Kommando** — kein Test ruft es auf.
+3. **`backtest/data/csv_provider.py:57`** weist den Nutzer in einer
+   Fehlermeldung an, "Historie von Tradovate herunterladen" — ein Weg, den
+   es nicht mehr gibt.
+4. **`splits.walk_forward_windows` ist getestet und von der CLI aus nicht
+   aufrufbar.** Die CLI kennt `list`, `run`, `compare`, `optimize` — kein
+   `walkforward`. Toter, aber korrekter Code.
+
+Zusaetzlich: **MGC steht noch an acht Stellen im Code**, obwohl der
+Projekt-Override vom 22.08.2026 sagt, es sei vollstaendig entfernt.
+`list_instruments` liefert MGC weiterhin aus. Widerspruch zwischen Vorgabe
+und Code — festgestellt, nicht stillschweigend aufgeloest.
+
+Die uebrigen Tradovate-Fundstellen (`common/contracts.py`,
+`backtest/data/base.py`, `mcp_server/bars.py`, `mcp_server/context.py`,
+`ntbridge/__init__.py`, `config.yaml:165,303`) sind ausdruecklich als
+historisch markierte Absaetze und damit die gewollte *Warum*-Dokumentation.
+Nicht anfassen.
+
+### Priorisierung im Plan
+
+P0-1 Etappe C in Betrieb nehmen · P0-2 MGC entfernen · P0-3 Dukascopy als
+`DataProvider` registrieren · P0-4 die zwei Tradovate-Reste in ausfuehrbarem
+Code.
+
+Zwei Punkte sind **zeitkritisch, nicht wichtigkeitskritisch**: die Regime
+Engine (P1-5) und Konfidenzintervalle in `metrics.py` (P1-3). Beide sind
+spaeter technisch genauso machbar, aber spaeter **nutzlos** fuer alles, was
+in der Zwischenzeit protokolliert oder behauptet wurde — ein Regime-Feld
+laesst sich an bereits geschriebene Ideen nicht rueckwirkend anhaengen.
+
+### Offene Entscheidung, die P0-1 blockiert
+
+**4 oder 12 Setup-Familien, bevor die Protokollierung anlaeuft?** Das ist
+eine Entscheidung ueber den Umfang der Setup-Familien und damit
+ausdruecklich Laurins. Empfehlung im Plan: mit den vorhandenen 4 sofort
+starten, die 8 weiteren schrittweise nachziehen — verlorene Sammeltage sind
+nicht nachholbar, fehlende Setups schon.
+
+### Neue Lookahead-Gefahr, die der Plan benennt
+
+**FRED-Serien werden revidiert.** Der heute ausgelieferte Wert fuer Maerz
+2024 ist nicht der Wert, der im Maerz 2024 bekannt war. Wer die heutige
+Serie in einen Backtest von 2024 einsetzt, hat einen Lookahead, den *nichts
+an den Kursen verraet* — exakt die Fehlerklasse, die bei den
+Dukascopy-Daten schon einmal zugeschlagen hat (r = -0,06 statt +0,95).
+Konsequenz im Plan: Makrodaten nur als **Vintage** mit
+Veroeffentlichungszeitstempel (ALFRED), sonst `null` mit Begruendung.
