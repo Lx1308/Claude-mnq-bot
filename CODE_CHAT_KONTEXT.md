@@ -46,24 +46,24 @@ beiden aufgegangen und entfernt.
 | `ideas/` (Etappe C) | **4 Setup-Familien fertig, Einstiegspunkt `python -m ideas` da**, aber noch in keiner Aufgabenplanung eingetragen | ja, 44 Tests |
 | Etappe D, Lucid-Simulation | **existiert nicht** | — |
 
-**Testsuite: 343 Tests, alle grün.** `.venv\Scripts\python.exe -m pytest`
+**Testsuite: 361 Tests, alle grün** (23.08.2026 auf Windows gemessen).
+`.venv\Scripts\python.exe -m pytest`
 
 | Datei | Tests |
 |---|---|
-| `test_mcp_snapshot.py` | 44 |
-| `test_dukascopy.py` | 21 |
 | `test_ideas.py` | 50 |
+| `test_mcp_snapshot.py` | 44 |
 | `test_levels_structure.py` | 39 |
 | `test_ntbridge.py` | 37 |
 | `test_instruments_sessions.py` | 26 |
 | `test_event_risk.py` / `test_patterns.py` | je 22 |
-| `test_extended_indicators.py` | 21 |
-| `test_structure.py` | 17 |
-| `test_metrics_and_splits.py` | 16 |
+| `test_dukascopy.py` / `test_extended_indicators.py` | je 21 |
+| `test_metrics_and_splits.py` | 18 |
+| `test_engine.py` / `test_structure.py` | je 17 |
 | `test_indicators.py` | 15 |
-| `test_engine.py` | 13 |
+| `test_walkforward.py` | 12 |
 
-Verlauf: 124 → … → 334 → 370 → 373 → 316 → 337 → 342 → **343**.
+Verlauf: 124 → … → 370 → 373 → 316 → 337 → 342 → 343 → **361**.
 
 **Der Rückgang ist keine Regression.** Mit dem Legacy-Pfad fielen
 `test_live_bot.py` (29) und `test_on_demand.py` (35) weg — 64 Tests für Code,
@@ -161,9 +161,13 @@ SQLite → MCP → Claude Desktop.
 ### Override vom 23.08.2026 — Widerspruch festgestellt, nicht aufgelöst
 
 Laurin hat angeordnet: **MNQ und NinjaTrader ausschließlich**, MGC und
-Tradovate vollständig raus. Für Tradovate ist das seit dem 22.08. erfüllt
-(zwei Restdefekte in `backtest/cli.py` und `csv_provider.py`, siehe
-`MASTERPLAN.md` C.1).
+Tradovate vollständig raus.
+
+**Tradovate: erfüllt.** Der Legacy-Pfad ist am 22.08. entfernt; die beiden am
+23.08. gemeldeten Restdefekte (`backtest/cli.py` bot `--provider tradovate` an,
+`csv_provider.py` riet im Fehlertext zum Tradovate-Download) sind **behoben**.
+Verblieben sind nur datierte historische Erklärungen im Code — sie begründen,
+warum Dinge so sind, und bleiben bewusst stehen.
 
 **Für MGC widerspricht der Code dem Override**, und das wird hier festgehalten
 statt still bereinigt:
@@ -171,13 +175,44 @@ statt still bereinigt:
 - MGC wird **nicht** protokolliert, gestreamt oder gespeichert — insoweit ist
   der Override bereits erfüllt.
 - MGC steht aber im **Instrument-Register** (`common/instruments.py`) und in
-  **14 Testfällen**. Der MGC-Verfallstest ist der einzige, der beweist, dass
+  **14 Testfällen** (Gesamtzahl der Treffer am 23.08.: 43 in 14 Dateien, nach
+  Kürzung von zuvor 48). Der MGC-Verfallstest ist der einzige, der beweist, dass
   `expiry_rule` instrumentspezifisch ist und nicht eine hartverdrahtete
   MNQ-Annahme (Bug-Lehre 9). Entfernt man ihn, kann die MNQ-Regel später still
   falsch werden.
 
 **Empfehlung in `MASTERPLAN.md` C.2:** Register-Eintrag behalten, MGC aus
 nutzersichtbaren Texten entfernen. **Entscheidung steht bei Laurin aus.**
+
+### Bereinigung der Dokumentation (23.08.2026)
+
+Einmal vollständig gegengeprüft, welche Dokumentationsdateien noch gebraucht
+werden.
+
+**Gelöscht:**
+
+| Datei | Grund |
+|---|---|
+| `PROMPT_CLAUDE_CODE_ETAPPE_C.md` | Auftragsbeschreibung, mit der Etappe C am 21.08. beauftragt wurde. **Keine einzige Referenz** im Projekt; Inhalt durchgehend überholt (nannte 326 Tests, forderte das Anlegen des Git-Repos). Der historische Wert ist über `git log` erhalten, die Datei selbst stiftete nur Verwirrung neben `ETAPPE_C_SPEZIFIKATION.md`, die weiter gilt. |
+
+**Geprüft und behalten** — alle vier werden aktiv referenziert:
+
+| Datei | Warum sie bleibt |
+|---|---|
+| `ETAPPE_C_SPEZIFIKATION.md` | verbindliche Vorgabe, aus `CLAUDE.md`, `MASTERPLAN.md` und `ideas/setups.py` referenziert |
+| `MASTERPLAN.md` | Zielarchitektur; aus Code heraus referenziert (`csv_provider.py`, `base.py` verweisen auf Abschnitt X.1) |
+| `docs/BASISVERMESSUNG_2026-08-23.md` | datierter Messbericht, kein Duplikat — hält Zahlen fest, die sonst verloren wären |
+| `docs/BACKTESTING_ENTSCHEIDUNG.md` | begründet die eigene Engine; verhindert, dass die Frage neu aufgerollt wird |
+
+**Nicht vorhanden** (in älteren Aufträgen genannt, längst aufgegangen):
+`PROJECT_CONTEXT.md`, `DECISIONS.md`, `CURRENT_STATE.md`,
+`PROJEKTKONTEXT_UEBERGABE.md`.
+
+**Zu prüfen, nicht angefasst:** `werkzeuge/` (`pytest_linux.py`,
+`python_linux.py`, `dukascopy_export.py`) sind Hilfsskripte aus einer
+Linux-Sandbox-Sitzung mit dokumentiertem Zweck. Ob sie auf dem Windows-Rechner
+noch gebraucht werden, ist **unklar** — deshalb stehen sie, statt geraten zu
+werden.
 
 ### Offene technische Aufgaben
 

@@ -4,16 +4,24 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Kontextdateien — zuerst lesen, am Ende pflegen
 
-**Zwei** Dateien bilden das Projektgedächtnis. **Zu Beginn einer Aufgabe lesen**,
-bevor du Code änderst:
+**Vier** Dateien bilden das Projektgedächtnis (seit 23.08.2026; vorher zwei).
+**Zu Beginn einer Aufgabe lesen**, bevor du Code änderst:
 
 | Datei | Inhalt |
 |---|---|
-| `CODE_CHAT_KONTEXT.md` | **WIE und WIE WEIT**: Architektur, Module, Implementierungsstand, Blocker, nächste technische Schritte, Bugs mit Fundstelle, Tests, verworfene technische Ansätze |
-| `NORMALER_CHAT_KONTEXT.md` | **WAS und WARUM**: Ziele, Anforderungen, Nutzerpräferenzen, Kostenrahmen, Kontostatus, Lucid-Regelwerk, Etappen A–F, Arbeitsteilung |
+| `CODE_CHAT_KONTEXT.md` | **WIE und WIE WEIT**: Architektur, Module, Implementierungsstand, Blocker, Bugs mit Fundstelle, Tests, verworfene Ansätze |
+| `NORMALER_CHAT_KONTEXT.md` | **WAS und WARUM**: Ziele, Anforderungen, Nutzerpräferenzen, Kostenrahmen, Etappen A–F, **offene Fragen an Laurin** (Abschnitt 18) |
+| `MASTERPLAN.md` | **WOHIN**: Zielarchitektur, Market Intelligence, Research-Engine, Etappen G–L |
+| `ETAPPE_C_SPEZIFIKATION.md` | verbindliche Vorgabe der Ideen-Protokollierung |
 
-Beide werden vom Nutzer zusätzlich als Kontext in ein Claude-Projekt geladen.
+Alle werden vom Nutzer zusätzlich als Kontext in ein Claude-Projekt geladen.
 Sie müssen deshalb **ohne diesen Chatverlauf verständlich** bleiben.
+
+> **Override vom 23.08.2026, geht allen älteren Angaben vor:** Das Projekt
+> arbeitet **ausschließlich mit MNQ und NinjaTrader 8**. Kein MGC, kein
+> Tradovate, keine Multi-Instrument-Architektur. Zum verbliebenen
+> MGC-Register-Eintrag siehe `NORMALER_CHAT_KONTEXT.md` 18.2 — **Entscheidung
+> steht aus**.
 
 **Am Ende einer Aufgabe prüfen und selbständig aktualisieren**, wenn dauerhaft
 relevantes Wissen entstanden ist:
@@ -25,9 +33,13 @@ relevantes Wissen entstanden ist:
   **Das Datum in der Kopfzeile mitziehen.**
 - **`NORMALER_CHAT_KONTEXT.md`** nur bei Änderungen an Zielen, Anforderungen,
   Etappen-Status oder dauerhaften Entscheidungen.
+- **`MASTERPLAN.md`** nur bei Änderungen an der Zielarchitektur oder der
+  Etappenreihenfolge — nicht bei jedem Baufortschritt.
 
-`PROJECT_CONTEXT.md` und `CURRENT_STATE.md` waren Vorgängerdateien und sind in
-diesen beiden aufgegangen. Nicht neu anlegen.
+`PROJECT_CONTEXT.md`, `CURRENT_STATE.md`, `DECISIONS.md` und
+`PROJEKTKONTEXT_UEBERGABE.md` waren Vorgängerdateien und existieren nicht mehr.
+`PROMPT_CLAUDE_CODE_ETAPPE_C.md` ist am 23.08.2026 entfallen (unreferenziert und
+überholt). **Nicht neu anlegen.**
 
 **Nicht** dokumentiert werden Kleinigkeiten, Formatierungen oder Zwischenstände.
 Die Dateien sind kein Git-Diff und kein Chatprotokoll.

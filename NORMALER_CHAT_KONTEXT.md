@@ -3,15 +3,22 @@
 **Dauerhaftes Gedächtnis der inhaltlichen Projektseite.**
 Für künftige Claude-Chat-Sessions ohne Zugriff auf den alten Verlauf.
 
-**Stand: 22. August 2026** — gegen den tatsächlichen Code verifiziert.
+**Stand: 23. August 2026** — vollständig gegen Code, Datenbanken und Testlauf
+gegengeprüft, nicht aus Notizen fortgeschrieben.
 **Ergänzt 22. August 2026: Legacy-Pfad (Tradovate/Telegram/Alarme) entfernt.**
 **Ergänzt 21. August 2026 (nachts): Etappe A und B erstmals mit echten
 NT8-Live-Marktdaten verifiziert (siehe Abschnitt 17).**
 **Ergänzt 22. August 2026: Profil-Begriff entflochten (Abschnitt 8) — `profil`
 und `rules` sind zwei verschiedene Dinge und hießen vorher beide „Profil".**
 
-> **Schwesterdatei:** `CODE_CHAT_KONTEXT.md` enthält die technische Seite —
-> Architektur, Module, Implementierungsstand, Bugs mit Fundstelle im Code, Tests.
+> **Es gibt jetzt vier Kontextdateien**, nicht mehr zwei:
+>
+> | Datei | Rolle |
+> |---|---|
+> | `NORMALER_CHAT_KONTEXT.md` (diese) | **WAS und WARUM** — Ziele, Anforderungen, Historie |
+> | `CODE_CHAT_KONTEXT.md` | **WIE und WIE WEIT** — Architektur, Stand, Bugs, Tests |
+> | `MASTERPLAN.md` | **WOHIN** — Zielarchitektur, Research-Engine, Etappen bis zum Ende |
+> | `ETAPPE_C_SPEZIFIKATION.md` | verbindliche Vorgabe der Ideen-Protokollierung |
 > Beide Dateien gehören zusammen ins Projekt. Diese hier sagt **WAS und WARUM**,
 > die andere **WIE und WIE WEIT**.
 
@@ -37,8 +44,13 @@ vorbei.
 
 ## 2. DER NUTZER
 
-Laurin, Privattrader. Intraday-Futures, hauptsächlich **MNQ**, gelegentlich
-**MGC**. Zeitebenen 1m/5m/15m, Haltedauer oft nur Minuten.
+Laurin, Privattrader. Intraday-Futures, **ausschließlich MNQ**.
+Zeitebenen 1m/5m/15m, Haltedauer oft nur Minuten.
+
+> **Override vom 23.08.2026:** MGC ist aus dem Projekt heraus. Es wird nicht
+> analysiert, gespeichert, protokolliert oder als Erweiterung geplant. Ältere
+> Stellen in dieser Datei, die MGC erwähnen, sind historisch und **nicht mehr
+> gültig**. Zum verbliebenen Register-Eintrag siehe Abschnitt 18.
 
 - Kann kein C#, Python nur oberflächlich
 - Braucht für alles außerhalb des Codes Schritt-für-Schritt-Anleitungen
@@ -66,7 +78,6 @@ Laurin, Privattrader. Intraday-Futures, hauptsächlich **MNQ**, gelegentlich
 
 ### SOLLTE
 
-- MGC-Analyse auf Abruf (Protokollierung nur MNQ)
 - Zwei Regelwerke in der Auswertung: ohne Einschränkungen und Lucid
   (`rules`, siehe Abschnitt 8)
 - Dauerbetrieb auf dem Laptop
@@ -90,8 +101,8 @@ Mehrfach betont: **ohne laufende Kosten**.
   **vollständig entfernt** worden. Die frühere Notiz „bleibt bestehen, ist aber
   nicht mehr das Ziel" ist damit aufgehoben.
 - Einzige akzeptierte Ausgabe: ~4 USD/Monat CME-Marktdaten bei NinjaTrader.
-  MNQ (CME Index) und MGC (COMEX Metals) liegen in verschiedenen Börsengruppen —
-  eventuell zwei Pakete nötig.
+  Nur das Paket **CME Index** für MNQ; die frühere Überlegung zu einem zweiten
+  Paket für COMEX Metals ist mit dem Override vom 23.08.2026 hinfällig.
 
 Wichtige Klarstellung, die im Chat mehrfach nötig war: **Claude Pro deckt keine
 API-Aufrufe ab.** Abo und API sind getrennte Dinge.
@@ -194,7 +205,8 @@ auf Lucids Website zu verifizieren.
 - **Keine getrennten Logs pro Profil.** Eine gemeinsame Ideen-DB mit Profil-Feld.
   Grund: Bei getrennten Dateien ließe sich später nicht mehr fragen, wie ein
   Setup unter dem anderen Regelwerk abgeschnitten hätte.
-- **Kein Mehr-Instrument-Stream.** Protokollierung nur MNQ. MGC nur auf Abruf.
+- **Kein Mehr-Instrument-Stream und keine Multi-Instrument-Architektur.**
+  Ausschließlich MNQ (Override 23.08.2026).
 - **Keine Schätzungen, die wie Messungen aussehen.** Delta bleibt null statt
   geraten. Volume Profile ist als Näherung gekennzeichnet.
 
@@ -285,14 +297,18 @@ Schwelle" gekennzeichnet. Aktuell nur MNQ. Unter 20 Ideen pro Kategorie gilt
 
 Nicht umbenennen, nicht zusammenlegen, nicht überspringen.
 
-| Etappe | Inhalt | Status (21.08.2026, gegen Code und Live-Test geprüft) |
+| Etappe | Inhalt | Status (23.08.2026, gegen Code geprüft) |
 |---|---|---|
-| **A** | NinjaScript-Bridge (`ClaudeBridge.cs`), Indikator, HTTP POST an `localhost:8787` | **ABGESCHLOSSEN** — kompiliert, auf zwei Charts angewandt, live verifiziert |
-| **B** | Empfänger (`ntbridge/receiver.py`), SQLite-Speicher, `NTBridgeBarSource` | **ABGESCHLOSSEN** — Code fertig, Tests grün, **mit echten Daten verifiziert** |
-| **C** | Ideen-Protokollierung, regelbasiert, MNQ | **offen, kein Code vorhanden — jetzt der nächste Schritt** |
-| **D** | Auswertung: `evaluate_past_ideas`, `get_performance_report` | offen, kein Code vorhanden |
+| **A** | NinjaScript-Bridge, Indikator, HTTP POST | **ABGESCHLOSSEN**, live verifiziert |
+| **B** | Empfänger, SQLite-Speicher, `NTBridgeBarSource` | **ABGESCHLOSSEN**, mit echten Daten verifiziert |
+| **C** | Ideen-Protokollierung, regelbasiert, MNQ | **GEBAUT** — 4 Setup-Familien, 50 Tests. **Läuft aber in keinem Dauerprozess; es ist keine einzige echte Idee protokolliert.** |
+| **C+** | Dauerlauf einrichten | **offen — der zeitkritische Punkt**, siehe Abschnitt 17 |
+| **D** | Auswertung: `evaluate_past_ideas`, `get_performance_report` | offen |
 | **E** | Dauerbetrieb-Härtung | offen |
-| **F** | Liefergegenstände (Anleitungen, Configs, Startbefehle) | teilweise erledigt |
+| **F** | Liefergegenstände | teilweise erledigt |
+
+**Neue Etappen G–L** (Feature Store, Regime, Research, Monitoring, Makro) sind
+in `MASTERPLAN.md` Abschnitt R definiert und setzen **nach** C+ an.
 
 > **Korrektur gegenüber älteren Fassungen dieser Datei:** Etappe B stand dort
 > zuerst als "offen", dann als "Code fertig, aber nie mit echten Daten
@@ -307,11 +323,11 @@ Empfänger mitläuft.
 
 ---
 
-## 11. WAS BEREITS STEHT — **326 Tests grün**
+## 11. WAS BEREITS STEHT — **361 Tests grün**
 
 ```
-common/instruments.py   8 Instrumente (MNQ, MGC, MES, ES, NQ, SIL, ZN, M6E),
-                        MGC-Verfallsregel korrigiert
+common/instruments.py   Register mit Ticksize/Punktwert/Verfall.
+                        Protokolliert und analysiert wird NUR MNQ.
 common/sessions.py      Asien/London/NY, Globex, RTH je Instrument, DST-sicher
 common/indicators.py    RSI/ATR/VWAP im Hot-Path; MACD, Stochastik, ADX,
                         Bollinger mit Keltner-Squeeze, EMA-Stack daneben
@@ -339,8 +355,11 @@ zum noch unbekannten Einstieg) schwer debugbar. `vectorbt` bleibt als spätere
 Screening-Schicht für große Parameter-Sweeps sinnvoll.
 Ausführlich in `docs/BACKTESTING_ENTSCHEIDUNG.md`.
 
-> **Wichtig, weiterhin gültig:** Es wurde **nie ein Backtest auf echten
-> Marktdaten gerechnet**. Seit 21.08.2026 liegen zwar erstmals echte Daten in
+> **Präzisiert am 23.08.2026:** Auf **echten MNQ-Futures-Daten** wurde nie ein
+> Backtest gerechnet — dafür reichen die ~4 Tage Historie nicht. Wohl aber auf
+> der **Dukascopy-Näherung** (Index-CFD, 10 Jahre): erste Ergebnisse in
+> `docs/BASISVERMESSUNG_2026-08-23.md`. Diese sind **rein informativ**.
+> Ursprüngliche Formulierung: Seit 21.08.2026 liegen zwar erstmals echte Daten in
 > der produktiven Datenbank, aber es ist **kein Backtest darauf gelaufen**.
 > Daraus dürfen **keine** Aussagen über Strategiegüte abgeleitet werden.
 
@@ -425,15 +444,19 @@ gehalten.
 
 ## 14. KONTRAKTSPEZIFIKATIONEN
 
-| | MNQ | MGC |
-|---|---|---|
-| Name | Micro E-mini Nasdaq 100 | Micro Gold |
-| Börsengruppe | CME Index | COMEX Metals |
-| Ticksize | 0,25 Punkte | 0,10 USD/oz |
-| Punktwert | 2 USD | 10 USD (10 oz) |
-| Kontraktmonate | H/M/U/Z | G/J/M/Q/V/Z |
-| Verfall | 3. Freitag | drittletzter Geschäftstag des Liefermonats |
-| NT8 Session Template | `CME US Index Futures ETH` | `COMEX Metals ETH` |
+| | MNQ — das einzige gehandelte Instrument |
+|---|---|
+| Name | Micro E-mini Nasdaq 100 |
+| Börsengruppe | CME Index |
+| Ticksize | 0,25 Punkte |
+| Punktwert | 2 USD |
+| Kontraktmonate | H/M/U/Z |
+| Verfall | 3. Freitag |
+| NT8 Session Template | `CME US Index Futures ETH` |
+
+> Die frühere MGC-Spalte ist mit dem Override vom 23.08.2026 entfallen. Die
+> MGC-Verfallsregel bleibt als **Bug-Lehre 9** dokumentiert, weil sie erklärt,
+> warum `expiry_rule` instrumentspezifisch sein muss.
 
 **CME-Session:** Globex Sonntag 17:00 CT bis Freitag 16:00 CT, tägliche
 Wartungspause 16:00–17:00 CT. Eine Session = 23 Stunden = 1380 Minutenkerzen.
@@ -523,9 +546,21 @@ Etappe C **produktiv** machen: die Protokollierung steht, aber sie läuft nicht.
 Solange sie an keinem Dauerprozess hängt, entsteht kein Datensatz — und ohne
 Datensatz gibt es auch für Etappe D nichts auszuwerten.
 
+### MEILENSTEIN 23.08.2026: erster Backtest über zehn Jahre
+
+Auf der Dukascopy-Näherung (3 179 672 Kerzen, 2016–2026) liefen erstmals alle
+vier Setup-Familien durch. **Ergebnis: alle vier negativ — und zwar brutto**,
+also nicht bloß von Gebühren aufgefressen. Bei `prev_day_breakout` −2,00 USD je
+Trade brutto gegen 5,00 USD Kosten.
+
+**Das ist ein Befund, keine Niederlage:** genau dafür existiert das Projekt. Die
+Setups laufen mit **nie angepassten Vorgabeparametern**; „keine Kante bei diesen
+Parametern" ist nicht „keine Kante möglich". Details in
+`docs/BASISVERMESSUNG_2026-08-23.md` und `MASTERPLAN.md` Abschnitt X.
+
 ### Erledigt
 
-- Gesamte Rechenlogik in `common/` (**370 Tests grün**)
+- Gesamte Rechenlogik in `common/` (**361 Tests grün**)
 - MCP-Server mit Tool 1 und Tool 2, Terminal-Dump
 - **Etappe A abgeschlossen** (Bridge kompiliert, zwei Charts, live sendend)
 - **Etappe B abgeschlossen** (Empfänger, SQLite-Speicher, BarSource — mit
@@ -534,6 +569,10 @@ Datensatz gibt es auch für Etappe D nichts auszuwerten.
   Ausgängen, zwei getrennte Logs — aber noch an keinen Dauerlauf gehängt
 - Lokales Git-Repo, README auf das Zielsystem umgestellt und um Etappe C
   ergänzt
+- **Legacy-Pfad vollständig entfernt** (22.08.): `live_bot/`, Tradovate-Provider,
+  Config-Abschnitte, Secrets. Kostengarantie gilt jetzt repo-weit.
+- **Dukascopy-Näherungshistorie** vollständig geladen (10 Jahre, 384 MB)
+- **`MASTERPLAN.md`** (23.08.): Zielarchitektur, Research-Engine, Etappen G–L
 
 ### Offen
 
@@ -576,36 +615,101 @@ NinjaTrader funktioniert — ist bestanden.
 
 ### Unsicherheiten
 
-- Ob MNQ und MGC zwei getrennte CME-Datenpakete erfordern (CME Index vs. COMEX
-  Metals), falls MGC später dazukommen soll.
 - Ob der NT8-Feed formal als Echtzeit gilt (praktisch verhielt er sich so).
+- Wie gut die Dukascopy-Näherung über **lange** Zeiträume trägt. Geprüft ist
+  ein Tag: r = 0,95 auf Minutenänderungen, Niveauabstand −86 Punkte,
+  Volumenkorrelation +0,79.
 
 > **Erledigte Unsicherheiten (21.08.2026):** `IsSuspendedWhileInactive`
 > kompiliert; `System.Net.Http` ist ohne Zusatzreferenz verfügbar; die NT8-
 > Zeitzone weicht nicht von Windows ab; "Days to load 7" reicht für die
 > 1m-Serie (3015 von 3000 Ziel-Kerzen erreicht).
-
-### Nächster sinnvoller Schritt
-
-Etappe C planen und bauen. Vorher, falls unbeaufsichtigt gearbeitet werden
-soll: Git-Repo anlegen (Abschnitt 16, Warnung).
+>
+> **Erledigt am 23.08.2026:** Die Frage nach getrennten CME-Datenpaketen für
+> MNQ und MGC ist durch den Override gegenstandslos — MGC kommt nicht dazu.
 
 ---
 
-## 18. KONSISTENZ UND PFLEGE
+## 18. OFFENE FRAGEN AN LAURIN
 
-**Es gibt genau zwei Kontextdateien.** Beide gehören ins Claude-Projekt:
+**Stand 23.08.2026.** Diese Punkte blockieren Entscheidungen und lassen sich
+nicht aus Code oder Dokumentation ableiten.
+
+### 18.1 Sind die angesetzten Handelskosten realistisch?
+
+Die Basisvermessung rechnet mit **2,50 USD je Seite** Kommission plus 1 Tick
+Slippage, also **5,00 USD Round-Turn**. Bei MNQ mit 2 USD je Punkt muss ein
+Setup damit **2,5 Punkte** verdienen, nur um bei null zu landen.
+
+Für Micro-Kontrakte ist das hoch — Discount-Broker liegen eher bei 0,50–1,50
+je Seite. **Was zahlst du tatsächlich?** Der Wert steht in `config.yaml` unter
+`backtest.commission_per_side` und verändert jedes Ergebnis der Vermessung
+erheblich.
+
+### 18.2 MGC im Instrument-Register belassen?
+
+Der Override sagt, MGC sei vollständig raus. **Erfüllt ist das schon heute**,
+soweit es zählt: MGC wird nicht analysiert, gespeichert oder protokolliert.
+
+**Nicht erfüllt:** MGC steht weiter im Register (`common/instruments.py`) und in
+14 Testfällen. Die Empfehlung in `MASTERPLAN.md` C.2 ist, das so zu lassen —
+der MGC-Verfallstest ist der **einzige** Nachweis, dass `expiry_rule`
+instrumentspezifisch ist und nicht eine hartverdrahtete MNQ-Annahme
+(Bug-Lehre 9). Fällt er weg, kann die MNQ-Regel später still falsch werden.
+
+**Deine Entscheidung:** Register-Eintrag behalten (Empfehlung) oder komplett
+entfernen?
+
+### 18.3 Research-Engine vor Etappe D?
+
+Ursprünglich war Etappe D (`evaluate_past_ideas`) als Nächstes vorgesehen. Nach
+der Basisvermessung ist die Empfehlung **geändert**: Etappe D würde vier Setups
+auswerten, die brutto keine Kante zeigen. Eine Einzelfaktor-Research würde
+stattdessen systematisch suchen, unter **welchen Bedingungen** überhaupt eine
+entsteht — und das ist auf den zehn Jahren Näherungshistorie sofort rechenbar.
+
+**Deine Entscheidung:** Reihenfolge nach dem Dauerlauf — D oder Research?
+
+### 18.4 MCP-Startzeit jetzt beheben?
+
+Der Server braucht **7,5 Sekunden** bis zur ersten Antwort, fast ausschließlich
+pandas-Import. Cowork und Code laufen dabei in einen Timeout; Claude Desktop
+hält seine Instanz offen und ist unauffällig. Abgegrenzter Eingriff: pandas
+verzögert importieren.
+
+### 18.5 Parallele Sitzungen auf einem Arbeitsbaum
+
+Am 22. und 23.08.2026 kam es dreimal zu Zwischenfällen: verwaiste Git-Sperren
+(vier Stück, bis zu 24 h alt), ein halb ausgeführter `checkout`, ein veralteter
+Index. Jedes Mal ging es gut, weil vor dem Eingriff geprüft wurde — **das ist
+Glück, kein Verfahren.** Solange zwei Sitzungen denselben Arbeitsbaum
+beschreiben, ist Datenverlust eine Frage der Zeit.
+
+**Empfehlung:** immer nur eine schreibende Sitzung.
+
+---
+
+## 19. KONSISTENZ UND PFLEGE
+
+**Es gibt vier Kontextdateien** (seit 23.08.2026, vorher zwei). Alle gehören
+ins Claude-Projekt:
 
 | Datei | Inhalt | Ändert sich |
 |---|---|---|
-| `NORMALER_CHAT_KONTEXT.md` (diese) | WAS/WARUM, Anforderungen, Historie, Entscheidungen | selten |
+| `NORMALER_CHAT_KONTEXT.md` (diese) | WAS/WARUM, Anforderungen, Historie, offene Fragen | selten |
 | `CODE_CHAT_KONTEXT.md` | WIE, Module, technischer Stand, Bugs mit Fundstelle, Tests | bei Bauarbeiten |
+| `MASTERPLAN.md` | WOHIN, Zielarchitektur, Research-Engine, Etappen G–L | selten |
+| `ETAPPE_C_SPEZIFIKATION.md` | verbindliche Vorgabe der Ideen-Protokollierung | abgeschlossen |
 
 **Bei Widersprüchen gilt die Rangfolge:**
 
 1. **tatsächlicher Code** — Wahrheit über den aktuellen Implementierungsstand
 2. **`CODE_CHAT_KONTEXT.md`** — Wahrheit über technische Umsetzung und Historie
-3. **diese Datei** — Wahrheit über Ziele, Anforderungen und Gründe
+3. **`MASTERPLAN.md`** — Wahrheit über die geplante Zielarchitektur
+4. **diese Datei** — Wahrheit über Ziele, Anforderungen und Gründe
+
+**Der MNQ/NinjaTrader-Override vom 23.08.2026 geht allen älteren MGC- und
+Tradovate-Angaben vor**, unabhängig davon, in welcher Datei sie stehen.
 
 Ein Widerspruch wird **festgestellt und dokumentiert**, nicht stillschweigend
 aufgelöst.
