@@ -30,6 +30,7 @@ from backtest.compare import (
 from backtest.data import BarRequest, create_provider
 from backtest.data.csv_provider import CsvDataProvider
 from backtest.engine import Backtester, CostModel
+from backtest.kosten import PROFILE, profil_aus_config
 from backtest.metrics import compute_metrics, format_metrics
 from backtest.splits import split_data
 from backtest.strategies.library import STRATEGY_LIBRARY, build_strategy
@@ -110,10 +111,16 @@ def load_data(config: Config, args: argparse.Namespace) -> pd.DataFrame:
     return provider.load(request)
 
 
-def make_backtester(config: Config) -> Backtester:
-    costs = CostModel(
-        commission_per_side=config.backtest.commission_per_side,
-        slippage_ticks_per_side=config.backtest.slippage_ticks_per_side,
+def make_backtester(config: Config, kostenprofil: str | None = None) -> Backtester:
+    """Baut den Backtester mit dem konfigurierten oder verlangten Kostenprofil.
+
+    ``kostenprofil`` erlaubt, dasselbe Setup unter einem zweiten Profil zu
+    rechnen, ohne die Konfiguration zu aendern - genau dafuer sind die Profile
+    da (siehe ``backtest/kosten.py``).
+    """
+    profil = profil_aus_config(config.backtest, kostenprofil)
+    costs = CostModel.aus_profil(
+        profil,
         tick_size=config.market.tick_size,
         point_value=config.market.point_value,
     )
@@ -140,7 +147,7 @@ def command_list(_config: Config, _args: argparse.Namespace) -> int:
 def command_run(config: Config, args: argparse.Namespace) -> int:
     data = load_data(config, args)
     split = split_data(data, config.backtest.split)
-    backtester = make_backtester(config)
+    backtester = make_backtester(config, getattr(args, "kostenprofil", None))
 
     strategy = build_strategy(args.strategy, **parse_params(args.param))
     run = run_on_split(backtester, split, strategy)
@@ -169,7 +176,7 @@ def command_run(config: Config, args: argparse.Namespace) -> int:
 def command_compare(config: Config, args: argparse.Namespace) -> int:
     data = load_data(config, args)
     split = split_data(data, config.backtest.split)
-    backtester = make_backtester(config)
+    backtester = make_backtester(config, getattr(args, "kostenprofil", None))
 
     shared_params = parse_params(args.param)
     strategies = [build_strategy(name, **shared_params) for name in args.strategy]
@@ -201,7 +208,7 @@ def command_optimize(config: Config, args: argparse.Namespace) -> int:
 
     data = load_data(config, args)
     split = split_data(data, config.backtest.split)
-    backtester = make_backtester(config)
+    backtester = make_backtester(config, getattr(args, "kostenprofil", None))
 
     objective_name = args.objective
     objectives = {
@@ -269,7 +276,7 @@ def command_walkforward(config: Config, args: argparse.Namespace) -> int:
     Out-of-Sample-Zeitraum verbraucht.
     """
     data = load_data(config, args)
-    backtester = make_backtester(config)
+    backtester = make_backtester(config, getattr(args, "kostenprofil", None))
     strategy = build_strategy(args.strategy, **parse_params(args.param))
 
     bericht = walkforward_lauf(
@@ -319,6 +326,13 @@ def build_parser() -> argparse.ArgumentParser:
         target.add_argument("--start", help="ISO-Datum, z.B. 2025-01-01")
         target.add_argument("--end", help="ISO-Datum")
         target.add_argument("--max-bars", type=int)
+        # Dasselbe Setup unter einem anderen Kostenprofil rechnen, ohne die
+        # config.yaml anzufassen. Der Bericht weist aus, welches galt.
+        target.add_argument(
+            "--kostenprofil",
+            choices=sorted(PROFILE),
+            help="Ueberschreibt backtest.kostenprofil fuer diesen Lauf",
+        )
 
     list_parser = subparsers.add_parser("list", help="Verfuegbare Strategien anzeigen")
     list_parser.set_defaults(handler=command_list)

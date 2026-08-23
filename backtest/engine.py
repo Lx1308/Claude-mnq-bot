@@ -30,6 +30,7 @@ from typing import Any
 import numpy as np
 import pandas as pd
 
+from backtest.kosten import Kostenprofil
 from backtest.strategies.base import BarContext, RuleStrategy
 from common.config import IndicatorConfig, MarketConfig, SessionConfig
 from common.indicators import compute_indicators
@@ -94,6 +95,12 @@ class BacktestResult:
     period_end: datetime | None = None
     label: str = ""   # z.B. "in-sample" / "out-of-sample"
 
+    #: Womit gerechnet wurde. Pflicht, seit es mehrere Kostenprofile gibt:
+    #: dieselbe Strategie ist unter 0,50 und unter 2,50 USD je Seite ein
+    #: voellig anderes Geschaeft, und ein Ergebnis ohne diese Angabe laesst
+    #: sich nicht einordnen.
+    kosten: dict[str, Any] = field(default_factory=dict)
+
     def trades_dataframe(self) -> pd.DataFrame:
         if not self.trades:
             return pd.DataFrame(
@@ -108,21 +115,86 @@ class BacktestResult:
 
 @dataclass(frozen=True)
 class CostModel:
-    """Handelskosten. Werte kommen aus ``backtest`` in der config.yaml."""
+    """Handelskosten eines Laufs.
+
+    Traegt seit dem 23.08.2026 ein benanntes :class:`Kostenprofil` statt einer
+    Pauschale. Der Grund steht in ``backtest/kosten.py``: Broker-Kommission,
+    nicht verhandelbare Boersengebuehren und Slippage verhalten sich
+    unterschiedlich und gehoeren getrennt.
+
+    ``commission_per_side`` bleibt als Feld erhalten, damit bestehende Aufrufe
+    weiterlaufen. Ist ein ``profil`` gesetzt, hat **es** Vorrang - so laesst
+    sich dasselbe Setup unter mehreren Profilen rechnen, ohne die Strategie
+    anzufassen.
+    """
 
     commission_per_side: float = 2.50
     slippage_ticks_per_side: float = 1.0
     tick_size: float = 0.25
     point_value: float = 20.0
     contracts: int = 1
+    profil: "Kostenprofil | None" = None
+
+    @classmethod
+    def aus_profil(
+        cls,
+        profil: "Kostenprofil",
+        *,
+        tick_size: float,
+        point_value: float,
+        contracts: int = 1,
+    ) -> "CostModel":
+        """Der bevorzugte Weg, ein Kostenmodell zu bauen."""
+        return cls(
+            commission_per_side=profil.summe_je_seite,
+            slippage_ticks_per_side=profil.slippage_ticks_je_seite,
+            tick_size=tick_size,
+            point_value=point_value,
+            contracts=contracts,
+            profil=profil,
+        )
+
+    @property
+    def _je_seite(self) -> float:
+        return (
+            self.profil.summe_je_seite
+            if self.profil is not None
+            else self.commission_per_side
+        )
 
     @property
     def slippage_points(self) -> float:
-        return self.slippage_ticks_per_side * self.tick_size
+        ticks = (
+            self.profil.slippage_ticks_je_seite
+            if self.profil is not None
+            else self.slippage_ticks_per_side
+        )
+        return ticks * self.tick_size
 
     @property
     def round_turn_commission(self) -> float:
-        return 2.0 * self.commission_per_side * self.contracts
+        return 2.0 * self._je_seite * self.contracts
+
+    def herkunft(self) -> dict[str, Any]:
+        """Womit gerechnet wurde - gehoert in jeden Bericht.
+
+        Ohne diese Angabe laesst sich ein Ergebnis nicht einordnen: dieselbe
+        Strategie ist unter 0,50 und unter 2,50 USD je Seite ein voellig
+        anderes Geschaeft.
+        """
+        if self.profil is not None:
+            return self.profil.to_dict()
+        return {
+            "name": "unbenannt",
+            "beschreibung": "Direkt gesetzte Werte ohne Profil.",
+            "je_seite_usd": round(self.commission_per_side, 4),
+            "round_turn_usd": round(2.0 * self.commission_per_side, 4),
+            "slippage_ticks_je_seite": self.slippage_ticks_per_side,
+            "ist_annahme": True,
+            "quelle": "im Aufruf gesetzt, keine Herkunft hinterlegt",
+            "aufschluesselung": None,
+            "aufschluesselung_hinweis": "Kein Kostenprofil verwendet.",
+        }
 
 
 class Backtester:
@@ -302,6 +374,7 @@ class Backtester:
             period_start=timestamps[0].to_pydatetime(),
             period_end=timestamps[-1].to_pydatetime(),
             label=label,
+            kosten=self._costs.herkunft(),
         )
         log.info(
             "Backtest '%s'%s: %d Trades, Netto %.2f USD",

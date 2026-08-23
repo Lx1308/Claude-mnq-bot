@@ -346,8 +346,22 @@ class BacktestConfig:
     provider: str = "csv"
     csv_directory: str = "data"
     output_directory: str = "backtest_results"
+
+    # Welches benannte Kostenprofil verwendet wird. Die Profile selbst liegen
+    # in ``kostenprofile``; der Grund fuer die Trennung steht in
+    # ``backtest/kosten.py``.
+    kostenprofil: str = "private_ninjatrader"
+    #: Rohdaten der Profile aus der YAML. Zu ``Kostenprofil``-Objekten wird
+    #: das erst in ``backtest.kosten`` - ``common`` ist die Basisschicht und
+    #: soll nicht auf ``backtest`` zugreifen.
+    kostenprofile: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    # Altfelder. Bis zum 23.08.2026 die einzige Kostenannahme; bleiben
+    # erhalten, damit bestehende Aufrufe nicht brechen. Neue Laeufe nehmen
+    # das Kostenprofil.
     commission_per_side: float = 2.50
     slippage_ticks_per_side: float = 1.0
+
     split: SplitConfig = field(default_factory=SplitConfig)
 
 
@@ -510,6 +524,11 @@ class Config:
             provider=str(bt.get("provider", "csv")).lower(),
             csv_directory=str((bt.get("csv", {}) or {}).get("directory", "data")),
             output_directory=str(bt.get("output_directory", "backtest_results")),
+            kostenprofil=str(bt.get("kostenprofil", "private_ninjatrader")).lower(),
+            kostenprofile={
+                str(name).lower(): dict(werte or {})
+                for name, werte in (bt.get("kostenprofile", {}) or {}).items()
+            },
             commission_per_side=float(bt.get("commission_per_side", 2.50)),
             slippage_ticks_per_side=float(bt.get("slippage_ticks_per_side", 1.0)),
             split=SplitConfig(

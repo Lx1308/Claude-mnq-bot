@@ -306,9 +306,68 @@ backtest:
     directory: data
   output_directory: backtest_results
 
-  # Kostenannahmen pro Trade-Seite (Round-Turn = 2x)
-  commission_per_side: 2.50      # USD
-  slippage_ticks_per_side: 1.0   # in Ticks
+  # -------------------------------------------------------------------------
+  # HANDELSKOSTEN - benannte Profile statt einer Pauschale
+  # -------------------------------------------------------------------------
+  # Bis zum 23.08.2026 stand hier eine einzige Zahl (2.50). Sie verdeckte drei
+  # Dinge, die sich voellig unterschiedlich verhalten: verhandelbare
+  # Broker-Kommission, NICHT verhandelbare Boersen-/Clearing-/NFA-Gebuehren,
+  # und Slippage - die gar keine Gebuehr ist, sondern Ausfuehrungsqualitaet.
+  #
+  # Warum das zaehlt: die Basisvermessung ergab bei prev_day_breakout 5,00 USD
+  # Kosten je Trade gegen 2,00 USD Bruttoverlust. Die Kostenannahme dominierte
+  # das Ergebnis.
+  #
+  # Dasselbe Setup laesst sich unter jedem Profil rechnen, ohne die Strategie
+  # oder die Research-Logik anzufassen.
+  kostenprofil: private_ninjatrader
+
+  kostenprofile:
+    private_ninjatrader:
+      beschreibung: >-
+        MNQ ueber das NinjaTrader-Free-Modell auf Laurins privatem Konto.
+        Enthaelt Broker-Kommission sowie Boersen-, Clearing- und
+        NFA-Gebuehren.
+      summe_je_seite: 0.95        # USD, entspricht ~1.90 Round Turn
+      slippage_ticks_je_seite: 1.0
+      ist_annahme: false
+      quelle: "Laurin, 23.08.2026 - NinjaTrader-Free-Modell"
+      # Die Aufteilung ist NICHT belegt, deshalb bleiben die Einzelposten
+      # leer. Erfundene Posten, die zufaellig richtig aufsummieren, saehen
+      # aus wie eine Recherche - eine ehrliche Luecke ist besser.
+      # Sobald eine Abrechnung vorliegt, hier eintragen; die Summe muss dann
+      # passen, sonst bricht Kostenprofil.__post_init__ ab.
+      broker_kommission_je_seite: null
+      boerse_je_seite: null
+      clearing_je_seite: null
+      nfa_je_seite: null
+
+    lucid:
+      beschreibung: >-
+        MNQ unter einer Lucid-Prop-Firm-Struktur.
+      summe_je_seite: 0.50        # USD, entspricht 1.00 Round Turn
+      slippage_ticks_je_seite: 1.0
+      ist_annahme: true           # NICHT gegen eine Abrechnung geprueft
+      quelle: >-
+        Arbeitsannahme Laurin, 23.08.2026 - extern nicht verifiziert,
+        vor Gebrauch gegen die Lucid-Konditionen pruefen
+      broker_kommission_je_seite: null
+      boerse_je_seite: null
+      clearing_je_seite: null
+      nfa_je_seite: null
+
+    pauschale_alt:
+      beschreibung: >-
+        Die pauschale Altannahme. Nur zum Nachrechnen aelterer Ergebnisse
+        wie der Basisvermessung vom 23.08.2026 - fuer neue Laeufe ungeeignet.
+      summe_je_seite: 2.50
+      slippage_ticks_je_seite: 1.0
+      ist_annahme: true
+      quelle: "Altbestand ohne Herkunftsangabe, vermutlich Platzhalter"
+      broker_kommission_je_seite: null
+      boerse_je_seite: null
+      clearing_je_seite: null
+      nfa_je_seite: null
 
   # In-Sample / Out-of-Sample Aufteilung.
   # Optimieren ist NUR auf in_sample erlaubt; das Framework verweigert

@@ -293,7 +293,45 @@ def optimize_in_sample(
     return table
 
 
+def kostenzeile(kosten: dict) -> str:
+    """Womit gerechnet wurde - gehoert an den Anfang jedes Berichts.
+
+    Dieselbe Strategie ist unter 0,50 und unter 2,50 USD je Seite ein voellig
+    anderes Geschaeft. Ein Ergebnis ohne diese Angabe laesst sich nicht
+    einordnen, und genau das war bis zum 23.08.2026 der Fall.
+    """
+    if not kosten:
+        return "Kostenprofil          : nicht ausgewiesen"
+
+    art = "ANNAHME, nicht verifiziert" if kosten.get("ist_annahme") else "belegt"
+    zeilen = [
+        f"Kostenprofil          : {kosten.get('name')}  [{art}]",
+        f"  je Seite            : {kosten.get('je_seite_usd')} USD"
+        f"   (Round Turn {kosten.get('round_turn_usd')} USD)",
+        f"  Slippage            : {kosten.get('slippage_ticks_je_seite')} Ticks je Seite"
+        "  (KEINE Gebuehr - Ausfuehrungsqualitaet)",
+        f"  Quelle              : {kosten.get('quelle')}",
+    ]
+    hinweis = kosten.get("aufschluesselung_hinweis")
+    if hinweis:
+        zeilen.append(f"  Aufschluesselung    : {hinweis}")
+    else:
+        a = kosten.get("aufschluesselung") or {}
+        zeilen.append(
+            f"  Aufschluesselung    : Broker {a.get('broker_kommission')}, "
+            f"Boerse {a.get('boerse')}, Clearing {a.get('clearing')}, "
+            f"NFA {a.get('nfa')}"
+        )
+    return "\n".join(zeilen)
+
+
 def print_report(runs: Sequence[StrategyRun], table: pd.DataFrame) -> None:
+    print()
+    kosten = next(
+        (r.in_sample.kosten for r in runs if getattr(r, "in_sample", None) is not None),
+        {},
+    )
+    print(kostenzeile(kosten))
     print()
     print(render_table(table))
     print()
