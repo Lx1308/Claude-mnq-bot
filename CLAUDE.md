@@ -59,7 +59,7 @@ das **repo-weit**.
 Immer das venv des Projekts verwenden:
 
 ```bash
-.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 337)
+.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 343)
 .venv\Scripts\python.exe -m pytest tests/test_engine.py      # eine Datei
 .venv\Scripts\python.exe -m pytest -k lookahead -v           # einzelne Tests nach Namensmuster
 .venv\Scripts\python.exe -m pytest tests/test_ideas.py::test_deviation_reentry_feuert_nur_beim_uebertritt
@@ -93,6 +93,21 @@ Skripte außerhalb der CLI brauchen `$env:PYTHONPATH = (Get-Location).Path`;
 es gibt kein `pip install -e .`. In den Tests erledigt das `tests/conftest.py`.
 
 Es gibt keinen Linter und keinen Formatter im Projekt.
+
+**Unbeaufsichtigte Läufe in der Linux-Sandbox** (geplante Aufgaben, Cowork)
+erreichen das Windows-venv nicht und können `pytest` dort nicht nachinstallieren.
+Sie sind trotzdem nicht testlos:
+
+```bash
+python3 werkzeuge/pytest_linux.py            # ganze Suite
+python3 werkzeuge/pytest_linux.py -k lookahead -v
+```
+
+Das Skript sammelt die reinen Python-Testabhängigkeiten aus dem Windows-venv,
+ergänzt einen Minimalersatz für `exceptiongroup` und startet pytest darüber;
+pandas und numpy kommen aus der Linux-Umgebung. Es schreibt nur nach `/tmp`.
+Der Lauf ist eine **Gegenprobe, kein Ersatz** für den Windows-Lauf — er läuft
+unter einem anderen Python und anderen pandas/numpy-Versionen.
 
 ## Architektur: die tragenden Invarianten
 

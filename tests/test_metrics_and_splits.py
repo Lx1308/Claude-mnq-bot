@@ -34,7 +34,9 @@ def make_trade(pnl: float, *, index: int = 0, bars: int = 10) -> Trade:
 def make_result(pnls: list[float]) -> BacktestResult:
     index = pd.date_range("2025-01-02", periods=max(len(pnls), 2), freq="1D", tz="UTC")
     equity = pd.Series(
-        pd.Series(pnls).cumsum().reindex(range(len(index))).ffill().fillna(0.0).values,
+        # dtype ausdruecklich: bei leerer Liste waere die Reihe sonst object-dtype,
+        # und ffill auf object-dtype ist in pandas abgekuendigt (FutureWarning).
+        pd.Series(pnls, dtype="float64").cumsum().reindex(range(len(index))).ffill().fillna(0.0).values,
         index=index,
     )
     return BacktestResult(

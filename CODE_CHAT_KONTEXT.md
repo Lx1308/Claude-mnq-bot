@@ -2,12 +2,13 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-23 (Qualitätsmessung der Dukascopy-Näherungshistorie, Abschnitt
-19; davor zwei Tradovate-Defekte bereinigt und Nachprüfung des Branch-Stands,
-Inhalt sonst 2026-08-22 nach Entfernung des Legacy-Pfads).
-Gegen den tatsächlichen Projektordner geprüft. **Achtung:** die Testzahlen in
-dieser Datei sind der letzte auf Windows gemessene Stand; die Gegenprobe nach
-den Änderungen vom 23.08.2026 steht aus (siehe Abschnitt 17/18).
+Stand: 2026-08-23 (Testsuite in der Linux-Sandbox lauffähig gemacht, 343 Tests
+grün, Abschnitt 20; davor Qualitätsmessung der Dukascopy-Näherungshistorie,
+Abschnitt 19, und zwei bereinigte Tradovate-Defekte; Inhalt sonst 2026-08-22
+nach Entfernung des Legacy-Pfads).
+Gegen den tatsächlichen Projektordner geprüft. **Testzahlen:** 343, gemessen am
+23.08.2026 — allerdings in der Linux-Ersatzumgebung (Abschnitt 20), nicht unter
+dem Windows-venv. Der Windows-Lauf bleibt vor einer Freigabe auszuführen.
 
 ---
 
@@ -1346,3 +1347,85 @@ richtig ausgerichtet. Ein `DukascopyDataProvider` waere damit auf der Datenseite
 unbedenklich — er muesste aber die Pause 16:16–18:00 ET und die flachere Spanne
 in der erzeugten Ausgabe kennzeichnen, sonst saehe eine Naeherung aus wie eine
 Messung.
+
+---
+
+## 20. Die Testsuite laeuft doch unbeaufsichtigt — 343 Tests gruen (23.08.2026)
+
+Abschnitt 17 und 18 fuehrten die Gegenprobe als offene Schuld: `pytest` sei in
+der Linux-Sandbox nicht installierbar (Paketproxy antwortet 403) und das
+Windows-venv von dort nicht aufrufbar, also blieben die Aenderungen aus
+Abschnitt 17 ungeprueft. Beides stimmt einzeln — der Schluss war trotzdem
+falsch.
+
+### Warum es doch geht
+
+`pytest`, `pluggy`, `iniconfig`, `httpx`, `yaml`, `dotenv`, `tabulate` und die
+uebrigen Testabhaengigkeiten sind **reines Python** und liegen bereits im
+Windows-venv des Projekts. Nur `pandas` und `numpy` tragen kompilierte
+Endungen — und die stellt die Linux-Umgebung selbst (pandas 2.3.3, numpy
+2.2.6). Es fehlte einzig `exceptiongroup`: Python 3.10 bringt
+`BaseExceptionGroup` noch nicht mit, pytest 9.1.1 setzt es voraus, das Backport
+ist nicht ladbar. Ein Minimalersatz von rund 40 Zeilen genuegt, weil pytest
+davon nur isinstance-Pruefungen und das Buendeln mehrerer Fehler braucht.
+
+Das Vorgehen steckt jetzt in **`werkzeuge/pytest_linux.py`** (neuer Ordner,
+reines Entwicklerwerkzeug, kein Teil der Pipeline). Es kopiert die Pakete nach
+`/tmp`, schreibt den Ersatz dazu und startet pytest — ohne irgendetwas im
+Projekt zu aendern.
+
+```
+python3 werkzeuge/pytest_linux.py
+```
+
+### Ergebnis
+
+**343 Tests, alle gruen, 31 s.** Damit ist die Gegenprobe zu Abschnitt 17
+(zwei Tradovate-Defekte in `backtest/cli.py`, `backtest/data/base.py`,
+`backtest/data/csv_provider.py`) eingeloest: die Aenderungen brechen nichts.
+
+### Die dokumentierte Testzahl war veraltet
+
+`CLAUDE.md` nannte 337, ein Commit vom 22.08. sprach von 342, tatsaechlich sind
+es **343**. Nach der Regel "der Code ist die Wahrheit ueber den aktuellen
+Stand" ist die Zahl in `CLAUDE.md` auf 343 gezogen. Genau die Alterung, die
+Abschnitt 15 unter "Lehre" beschreibt — diesmal an einer Zahl statt an einer
+Aufgabenliste.
+
+### Eine pandas-Abkuendigung im Testcode beseitigt
+
+`tests/test_metrics_and_splits.py:37` erzeugte einen `FutureWarning`: bei
+leerer Trade-Liste ist `pd.Series(pnls)` object-dtype, und `ffill` darauf ist
+abgekuendigt. Jetzt `pd.Series(pnls, dtype="float64")`. Kein Verhaltens-
+unterschied heute, aber in einer kuenftigen pandas-Version waere daraus ein
+Fehler geworden. Gegenprobe: Lauf weiterhin 343 gruen, Warnung verschwunden.
+
+### Grenze dieser Messung
+
+Der Lauf fand unter **Python 3.10** mit den Linux-Versionen von pandas und
+numpy statt, nicht unter dem Python des Projekt-venv (3.14). Ein gruener Lauf
+belegt, dass die Testlogik traegt; er ersetzt den Windows-Lauf nicht. Der
+bleibt vor einer Freigabe auszufuehren:
+
+```
+.venv\Scripts\python.exe -m pytest
+```
+
+Nach Invariante 10 ausdruecklich so benannt und nicht als der Windows-Lauf
+ausgegeben.
+
+### Unveraendert offen
+
+- Die beiden Git-Sperrdateien aus Abschnitt 16 (`.git/index.lock`,
+  `.git/HEAD.lock`) liegen weiterhin und sind aus dieser Umgebung nicht
+  loeschbar. Der Commit dieses Abschnitts entstand erneut ueber
+  `GIT_INDEX_FILE` + `write-tree`/`commit-tree` + direktes Schreiben von
+  `refs/heads/main`. Folge wie bisher: kein Reflog-Eintrag. Nebenwirkung: der
+  im Repository liegende Index ist seit dem Absturz veraltet, `git status`
+  zeigt deshalb Dateien als geaendert an, die es nicht sind — `git diff HEAD`
+  ist leer und damit die verlaessliche Auskunft.
+- Die **P0-Entscheidung** aus dem Masterplan liegt bei Laurin. Er wurde am
+  23.08.2026 mit Zusammenfassung und Vorschlag (1. Ideen-Dauerlauf,
+  2. Dukascopy-Provider, 3. MCP-Startzeit) angeschrieben; eine Antwort steht
+  aus. Bis dahin nur Arbeit, die keine der rueckfragepflichtigen Fragen
+  beruehrt.
