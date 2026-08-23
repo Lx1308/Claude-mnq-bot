@@ -1623,3 +1623,58 @@ wenn X.1 erledigt ist: über die Backtest-Seite erreichbar sind bislang nur
 CSV-Dateien aus `data/`, und das ist dort ausschließlich der synthetische
 `DEMO_1m.csv`. Ein Walk-Forward über zehn Jahre Näherungshistorie ist der erste
 Lauf, der etwas aussagen würde.
+
+---
+
+## 23. Gegenprobe vom Wachhund, 23.08.2026 mittags — 361 Tests grün auf `c33c818`
+
+Der geplante Lauf „resume-project-work" hat um 12:47 den Stand unabhängig
+nachgemessen. Drei Befunde, alle bestätigend:
+
+1. **Die Testsuite ist grün.** `python3 werkzeuge/pytest_linux.py` in der
+   Linux-Ersatzumgebung: **361 passed** in 34 s, gegen den Arbeitsbaum auf
+   `c33c818` („walkforward-Kommando"). Das deckt sich mit der in Abschnitt 22
+   genannten Zahl. **Der Windows-Lauf steht weiterhin aus** — die Ersatzumgebung
+   ist eine Gegenprobe, kein Ersatz (Invariante 10, `CLAUDE.md`).
+
+2. **Die Arbeitssitzung ist endgültig weg.** Abschnitt 16 vermutete es, jetzt ist
+   es geprüft: die vollständige Sitzungsliste (113 Einträge) enthält
+   `local_143554db-…` nicht. Alle 113 sind Läufe des Wachhunds selbst. Der
+   Wachhund hat in diesem Lauf zudem **kein** Werkzeug, um einer Sitzung eine
+   Nachricht zu schicken. Die Automatik hat damit weder eine ausführende Instanz
+   noch einen Weg, eine neue anzusteuern — sie läuft leer weiter, bis Laurin eine
+   neue Sitzung startet (Vorgabe: `claude-opus-5`).
+
+3. **Der Git-Index ist veraltet, der Arbeitsbaum nicht.** `.git/index` datiert vom
+   23.08. 04:15, `HEAD` steht auf 10:48. Folge: `git status` meldet
+   `backtest/walkforward.py`, `tests/test_walkforward.py`, `werkzeuge/*` und
+   `docs/BASISVERMESSUNG_2026-08-23.md` gleichzeitig als **gelöscht** (Index) und
+   **unversioniert** (Arbeitsbaum), und ein Dutzend Dateien als „MM".
+   Das ist eine Anzeigefolge des eingefrorenen Index, **kein** Datenverlust:
+   `git diff HEAD` ist inhaltlich leer, alle sechs Dateien liegen im
+   `HEAD`-Baum und im Arbeitsbaum.
+
+   **Gefahr:** ein arglos abgesetztes `git commit -a` in diesem Zustand würde
+   die sechs Dateien aus der Versionierung entfernen. Erst die Aufräumanweisung
+   aus Abschnitt 16 ausführen, dann einmal `git reset` (setzt nur den Index auf
+   `HEAD`, rührt den Arbeitsbaum nicht an), dann ist `git status` wieder sauber.
+
+   Die Sperrdateien sind aus der Linux-Umgebung weiterhin nicht löschbar
+   (`rm` → *Operation not permitted*), erneut geprüft. Die vollständige
+   Anweisung für den Projektordner unter Windows:
+
+   ```
+   del ".git\index.lock" ".git\HEAD.lock"
+   del /s ".git\objects\tmp_obj_*"
+   git reset
+   ```
+
+   Im Ordner `.git/` liegen zusätzlich vier leere Sondierungsdateien früherer
+   Läufe (`probe.tmp`, `testschreib`, `zz_test_delete_me.txt`,
+   `loeschtest_watchdog`). Sie stören Git nicht und können bei Gelegenheit mit
+   weg.
+
+**Nicht angefasst** wurde der offene P0-Punkt. X.1 (Dukascopy-Provider) wäre die
+technisch naheliegendste Arbeit und ist als Erreichbarkeitslücke eingestuft —
+sie umzusetzen hieße aber, die P0-Reihenfolge zu wählen, und genau das ist
+Laurins Entscheidung (Master-Auftrag, rückfragepflichtiger Punkt d).
