@@ -1939,9 +1939,71 @@ eine Spannweite von **0,248 Punkten**. Das Volatilitätsregime erklärt bei
 diesem Setup **nichts**. Ein Faktor, der nicht trennt, ist ein Ergebnis — er
 schließt eine Erklärung aus.
 
-**Nächster Schritt wäre die Validierung** des Tageszeit-Funds am zweiten
-Block. Bewusst noch nicht gemacht: Der OOS-Block ist einmalig, und vorher
-gehört geklärt, ob die Hypothese als *eine* geprüft wird oder als eine von 33.
+### 26.6 Bonferroni-Korrektur — der Kandidat hält nicht
+
+**Laurins Entscheidung (23.08.2026):** Die Tageszeit-Hypothese wird **nicht**
+privilegiert, sondern strikt als eine von 33 gezählt. Volle Korrektur, kein
+aufgeweichter Maßstab, nur weil die Literatur zufällig in dieselbe Richtung
+zeigt.
+
+```
+Geprüfte Hypothesen   : 33
+Unkorrigiertes Niveau : 0,05
+Korrigierte Schwelle  : 0,001515   (alpha / 33)
+```
+
+**Ergebnis: keine einzige der 33 Gruppen unterschreitet die Schwelle.**
+
+Die vier stärksten:
+
+| Gruppe | t | p | p korrigiert |
+|---|---:|---:|---:|
+| `flag_breakout` / ATR ruhig | −2,82 | 0,0054 | 0,177 |
+| `prev_day_breakout` / ATR mittel | −2,53 | 0,0118 | 0,389 |
+| `vwap_reversion` / Donnerstag | −2,15 | 0,0320 | 1,000 |
+| **`prev_day_breakout` / Schluss 14–16** | **+1,91** | **0,0568** | **1,000** |
+
+### 26.7 Korrektur einer eigenen Fehleinschätzung
+
+Der Tageszeit-Fund wurde in 26.5 als „ein Kandidat" geführt, gestützt auf
++4,399 Punkte brutto und die Übereinstimmung mit der Literatur.
+
+**Die Statistik trägt das nicht.** Mit t = +1,91 und p = 0,0568 verfehlt die
+Gruppe **die unkorrigierte Schwelle von 0,05** — von der korrigierten ganz zu
+schweigen. Der Mittelwert sah groß aus, aber bei 353 Trades und dieser
+Streuung ist er von null nicht zu unterscheiden.
+
+**Was daran lehrreich ist:** Ein Mittelwert ohne Streuung ist keine Aussage.
+In 26.5 stand die Zahl +4,399 ohne t-Wert daneben, und die Übereinstimmung mit
+Gao et al. wirkte wie eine Bestätigung. Beides zusammen ergab einen Eindruck
+von Substanz, den die Daten nicht hergeben. Genau davor schützt die Disziplin,
+Signifikanz **vor** der Interpretation zu rechnen.
+
+Auffällig außerdem: Die drei stärksten Effekte im ganzen Lauf sind
+**negative** t-Werte, also Gruppen, die überdurchschnittlich verlieren. Auch
+sie halten der Korrektur nicht stand.
+
+### 26.8 Der OOS-Block bleibt unberührt
+
+Es gibt nichts, was ihn rechtfertigen würde. Er ist einmalig; ihn für eine
+Hypothese zu verbrauchen, die schon im Training nicht signifikant ist, wäre
+Verschwendung.
+
+**Das ist kein Misserfolg, sondern das Ergebnis.** 33 Bedingungen über zehn
+Jahre geprüft, keine trennt belastbar. Zusammen mit Mesfins Falsifikation
+(Abschnitt 25) ergibt sich ein konsistentes Bild: Reine OHLCV-Signale auf MNQ,
+konditioniert auf Tageszeit, Wochentag oder Volatilitätsregime, liefern keine
+nachweisbare Kante.
+
+**Wo es weitergehen kann**, ohne den OOS-Block anzufassen:
+
+1. **Mehr Faktoren** aus `docs/FAKTORKATALOG.md` — Turn-of-Month, Gap-Größe ×
+   Overnight-Range, ORB mit kürzeren Fenstern. Jeder neue Faktor erhöht
+   allerdings die Hypothesenzahl und damit die Schwelle.
+2. **Andere Zeitebene.** Alles bisher auf 5m. 1m und 15m sind ungeprüft.
+3. **Andere Signalformen** statt Konditionierung der vorhandenen vier.
+4. **Eine zweite Datenquelle** (Cross-Asset, VIX) — der einzige Weg, der über
+   OHLCV hinausgeht.
 
 ### 26.4 Noch nicht gebaut
 
