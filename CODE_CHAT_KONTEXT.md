@@ -14,6 +14,7 @@ Projektordner geprüft, Testzahlen auf Windows **gemessen**.
 
 | Datei | Rolle | Ändert sich |
 |---|---|---|
+| **`MASTERPLAN.md`** | **WOHIN**: Zielarchitektur, Research-Engine, Etappenplan bis zum Endzustand | selten |
 | **CODE_CHAT_KONTEXT.md** (diese) | **WIE und WIE WEIT**: Architektur, Module, Implementierungsstand, Bugs mit Fundstelle, Tests, technische Entscheidungen, Blocker | bei Bauarbeiten |
 | `NORMALER_CHAT_KONTEXT.md` | **WAS und WARUM**: Ziele, Anforderungen, Nutzerpräferenzen, Kostenrahmen, Kontostatus, Lucid-Regelwerk, Etappen A–F | selten |
 
@@ -150,6 +151,27 @@ SQLite → MCP → Claude Desktop.
   gilt aber nur für die **Long-Seite** bei Bündelung mit höchstens drei Kerzen
   Abstand. Beides stand vorher nicht dabei und wäre später nicht nachprüfbar
   gewesen.
+
+### Override vom 23.08.2026 — Widerspruch festgestellt, nicht aufgelöst
+
+Laurin hat angeordnet: **MNQ und NinjaTrader ausschließlich**, MGC und
+Tradovate vollständig raus. Für Tradovate ist das seit dem 22.08. erfüllt
+(zwei Restdefekte in `backtest/cli.py` und `csv_provider.py`, siehe
+`MASTERPLAN.md` C.1).
+
+**Für MGC widerspricht der Code dem Override**, und das wird hier festgehalten
+statt still bereinigt:
+
+- MGC wird **nicht** protokolliert, gestreamt oder gespeichert — insoweit ist
+  der Override bereits erfüllt.
+- MGC steht aber im **Instrument-Register** (`common/instruments.py`) und in
+  **14 Testfällen**. Der MGC-Verfallstest ist der einzige, der beweist, dass
+  `expiry_rule` instrumentspezifisch ist und nicht eine hartverdrahtete
+  MNQ-Annahme (Bug-Lehre 9). Entfernt man ihn, kann die MNQ-Regel später still
+  falsch werden.
+
+**Empfehlung in `MASTERPLAN.md` C.2:** Register-Eintrag behalten, MGC aus
+nutzersichtbaren Texten entfernen. **Entscheidung steht bei Laurin aus.**
 
 ### Offene technische Aufgaben
 
