@@ -1112,3 +1112,25 @@ Beim Gegenlesen kamen zwei Befunde dazu, die in der ersten Fassung fehlten
 
 Beide Punkte sind Erreichbarkeitsluecken, keine Entwurfsfragen, und beruehren
 keinen der rueckfragepflichtigen Bereiche.
+
+### Zwei Git-Sperrdateien aus dem Absturz (23.08.2026)
+
+Die abgestürzte Sitzung hat um 04:16 Uhr **zwei** leere Sperrdateien
+hinterlassen: `.git/index.lock` **und** `.git/HEAD.lock`. Solange sie liegen
+bleiben, schlägt jedes schreibende Git-Kommando fehl — `git add`, `git commit`,
+`git checkout`, `git update-ref`.
+
+Der zu diesem Zeitpunkt gestagete Stand (Masterplan-Abschnitt X und der
+Nachtrag oben) ist trotzdem **committet**: der Commit wurde über
+`write-tree`/`commit-tree` erzeugt und `refs/heads/main` direkt geschrieben,
+weil beide Wege ohne Sperrdatei auskommen. `main` steht auf diesem Commit, der
+Arbeitsbaum ist sauber. Ein Reflog-Eintrag fehlt — das ist die einzige Folge.
+
+**Vor der nächsten Sitzung im Projektordner auszuführen:**
+
+```
+del ".git\index.lock" ".git\HEAD.lock"
+```
+
+Danach arbeitet Git wieder normal; ein weiterer `git commit` ist **nicht**
+nötig und würde nur einen leeren Commit versuchen.
