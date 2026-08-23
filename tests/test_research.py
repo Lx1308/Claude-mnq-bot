@@ -18,7 +18,14 @@ from backtest.research import (
     MIN_TRADES_JE_GRUPPE,
     Discoverylauf,
     OutOfSampleBeruehrung,
+    baue_faktor_bool,
+    baue_faktor_kategorie,
     baue_faktor_perzentil,
+    baue_faktor_relation,
+    baue_faktor_vorzeichen,
+    faktor_di_richtung,
+    faktor_ema_stack,
+    faktor_ib_lage,
     faktor_tageszeit,
     faktor_wochentag,
     perzentilgrenzen,
@@ -27,13 +34,19 @@ from backtest.research import (
 )
 
 
-def trade(stunde_utc: int, pnl: float, punkte: float | None = None, tag: int = 20) -> Trade:
+def trade(
+    stunde_utc: int,
+    pnl: float,
+    punkte: float | None = None,
+    tag: int = 20,
+    entry_price: float = 100.0,
+) -> Trade:
     """Ein Trade zu einer bestimmten Stunde."""
     ein = datetime(2026, 8, tag, stunde_utc, 0, tzinfo=timezone.utc)
     return Trade(
         direction=1,
         entry_time=ein,
-        entry_price=100.0,
+        entry_price=entry_price,
         exit_time=ein + timedelta(minutes=15),
         exit_price=101.0,
         bars_held=3,
@@ -365,3 +378,122 @@ def test_statistikbericht_nennt_schwelle_und_urteil():
     assert "Bonferroni" in text
     assert "Korrigierte Schwelle" in text
     assert "p_korr" in text
+
+
+# ---------------------------------------------------------------------------
+#  Zusaetzliche Faktor-Bausteine (23.08.2026 - vollstaendiger Indikatorlauf)
+# ---------------------------------------------------------------------------
+
+def rahmen_spalten(spalten: dict[str, list], start: str = "2026-08-20 14:00") -> pd.DataFrame:
+    """Rahmen mit mehreren Spalten, stuendlich ab ``start`` - fuer Faktoren,
+    die mehr als eine Spalte lesen (EMA-Stack, DI-Richtung, IB-Lage)."""
+    laenge = len(next(iter(spalten.values())))
+    index = pd.date_range(start, periods=laenge, freq="1h", tz="UTC")
+    return pd.DataFrame(spalten, index=index)
+
+
+def test_bool_faktor_liest_die_spalte_und_benennt_beide_auspraegungen():
+    faktor = baue_faktor_bool("flag_in_consolidation", ("1 ja", "2 nein"))
+    rahmen = rahmen_spalten({"flag_in_consolidation": [True, False]})
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0), trade(15, 2.0)]),
+        rahmen, "Konsolidierung", faktor, punktwert=2.0,
+    )
+    bezeichnungen = {g.auspraegung for g in ergebnis.gruppen}
+    assert bezeichnungen == {"1 ja", "2 nein"}
+    assert ergebnis.nicht_zuordenbar == 0
+
+
+def test_vorzeichen_faktor_trennt_positiv_negativ_null():
+    faktor = baue_faktor_vorzeichen("macd_hist")
+    rahmen = rahmen_spalten({"macd_hist": [1.5, -2.0, 0.0]})
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0), trade(15, 2.0), trade(16, 3.0)]),
+        rahmen, "MACD-Vorzeichen", faktor, punktwert=2.0,
+    )
+    bezeichnungen = {g.auspraegung for g in ergebnis.gruppen}
+    assert bezeichnungen == {"1 positiv", "2 negativ", "3 null"}
+
+
+def test_relation_faktor_vergleicht_einstiegskurs_gegen_spaltenwert():
+    faktor = baue_faktor_relation("vwap", "VWAP")
+    rahmen = rahmen_spalten({"vwap": [100.0, 100.0, 100.0]})
+    ergebnis = pruefe_faktor(
+        lauf([
+            trade(14, 1.0, entry_price=105.0),
+            trade(15, 2.0, entry_price=95.0),
+            trade(16, 3.0, entry_price=100.0),
+        ]),
+        rahmen, "VWAP-Lage", faktor, punktwert=2.0,
+    )
+    bezeichnungen = {g.auspraegung for g in ergebnis.gruppen}
+    assert bezeichnungen == {"1 ueber VWAP", "2 unter VWAP", "3 auf VWAP"}
+
+
+def test_kategorie_faktor_bildet_ganzzahlen_auf_namen_ab():
+    faktor = baue_faktor_kategorie(
+        "flag_direction", {1: "1 bullisch", -1: "2 baerisch", 0: "3 neutral"}
+    )
+    rahmen = rahmen_spalten({"flag_direction": [1, -1, 0]})
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0), trade(15, 2.0), trade(16, 3.0)]),
+        rahmen, "Flag-Richtung", faktor, punktwert=2.0,
+    )
+    bezeichnungen = {g.auspraegung for g in ergebnis.gruppen}
+    assert bezeichnungen == {"1 bullisch", "2 baerisch", "3 neutral"}
+
+
+def test_ema_stack_kombiniert_zwei_spalten_zu_drei_auspraegungen():
+    rahmen = rahmen_spalten({
+        "ema_stacked_bullish": [True, False, False],
+        "ema_stacked_bearish": [False, True, False],
+    })
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0), trade(15, 2.0), trade(16, 3.0)]),
+        rahmen, "EMA-Stack", faktor_ema_stack, punktwert=2.0,
+    )
+    bezeichnungen = {g.auspraegung for g in ergebnis.gruppen}
+    assert bezeichnungen == {
+        "1 bullisch gestapelt", "2 baerisch gestapelt", "3 keine Ordnung",
+    }
+
+
+def test_di_richtung_vergleicht_plus_und_minus_di():
+    rahmen = rahmen_spalten({
+        "plus_di": [30.0, 10.0, 20.0],
+        "minus_di": [10.0, 30.0, 20.0],
+    })
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0), trade(15, 2.0), trade(16, 3.0)]),
+        rahmen, "DI-Richtung", faktor_di_richtung, punktwert=2.0,
+    )
+    bezeichnungen = {g.auspraegung for g in ergebnis.gruppen}
+    assert bezeichnungen == {"1 +DI fuehrt", "2 -DI fuehrt", "3 gleich"}
+
+
+def test_ib_lage_erkennt_ueber_unter_und_innerhalb():
+    rahmen = rahmen_spalten({
+        "ib_high": [100.0, 100.0, 100.0],
+        "ib_low": [90.0, 90.0, 90.0],
+    })
+    ergebnis = pruefe_faktor(
+        lauf([
+            trade(14, 1.0, entry_price=105.0),
+            trade(15, 2.0, entry_price=85.0),
+            trade(16, 3.0, entry_price=95.0),
+        ]),
+        rahmen, "IB-Lage", faktor_ib_lage, punktwert=2.0,
+    )
+    bezeichnungen = {g.auspraegung for g in ergebnis.gruppen}
+    assert bezeichnungen == {"1 ueber IB", "2 unter IB", "3 innerhalb IB"}
+
+
+def test_ib_lage_ohne_beide_spalten_ist_nicht_zuordenbar():
+    """Nur ib_high vorhanden -> nicht heimlich mit ib_low=NaN rechnen."""
+    rahmen = rahmen_spalten({"ib_high": [100.0]})
+    ergebnis = pruefe_faktor(
+        lauf([trade(14, 1.0, entry_price=105.0)]),
+        rahmen, "IB-Lage", faktor_ib_lage, punktwert=2.0,
+    )
+    assert ergebnis.gruppen == []
+    assert ergebnis.nicht_zuordenbar == 1

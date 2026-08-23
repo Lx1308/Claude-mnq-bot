@@ -466,6 +466,106 @@ def perzentilgrenzen(
     return [float(np.percentile(reihe, p)) for p in perzentile]
 
 
+def baue_faktor_bool(spalte: str, namen: tuple[str, str] = ("1 ja", "2 nein")) -> FaktorFunktion:
+    """Faktor aus einer Bool-Spalte (z. B. ``flag_in_consolidation``, ``bb_squeeze``)."""
+
+    def faktor(trade: Trade, rahmen: pd.DataFrame) -> str | None:
+        wert = _wert_bei_einstieg(rahmen, trade, spalte)
+        if wert is None:
+            return None
+        return namen[0] if bool(wert) else namen[1]
+
+    return faktor
+
+
+def baue_faktor_vorzeichen(spalte: str) -> FaktorFunktion:
+    """Faktor aus dem Vorzeichen einer Spalte (z. B. ``macd_hist``)."""
+
+    def faktor(trade: Trade, rahmen: pd.DataFrame) -> str | None:
+        wert = _wert_bei_einstieg(rahmen, trade, spalte)
+        if wert is None:
+            return None
+        if wert > 0:
+            return "1 positiv"
+        if wert < 0:
+            return "2 negativ"
+        return "3 null"
+
+    return faktor
+
+
+def baue_faktor_relation(spalte: str, bezeichnung: str) -> FaktorFunktion:
+    """Faktor: liegt der Einstiegskurs ueber, unter oder auf einem Spaltenwert?
+
+    Vergleicht ``trade.entry_price`` (den tatsaechlichen Referenzpreis) gegen
+    den Spaltenwert auf der Einstiegskerze - z. B. VWAP, Vortagesschluss,
+    Initial-Balance-Grenzen.
+    """
+
+    def faktor(trade: Trade, rahmen: pd.DataFrame) -> str | None:
+        wert = _wert_bei_einstieg(rahmen, trade, spalte)
+        if wert is None:
+            return None
+        if trade.entry_price > wert:
+            return f"1 ueber {bezeichnung}"
+        if trade.entry_price < wert:
+            return f"2 unter {bezeichnung}"
+        return f"3 auf {bezeichnung}"
+
+    return faktor
+
+
+def baue_faktor_kategorie(spalte: str, abbildung: dict[int, str]) -> FaktorFunktion:
+    """Faktor aus einer kleinen ganzzahligen Kategorie-Spalte (z. B. ``flag_direction``)."""
+
+    def faktor(trade: Trade, rahmen: pd.DataFrame) -> str | None:
+        wert = _wert_bei_einstieg(rahmen, trade, spalte)
+        if wert is None:
+            return None
+        return abbildung.get(int(round(wert)))
+
+    return faktor
+
+
+def faktor_ema_stack(trade: Trade, rahmen: pd.DataFrame) -> str | None:
+    """Ob die EMA 9/21/50/200 bullisch, baerisch oder gar nicht geordnet stehen."""
+    bullisch = _wert_bei_einstieg(rahmen, trade, "ema_stacked_bullish")
+    baerisch = _wert_bei_einstieg(rahmen, trade, "ema_stacked_bearish")
+    if bullisch is None or baerisch is None:
+        return None
+    if bullisch:
+        return "1 bullisch gestapelt"
+    if baerisch:
+        return "2 baerisch gestapelt"
+    return "3 keine Ordnung"
+
+
+def faktor_di_richtung(trade: Trade, rahmen: pd.DataFrame) -> str | None:
+    """Ob +DI oder -DI auf der Einstiegskerze fuehrt (ADX-Richtungskomponente)."""
+    plus = _wert_bei_einstieg(rahmen, trade, "plus_di")
+    minus = _wert_bei_einstieg(rahmen, trade, "minus_di")
+    if plus is None or minus is None:
+        return None
+    if plus > minus:
+        return "1 +DI fuehrt"
+    if minus > plus:
+        return "2 -DI fuehrt"
+    return "3 gleich"
+
+
+def faktor_ib_lage(trade: Trade, rahmen: pd.DataFrame) -> str | None:
+    """Ob der Einstiegskurs ueber, unter oder innerhalb der Initial Balance liegt."""
+    hoch = _wert_bei_einstieg(rahmen, trade, "ib_high")
+    tief = _wert_bei_einstieg(rahmen, trade, "ib_low")
+    if hoch is None or tief is None:
+        return None
+    if trade.entry_price > hoch:
+        return "1 ueber IB"
+    if trade.entry_price < tief:
+        return "2 unter IB"
+    return "3 innerhalb IB"
+
+
 # ---------------------------------------------------------------------------
 #  Auswertung
 # ---------------------------------------------------------------------------
@@ -526,7 +626,14 @@ __all__ = [
     "Faktorergebnis",
     "Gruppenergebnis",
     "OutOfSampleBeruehrung",
+    "baue_faktor_bool",
+    "baue_faktor_kategorie",
     "baue_faktor_perzentil",
+    "baue_faktor_relation",
+    "baue_faktor_vorzeichen",
+    "faktor_di_richtung",
+    "faktor_ema_stack",
+    "faktor_ib_lage",
     "faktor_tageszeit",
     "faktor_wochentag",
     "perzentilgrenzen",

@@ -2,12 +2,15 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-23 (`walkforward`-Kommando, Abschnitt 22 — Masterplan X.2; davor
-Basisvermessung der Strategiebibliothek, Abschnitt 21, wo `ib_breakout` als
-stiller Ausfall auffiel und die Robustheitskennzahl log; Testsuite in der
-Linux-Sandbox lauffähig gemacht, Abschnitt 20, Qualitätsmessung der
-Dukascopy-Näherungshistorie, Abschnitt 19, und zwei bereinigte
-Tradovate-Defekte; Inhalt sonst 2026-08-22 nach Entfernung des Legacy-Pfads).
+Stand: 2026-08-23 (Abschnitt 27 — Sitzungsende, Faktor-Bausteine für den
+vollständigen Indikatorensatz ergänzt, voller Discovery-Lauf durch
+Nutzungslimit-Stopp abgebrochen statt ausgewertet; davor `walkforward`-Kommando,
+Abschnitt 22 — Masterplan X.2; davor Basisvermessung der Strategiebibliothek,
+Abschnitt 21, wo `ib_breakout` als stiller Ausfall auffiel und die
+Robustheitskennzahl log; Testsuite in der Linux-Sandbox lauffähig gemacht,
+Abschnitt 20, Qualitätsmessung der Dukascopy-Näherungshistorie, Abschnitt 19,
+und zwei bereinigte Tradovate-Defekte; Inhalt sonst 2026-08-22 nach Entfernung
+des Legacy-Pfads).
 Gegen den tatsächlichen Projektordner geprüft. **Testzahlen:** 361, gemessen am
 23.08.2026 — allerdings in der Linux-Ersatzumgebung (Abschnitt 20), nicht unter
 dem Windows-venv. Der Windows-Lauf bleibt vor einer Freigabe auszuführen.
@@ -2011,3 +2014,76 @@ Zweifaktor und Mehrfaktor (Etappe J), Validierung gegen den zweiten Block,
 Walk-Forward über Faktoren. Die Reihenfolge ist Absicht: wer sofort
 kombiniert, findet Kombinationen, die auf den Trainingsdaten passen und sonst
 nirgends.
+
+## 27. Stand bei Sitzungsende (23.08.2026, zweite Sitzung des Tages)
+
+Sitzung durch Nutzungslimit-Warnung mitten in der Arbeit beendet. Was fertig
+und getestet ist, ist committet; der angefangene große Lauf wurde bewusst
+verworfen statt als Teilergebnis dokumentiert.
+
+### Fertig, getestet, committet
+
+**Faktor-Bausteine für den vollständigen Indikatorensatz** in
+[`backtest/research.py`](../backtest/research.py): `baue_faktor_bool`,
+`baue_faktor_vorzeichen`, `baue_faktor_relation`, `baue_faktor_kategorie`,
+`faktor_ema_stack`, `faktor_di_richtung`, `faktor_ib_lage` — generische
+Bausteine, keine Kopie je Spalte. 29 Tests in `tests/test_research.py`,
+volle Suite grün (auch als Gegenprobe nach Rückkehr aus dem Hintergrundlauf
+noch einmal komplett durchlaufen).
+
+### Ein Architektur-Fund unterwegs
+
+`Backtester.prepare()` liefert nur die **Basis**-Indikatoren
+(`compute_indicators`) — ADX, MACD, Stochastik, Bollinger, EMA-Stack und die
+Initial-Balance-Grenzen fehlen dort strukturell, weil sie aus
+`compute_extended_indicators` bzw. `common.levels.initial_balance_per_session`
+stammen. Für Research heißt das: **nicht** selbst eine zweite
+Indikator-Vorbereitung bauen, sondern `ideas.pipeline.vorbereiten`
+wiederverwenden — genau die Funktion, die die Etappe-C-Protokollierung schon
+für denselben Zweck nutzt (Invariante 1 bleibt gewahrt, keine zweite
+Implementierung). Ein Discovery-Skript, das stattdessen `Backtester.prepare()`
+verwendet, bricht bei jeder Spalte außerhalb der Basismenge mit `KeyError` ab
+— kein stiller Fehler, aber ein Stolperstein, den der nächste Lauf nicht mehr
+treffen muss.
+
+### Begonnen, NICHT fertig — bewusst nicht als Ergebnis dokumentiert
+
+Ein Discovery-Lauf über **20 Faktoren × 5 Strategien** (alle 40
+Indikatorspalten, alle lauffähigen Strategien außer `ib_breakout`) auf dem
+kompletten Trainingsblock (446 000 Kerzen) war gestartet, als der
+Nutzungslimit-Stopp kam. Der Prozess wurde **abgebrochen, nicht ausgewertet**
+— es gibt keine Zahlen dazu, weder vorläufige noch endgültige. Das Skript liegt
+im Scratchpad der Sitzung, nicht im Repo; es müsste beim nächsten Mal neu
+geschrieben oder aus diesem Abschnitt heraus rekonstruiert werden (Aufbau:
+`ideas.pipeline.vorbereiten` statt `bt.prepare()`, 70/30-Split wie in
+Abschnitt 26, alle Faktoren aus 26 plus den sieben oben genannten Bausteinen).
+**Nicht als Befund verwenden** — es gibt keinen.
+
+### Offene Entscheidung: Market Intelligence / News
+
+Laurins Auftrag umfasste ausdrücklich auch „News etc." aus dem Masterplan.
+Befund dazu, noch unbeantwortet:
+
+- **Forex Factory**: strukturell ungeeignet für Research — nur die laufende
+  Woche ist abrufbar, für keinen historischen Trade rekonstruierbar.
+- **FRED**: Historie vorhanden, aber wegen Revisionen ohne
+  Vintage-Modellierung (ALFRED) für Research **disqualifiziert** — bereits in
+  Abschnitt F.2 des Masterplans festgehalten.
+- **Cross-Asset (VIX/DXY) über NT8**: `ntbridge/store.py` ist bereits
+  instrumentenoffen (`PRIMARY KEY (instrument, timeframe, ts_utc)`), es fehlt
+  nur Historie — entweder ein neuer Dukascopy-Download (ähnlicher Aufwand wie
+  der MNQ-Zehnjahresabzug) oder Live-Sammlung über einen zusätzlichen NT8-Chart.
+- Fed-Kalender/Reden, Geopolitik: keine Quelle identifiziert, reine Recherche.
+
+**Das sind alles neue Bauaufgaben, keine Prüfungen.** Laurin wurde gefragt,
+was davon (wenn überhaupt) als Nächstes gebaut werden soll — Antwort steht
+bei Sitzungsende noch aus.
+
+### Nächster Schritt, sobald es weitergeht
+
+1. Discovery-Skript aus dem Muster oben neu aufsetzen und laufen lassen
+   (rechenintensiv, ca. 10–20 Minuten je nach Faktor-/Strategiezahl).
+2. Bonferroni-Korrektur wie in Abschnitt 26.6 anwenden — **keine Ausnahme**
+   für einzelne Faktoren, auch nicht bei Literaturübereinstimmung.
+3. Laurins Antwort zur Market-Intelligence-Frage abwarten, bevor an News
+   irgendetwas gebaut wird.

@@ -706,6 +706,25 @@ Eingriff geprüft wurde — **das ist Glück, kein Verfahren.**
 
 **Empfehlung bleibt:** immer nur eine schreibende Sitzung.
 
+### 18.6 Market Intelligence / News für die Research-Engine — OFFEN
+
+Laurin hat am 23.08.2026 verlangt, "alles was im Masterplan steht" zu prüfen,
+ausdrücklich einschließlich News. Die Indikatoren-Seite ist Handwerk
+(Rechenlauf); News ist es nicht — es gibt aktuell **keine historische
+Datenquelle**, gegen die sich irgendein News-Faktor prüfen ließe:
+
+- Forex Factory: nur die laufende Woche, für Research strukturell unbrauchbar.
+- FRED: Historie vorhanden, aber ohne Vintage-Modellierung (ALFRED) wegen
+  Revisionen für Research disqualifiziert (Masterplan F.2).
+- Cross-Asset (VIX/DXY): die NT8-Bridge ist dafür bereits vorbereitet
+  (instrumentenoffenes Schema), aber ohne Historie — bräuchte entweder einen
+  neuen Dukascopy-Download oder Live-Sammlung über Zeit.
+
+Jede dieser drei Optionen ist ein **neuer Bauauftrag**, keine Prüfung eines
+bestehenden Stands. Frage an Laurin, noch unbeantwortet: ob und welche davon
+jetzt gebaut werden soll, bevor daran gearbeitet wird. Details in
+`CODE_CHAT_KONTEXT.md` Abschnitt 27.
+
 ---
 
 ## 19. KONSISTENZ UND PFLEGE
