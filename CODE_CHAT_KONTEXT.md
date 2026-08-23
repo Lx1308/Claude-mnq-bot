@@ -1896,6 +1896,53 @@ Nach dem `consolidation_max_atr`-Fund — Schwelle 1,2 war auf keiner Zeitebene
 erreichbar — ist eine geratene Grenze ein **konkreter Verdacht**, kein
 allgemeiner Vorbehalt.
 
+### 26.5 Erster Discovery-Lauf, 23.08.2026 — ein Kandidat
+
+Training 2016-08-22 bis 2023-10-24 (445 991 Kerzen, 70 %), Kostenprofil
+`private_ninjatrader`, OOS unberührt. **33 Hypothesen geprüft.**
+
+**Der Fund: `prev_day_breakout` nach Tageszeit.**
+
+| Phase (New York) | Trades | Treffer | brutto Pkt | netto USD |
+|---|---:|---:|---:|---:|
+| Eröffnung 09–11 | 595 | 29,1 % | **−2,450** | −6,80 |
+| Mittag 11–14 | 606 | 34,3 % | +0,610 | −0,68 |
+| **Schluss 14–16** | **353** | **39,4 %** | **+4,399** | **+6,90** |
+
+Spannweite **6,85 Punkte** — die größte aller geprüften Faktoren. Die
+Schlussphase ist die einzige Gruppe im ganzen Lauf mit **positivem
+Nettoerwartungswert**.
+
+**Warum das mehr ist als ein Zufallstreffer:** Es deckt sich mit der
+Literatur. Gao et al. finden Intraday-Momentum genau in der Schlussphase
+(`docs/FAKTORKATALOG.md` 2.1). Ein Fund, der eine unabhängig publizierte
+Vorhersage bestätigt, ist stärker als einer, der nur aus den Daten fällt.
+
+**Warum es trotzdem kein Befund ist:**
+
+- **33 Hypothesen → rund 1,7 Zufallstreffer bei α = 0,05.** Mit zwei bis drei
+  positiven Gruppen im Lauf ist mindestens eine davon statistisch erwartbar
+  Rauschen.
+- **Nur Trainingsdaten.** Nichts ist validiert.
+- **Näherungsdaten**, kein echtes MNQ.
+- **Literaturunterstützung schneidet in beide Richtungen:** Was publiziert ist,
+  ist wahrscheinlicher wegarbitriert (McLean/Pontiff, Abschnitt 25.4). Gerade
+  für Intraday-Momentum ist ein OOS-Verschwinden dokumentiert.
+
+**Zwei weitere positive Gruppen**, beide schwächer und ohne Literaturrückhalt:
+`prev_day_breakout` Donnerstag (+2,43 Pkt, 328 Trades) und `flag_breakout`
+Dienstag (+2,93 Pkt, 147 Trades). Wochentagseffekte gelten laut Recherche als
+weitgehend verschwunden — hier am ehesten Rauschen.
+
+**Ein aussagekräftiger Negativbefund:** `vwap_reversion` nach ATR-Terzil hat
+eine Spannweite von **0,248 Punkten**. Das Volatilitätsregime erklärt bei
+diesem Setup **nichts**. Ein Faktor, der nicht trennt, ist ein Ergebnis — er
+schließt eine Erklärung aus.
+
+**Nächster Schritt wäre die Validierung** des Tageszeit-Funds am zweiten
+Block. Bewusst noch nicht gemacht: Der OOS-Block ist einmalig, und vorher
+gehört geklärt, ob die Hypothese als *eine* geprüft wird oder als eine von 33.
+
 ### 26.4 Noch nicht gebaut
 
 Zweifaktor und Mehrfaktor (Etappe J), Validierung gegen den zweiten Block,
