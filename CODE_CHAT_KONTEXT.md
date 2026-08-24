@@ -2,9 +2,12 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-23 (Abschnitt 27 — Sitzungsende, Faktor-Bausteine für den
-vollständigen Indikatorensatz ergänzt, voller Discovery-Lauf durch
-Nutzungslimit-Stopp abgebrochen statt ausgewertet; davor `walkforward`-Kommando,
+Stand: 2026-08-24 (Abschnitt 28 — Sitzungsende, `ib_breakout`-Fix committet,
+voller 20×5-Discovery-Lauf fertig ausgewertet (6/239 Hypothesen signifikant,
+Bericht in `docs/DISCOVERY_VOLLSTAENDIG_2026-08-24.md`), unautorisierte
+Codex-Nachtarbeit aufgeklärt und zurückgesetzt, `ntbridge` von der
+CLI-Sitzung entkoppelt; davor Abschnitt 27 — Faktor-Bausteine für den
+vollständigen Indikatorensatz ergänzt; davor `walkforward`-Kommando,
 Abschnitt 22 — Masterplan X.2; davor Basisvermessung der Strategiebibliothek,
 Abschnitt 21, wo `ib_breakout` als stiller Ausfall auffiel und die
 Robustheitskennzahl log; Testsuite in der Linux-Sandbox lauffähig gemacht,
@@ -2046,18 +2049,17 @@ verwendet, bricht bei jeder Spalte außerhalb der Basismenge mit `KeyError` ab
 — kein stiller Fehler, aber ein Stolperstein, den der nächste Lauf nicht mehr
 treffen muss.
 
-### Begonnen, NICHT fertig — bewusst nicht als Ergebnis dokumentiert
+### Abgeschlossen am 24.08.2026: der volle Lauf
 
-Ein Discovery-Lauf über **20 Faktoren × 5 Strategien** (alle 40
-Indikatorspalten, alle lauffähigen Strategien außer `ib_breakout`) auf dem
-kompletten Trainingsblock (446 000 Kerzen) war gestartet, als der
-Nutzungslimit-Stopp kam. Der Prozess wurde **abgebrochen, nicht ausgewertet**
-— es gibt keine Zahlen dazu, weder vorläufige noch endgültige. Das Skript liegt
-im Scratchpad der Sitzung, nicht im Repo; es müsste beim nächsten Mal neu
-geschrieben oder aus diesem Abschnitt heraus rekonstruiert werden (Aufbau:
-`ideas.pipeline.vorbereiten` statt `bt.prepare()`, 70/30-Split wie in
-Abschnitt 26, alle Faktoren aus 26 plus den sieben oben genannten Bausteinen).
-**Nicht als Befund verwenden** — es gibt keinen.
+Der 20-Faktoren×5-Strategien-Lauf, der hier am 23.08. abgebrochen wurde, ist
+am 24.08.2026 fertig gerechnet, ausgewertet und dokumentiert:
+[`docs/DISCOVERY_VOLLSTAENDIG_2026-08-24.md`](../docs/DISCOVERY_VOLLSTAENDIG_2026-08-24.md).
+Reproduzierbares Skript: `werkzeuge/discovery_indikatoren_voll.py` (liegt jetzt
+im Repo, nicht mehr nur im Scratchpad). Kurzfassung: 239 geprüfte Hypothesen,
+korrigierte Schwelle 0,000209, **6 Gruppen bestehen** — alle sechs betreffen
+RSI- oder Stochastik-Terzil, vier davon vermutlich zirkulär mit der eigenen
+Einstiegsregel von `rsi_mean_reversion` verwandt. Details, Einordnung und der
+empfohlene nächste Schritt (Validation) stehen im verlinkten Bericht.
 
 ### Offene Entscheidung: Market Intelligence / News
 
@@ -2081,9 +2083,85 @@ bei Sitzungsende noch aus.
 
 ### Nächster Schritt, sobald es weitergeht
 
-1. Discovery-Skript aus dem Muster oben neu aufsetzen und laufen lassen
-   (rechenintensiv, ca. 10–20 Minuten je nach Faktor-/Strategiezahl).
-2. Bonferroni-Korrektur wie in Abschnitt 26.6 anwenden — **keine Ausnahme**
-   für einzelne Faktoren, auch nicht bei Literaturübereinstimmung.
+1. ~~Discovery-Skript aus dem Muster oben neu aufsetzen und laufen lassen~~ —
+   erledigt, siehe Abschnitt 28.
+2. ~~Bonferroni-Korrektur anwenden~~ — erledigt, 6 von 239 Hypothesen bestehen.
 3. Laurins Antwort zur Market-Intelligence-Frage abwarten, bevor an News
-   irgendetwas gebaut wird.
+   irgendetwas gebaut wird. **Weiterhin offen.**
+4. Validation der `vwap_trend`/RSI-Terzil-Hypothese auf einem zweiten,
+   unabhängigen Datenblock (Details in Abschnitt 28 und im verlinkten Bericht).
+
+## 28. Stand bei Sitzungsende (24.08.2026, dritte Sitzung des Tages)
+
+Diese Sitzung übergibt bewusst an eine neue Claude-Code-Sitzung (Token-Ersparnis
+bei langer Kontexthistorie). Alles unten ist committet oder als offene Frage
+festgehalten — nichts hängt in der Luft.
+
+### Vorfall: unautorisierte Codex-Arbeit, aufgeklärt und zurückgesetzt
+
+Codex war für zwei Punkte beauftragt (`ib_breakout`-Fix,
+Discovery-Lauf-Fertigstellung), hat stattdessen über Nacht autonom einen
+Feature Store gebaut (Masterplan H, bewusst zurückgestellt), einen
+Windows-Task für stündliche `ideas`-Läufe eingerichtet und drei zusätzliche
+Root-Markdown-Dateien angelegt — Letzteres verstößt direkt gegen die
+"genau vier Kontextdateien"-Regel in `CLAUDE.md`. Ursache gefunden: eine
+aktive **Codex-Automation** (`C:\Users\lm130\.codex\automations\...`,
+`status: ACTIVE`, täglich 08:30 Uhr) mit einem Prompt, der Codex ausdrücklich
+anwies, eigenständig die gesamte Masterplan-Abhängigkeitskette durchzuarbeiten.
+
+Maßnahmen, alle bestätigt:
+- Windows-Task `ClaudeChartBot-Ideas` **pausiert** (nicht gelöscht).
+- Codex-Automation auf `status = "PAUSED"` gesetzt (nicht gelöscht) — verstößt
+  sonst gegen die "vor großem Scope fragen"-Regel, die dieser Vorfall gerade
+  erst begründet hat.
+- Alle uncommitteten Codex-Änderungen mit `git checkout .` +
+  `git clean -fd -e AGENTS.md` verworfen (Feature Store, README-Edit, die drei
+  Zusatzdateien). `AGENTS.md` bewusst behalten — Codex' eigene Konfigurationsdatei,
+  war nie Teil des Auftrags, nicht angefasst.
+- Testsuite danach erneut grün geprüft, keine Nebenwirkungen.
+
+**Reaktivierung von Task oder Automation nicht ohne Laurins ausdrückliche
+Freigabe.**
+
+### `ib_breakout`-Fix — fertig, committet (`d3fec23`)
+
+`Backtester.prepare()` hängt jetzt `common.levels.initial_balance_per_session`
+ein — dieselbe Funktion wie `ideas.pipeline.vorbereiten`, keine zweite
+IB-Berechnung. Gegenprobe durchgeführt: Fix per `git stash` zurückgenommen,
+die drei betroffenen Tests fielen mit dem historisch bekannten `ValueError`
+um, danach wiederhergestellt und wieder grün.
+`test_jede_strategie_der_bibliothek_findet_ihre_spalten` hat ihre bisher
+dokumentierte `ib_breakout`-Ausnahme verloren — Absicht, nicht Verlust.
+
+### Discovery-Lauf — fertig, siehe Abschnitt 26.4 oben und
+[`docs/DISCOVERY_VOLLSTAENDIG_2026-08-24.md`](../docs/DISCOVERY_VOLLSTAENDIG_2026-08-24.md)
+
+### `ntbridge`-Empfänger von der CLI-Sitzung entkoppelt
+
+War als Bash-Hintergrundprozess gestartet — Prozesskette ging nachweislich bis
+zu `claude.exe` hoch, wäre beim Sitzungsende gestorben. Jetzt als Windows-
+Aufgabenplanung `ClaudeChartBot-NTBridge` eingerichtet (`werkzeuge/run_ntbridge.bat`,
+Trigger "bei Anmeldung"). Verifiziert: Prozesskette läuft jetzt über
+`svchost.exe`/Aufgabenplanung, keine Verbindung mehr zu `claude.exe`. Läuft
+außerdem künftig automatisch bei jeder Anmeldung neu an — nicht nur diese
+Sitzung überlebend, sondern auch einen Neustart.
+
+### Offen, ungeklärt: Remote zeigt auf ein anderes Repo als eingerichtet
+
+`git remote -v` zeigt `Lx1308/Claude-mnq-bot` — eingerichtet wurde in dieser
+Sitzung aber `Lx1308/claude-chart-bot` (anderer Name). Niemand in diesem Chat
+hat das geändert. Eine automatisierte `<create-pr-command>`-Anfrage zielte
+ebenfalls auf `Claude-mnq-bot` — **nicht ausgeführt**, da die Anfrage nicht als
+Chat-Nachricht von Laurin kam und das Ziel nicht zu dem passte, was hier
+eingerichtet wurde. Vor jedem Push klären, welches Repo tatsächlich gewollt ist.
+
+### Nächster Schritt für die neue Sitzung (Masterplan-Priorität)
+
+1. Mit Laurin klären: Repo-Frage (siehe oben) und Market-Intelligence-Frage
+   (Abschnitt 18.6 in `NORMALER_CHAT_KONTEXT.md`).
+2. Validation der `vwap_trend`/RSI-Terzil-Hypothese auf einem zweiten,
+   unabhängigen Datenblock — nicht am OOS-Block.
+3. `rsi_mean_reversion`-Treffer auf Zirkularität prüfen (RSI der Signalkerze
+   statt der Einstiegskerze), bevor sie in dieselbe Validation gehen.
+4. Codex-Automation und Windows-Task bleiben pausiert, bis Laurin sich
+   entschieden hat, ob/wie sie wieder aktiviert werden.

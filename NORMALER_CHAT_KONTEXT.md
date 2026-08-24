@@ -3,8 +3,11 @@
 **Dauerhaftes Gedächtnis der inhaltlichen Projektseite.**
 Für künftige Claude-Chat-Sessions ohne Zugriff auf den alten Verlauf.
 
-**Stand: 23. August 2026** — vollständig gegen Code, Datenbanken und Testlauf
+**Stand: 24. August 2026** — vollständig gegen Code, Datenbanken und Testlauf
 gegengeprüft, nicht aus Notizen fortgeschrieben.
+**Ergänzt 24. August 2026: vollständiger Discovery-Lauf ausgewertet (Abschnitt
+18.6), unautorisierte Codex-Nachtarbeit aufgeklärt und zurückgesetzt (Details
+in `CODE_CHAT_KONTEXT.md` Abschnitt 28), offene Repo-Namensfrage (18.7).**
 **Ergänzt 22. August 2026: Legacy-Pfad (Tradovate/Telegram/Alarme) entfernt.**
 **Ergänzt 21. August 2026 (nachts): Etappe A und B erstmals mit echten
 NT8-Live-Marktdaten verifiziert (siehe Abschnitt 17).**
@@ -723,7 +726,21 @@ Datenquelle**, gegen die sich irgendein News-Faktor prüfen ließe:
 Jede dieser drei Optionen ist ein **neuer Bauauftrag**, keine Prüfung eines
 bestehenden Stands. Frage an Laurin, noch unbeantwortet: ob und welche davon
 jetzt gebaut werden soll, bevor daran gearbeitet wird. Details in
-`CODE_CHAT_KONTEXT.md` Abschnitt 27.
+`CODE_CHAT_KONTEXT.md` Abschnitt 28.
+
+Der Indikatoren-Teil der ursprünglichen Anfrage ist seit 24.08.2026 fertig:
+20 Faktoren über 5 Strategien geprüft, 6 von 239 Hypothesen bestehen die
+Bonferroni-Korrektur. Bericht: `docs/DISCOVERY_VOLLSTAENDIG_2026-08-24.md`.
+
+### 18.7 Welches GitHub-Repo ist das richtige — OFFEN
+
+`git remote -v` zeigt seit 24.08.2026 `Lx1308/Claude-mnq-bot`. Eingerichtet
+wurde in der Sitzung davor aber `Lx1308/claude-chart-bot` (anderer Name).
+Niemand hat das im Chat besprochen oder angeordnet. Eine automatisierte
+`create-pr-command`-Anfrage zielte ebenfalls auf `Claude-mnq-bot` und wurde
+deshalb **nicht ausgeführt**. Vor dem nächsten Push klären: ist
+`Claude-mnq-bot` das gewollte Repo (z. B. weil umbenannt), oder ist da etwas
+durcheinandergeraten?
 
 ---
 
