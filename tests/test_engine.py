@@ -267,19 +267,51 @@ def test_konstanten_zaehlen_nicht_als_spalte():
 def test_jede_strategie_der_bibliothek_findet_ihre_spalten(backtester):
     """Keine Strategie darf mangels Spalte stumm bleiben.
 
-    ``ib_breakout`` steht bewusst als erwarteter Fehlschlag drin: die Spalten
-    ``ib_high``/``ib_low`` erzeugt ``compute_indicators`` nicht. Faellt der
-    Test hier um, ist der Defekt behoben worden -- dann gehoert der Eintrag
-    aus der Liste heraus und nicht der Test entschaerft.
+    Bis 24.08.2026 stand ``ib_breakout`` hier als bekannte Luecke: die
+    Spalten ``ib_high``/``ib_low`` erzeugte ``Backtester.prepare()`` nicht,
+    weil es nur ``compute_indicators`` aufrief. Seit ``prepare()`` zusaetzlich
+    ``common.levels.initial_balance_per_session`` einhaengt (dieselbe
+    Funktion, die auch ``ideas.pipeline.vorbereiten`` nutzt - keine zweite
+    Berechnung), liefert jede Strategie der Bibliothek ihre Spalten.
     """
     from backtest.strategies.library import STRATEGY_LIBRARY, build_strategy
 
     frame = backtester.prepare(make_ohlcv([100.0 + i % 7 for i in range(400)]))
     vorhanden = set(frame.columns)
 
-    bekannte_luecken = {"ib_breakout": {"ib_high", "ib_low"}}
     for name in sorted(STRATEGY_LIBRARY):
         fehlend = build_strategy(name).benoetigte_spalten() - vorhanden
-        assert fehlend == bekannte_luecken.get(name, set()), (
+        assert not fehlend, (
             f"Strategie '{name}' verlangt Spalten, die es nicht gibt: {sorted(fehlend)}"
         )
+
+
+def test_ib_breakout_bricht_nicht_mehr_wegen_fehlender_spalten_ab(backtester):
+    """Gegenprobe zum Fund aus der Basisvermessung vom 23.08.2026.
+
+    Vor dem Fix warf ``backtester.run(df, build_strategy("ib_breakout"))``
+    einen ``ValueError`` ueber fehlende Spalten, noch bevor ueberhaupt eine
+    Kerze verarbeitet wurde. Der Lauf muss jetzt durchlaufen - unabhaengig
+    davon, ob die synthetische Reihe tatsaechlich einen Ausbruch produziert.
+    """
+    from backtest.strategies.library import build_strategy
+
+    ruhig = np.full(70, 100.0)
+    ausbruch = np.linspace(100.0, 112.0, 30)
+    df = make_ohlcv(np.concatenate([ruhig, ausbruch]))
+
+    ergebnis = backtester.run(df, build_strategy("ib_breakout"))
+
+    assert ergebnis.strategy_name == "ib_breakout"
+
+
+def test_backtester_prepare_liefert_ib_grenzen_erst_nach_dem_fenster(backtester):
+    """Lookahead-Schutz bleibt erhalten: waehrend der ersten IB-Stunde NaN."""
+    df = make_ohlcv(np.full(90, 100.0))
+    vorbereitet = backtester.prepare(df)
+
+    assert "ib_high" in vorbereitet.columns
+    assert "ib_low" in vorbereitet.columns
+    erste_stunde = vorbereitet.iloc[:60]
+    assert erste_stunde["ib_high"].isna().all()
+    assert vorbereitet["ib_high"].iloc[65:].notna().any()

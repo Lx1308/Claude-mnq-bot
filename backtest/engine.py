@@ -34,6 +34,8 @@ from backtest.kosten import Kostenprofil
 from backtest.strategies.base import BarContext, RuleStrategy
 from common.config import IndicatorConfig, MarketConfig, SessionConfig
 from common.indicators import compute_indicators
+from common.instruments import get_instrument
+from common.levels import initial_balance_per_session
 from common.sessions import session_dates
 
 log = logging.getLogger(__name__)
@@ -215,9 +217,21 @@ class Backtester:
     # -- Vorbereitung ------------------------------------------------------
 
     def prepare(self, df: pd.DataFrame) -> pd.DataFrame:
-        """Berechnet alle Indikatorspalten - identisch zum Live-Bot."""
+        """Berechnet alle Indikatorspalten - identisch zum Live-Bot.
+
+        Initial-Balance-Grenzen (``ib_high``/``ib_low``) kommen aus
+        ``common.levels.initial_balance_per_session`` - derselben Funktion,
+        die auch ``ideas.pipeline.vorbereiten`` und der MCP-Snapshot nutzen.
+        Keine zweite Berechnung: ohne diesen Aufruf bricht ``ib_breakout``
+        beim Backtest ab, weil die Strategie die Spalten braucht, die
+        ``compute_indicators`` allein nicht liefert.
+        """
         enriched = compute_indicators(df, self._indicators, self._market.session)
         enriched["session_date"] = session_dates(enriched.index, self._market.session).values
+        instrument = get_instrument(self._market.product)
+        ib = initial_balance_per_session(enriched, instrument, self._market.session)
+        for spalte in ib.columns:
+            enriched[spalte] = ib[spalte]
         return enriched
 
     # -- Hauptschleife -----------------------------------------------------
