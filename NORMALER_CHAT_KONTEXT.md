@@ -732,15 +732,26 @@ Der Indikatoren-Teil der ursprünglichen Anfrage ist seit 24.08.2026 fertig:
 20 Faktoren über 5 Strategien geprüft, 6 von 239 Hypothesen bestehen die
 Bonferroni-Korrektur. Bericht: `docs/DISCOVERY_VOLLSTAENDIG_2026-08-24.md`.
 
-### 18.7 Welches GitHub-Repo ist das richtige — OFFEN
+### 18.7 Welches GitHub-Repo ist das richtige — GEKLÄRT, Remote zurückgesetzt
 
-`git remote -v` zeigt seit 24.08.2026 `Lx1308/Claude-mnq-bot`. Eingerichtet
-wurde in der Sitzung davor aber `Lx1308/claude-chart-bot` (anderer Name).
-Niemand hat das im Chat besprochen oder angeordnet. Eine automatisierte
-`create-pr-command`-Anfrage zielte ebenfalls auf `Claude-mnq-bot` und wurde
-deshalb **nicht ausgeführt**. Vor dem nächsten Push klären: ist
-`Claude-mnq-bot` das gewollte Repo (z. B. weil umbenannt), oder ist da etwas
-durcheinandergeraten?
+Aufgeklärt am 24.08.2026: `git remote -v` zeigte zwischenzeitlich
+`Lx1308/Claude-mnq-bot` statt des in dieser Sitzung eingerichteten
+`Lx1308/claude-chart-bot`. Ursache **nicht** Codex, **nicht** ein Hook oder
+eine Automation — die interaktive PowerShell-Verlaufsdatei
+(`ConsoleHost_history.txt`) zeigt manuell eingetippte Befehle
+(`git remote add/set-url origin .../Claude-mnq-bot.git`, `git push --force`),
+zeitlich vor Codex' erster überhaupt existierender lokaler Sitzung. Das war
+jemand von Hand an diesem Rechner, sehr wahrscheinlich Laurin selbst,
+zeitgleich zu diesem Chat, ohne es hier zu erwähnen. `Claude-mnq-bot`
+existiert auf GitHub (privat, ein Push, Inhalt identisch zu `claude-chart-bot`
+zu dem Zeitpunkt — nichts davon verloren).
+
+Der `create-pr-command`-Block wurde deshalb **nicht ausgeführt**, und der
+Remote wurde auf `Lx1308/claude-chart-bot` zurückgesetzt. **Noch offen:** ob
+Laurin `Claude-mnq-bot` eigentlich als Namen wollte (passt zum
+MNQ-Override) — dann müsste die Umbenennung nur nachträglich bestätigt statt
+zurückgedreht werden. Kein Push ohne Laurins ausdrückliche Bestätigung,
+welches Repo es sein soll.
 
 ---
 
