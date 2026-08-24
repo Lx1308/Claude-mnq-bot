@@ -599,15 +599,28 @@ Parametern" ist nicht „keine Kante möglich". Details in
    Abschnitt 8.)
 5. **MITTEL:** Die 8 weiteren Setup-Familien (Spezifikation 2.2), schrittweise.
 6. **MITTEL:** Etappen E–F.
-7. **NIEDRIG:** Privates GitHub-Repo anlegen und pushen. Das **lokale** Git-Repo
-   steht seit dem 21.08. samt geprüfter `.gitignore` (`.env`, `.venv/`, `logs/`,
-   `*.sqlite3`); ein Push braucht **Laurins ausdrückliche Freigabe** und ist
-   deshalb offen.
+7. ~~**NIEDRIG:** Privates GitHub-Repo anlegen und pushen.~~ **Erledigt**
+   (Abschnitt 18.7/29.5): `Lx1308/Claude-mnq-bot`, mit Laurins ausdrücklicher
+   Freigabe eingerichtet und synchron.
 8. **NIEDRIG:** Gegencheck, ob der NT8-Feed wirklich Echtzeit ist (Vergleich mit
    TradingView). Nach dem Live-Test praktisch schon sehr wahrscheinlich.
-9. **NIEDRIG:** `laeuft_seit_utc` in `/status` zeigt nach frischem Start ein
+9. ~~**NIEDRIG:** `laeuft_seit_utc` in `/status` zeigt nach frischem Start ein
    altes Datum — vermutlich ein persistierter DB-Wert statt der echten
-   Prozesslaufzeit. Kosmetisch, aber irreführend.
+   Prozesslaufzeit.~~ **Geprüft, 24.08.2026: die Theorie war falsch, das
+   Symptom nicht reproduzierbar.** `ReceiverState.started_at`
+   (`ntbridge/receiver.py:53/75`) liest nirgends aus der Datenbank — es ist
+   ein reiner `datetime.now(timezone.utc)` beim Objektaufbau, es gibt gar
+   keinen Persistenz-Pfad, der ein altes Datum liefern könnte. Live gegen den
+   laufenden Empfänger geprüft (`GET /status`, nur lesend, nicht neu
+   gestartet): `laeuft_seit_utc` zeigt den plausiblen heutigen Start
+   (10:36 UTC, passend zum Login-Trigger der Aufgabenplanung). Die
+   wahrscheinlichere Erklärung für das damals beobachtete alte Datum: ein
+   zweiter Startversuch traf auf den **noch laufenden** ersten Empfänger
+   (genau das Bild aus Bug-Lehre 12) — das `/status` zeigte dann korrekt den
+   Start des tatsächlich laufenden, älteren Prozesses, kein Fehler im Code.
+   Seit der Windows-Aufgabenplanung (Abschnitt 28) ist das strukturell
+   unwahrscheinlicher geworden. Kein Codefix nötig, nichts angefasst — der
+   laufende Empfänger sollte nach Vorgabe nicht neu gestartet werden.
 
 > **Korrektur gegenüber älteren Fassungen:** Die früheren Punkte 1–5 unter
 > "Offen" (kompilieren, Empfänger starten, Charts einrichten, Erfolgstest,
