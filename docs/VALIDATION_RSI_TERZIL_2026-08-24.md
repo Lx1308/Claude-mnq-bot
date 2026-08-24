@@ -1,5 +1,18 @@
 # Validation der RSI-Terzil-Funde aus dem vollständigen Discovery-Lauf
 
+> **Für die formale Validation-Phase ersetzt durch
+> [`VALIDATION_PHASE_2026-08-24.md`](VALIDATION_PHASE_2026-08-24.md)**
+> (fünfte Sitzung, selber Tag): dieser Lauf prüfte nur einen von sechs
+> Discovery-Kandidaten, auf einem Block, der teilweise mit dem
+> Discovery-Pool überlappte (unten offen ausgewiesen). Der neue Bericht
+> prüft alle sechs gleich behandelt auf einem Block, der Discovery
+> nachweislich nie gesehen hat, plus Walk-Forward-Konsistenz. Die
+> Zirkularitätseinordnung unten (Abschnitt 1) ist zudem durch den neuen
+> Bericht **relativiert**: dieselbe Faktordefinition hält sich auf dem
+> sauberen Block empirisch weiter, trotz der mechanischen Nähe zur eigenen
+> Einstiegsregel. Dieser Bericht bleibt unverändert stehen, seine Zahlen
+> sind nicht falsch, nur nicht mehr der aktuelle Stand der Einordnung.
+
 **24.08.2026 (vierte Sitzung des Tages).** Setzt die beiden Punkte aus dem
 "Nächster Schritt"-Abschnitt von
 [`DISCOVERY_VOLLSTAENDIG_2026-08-24.md`](DISCOVERY_VOLLSTAENDIG_2026-08-24.md)
