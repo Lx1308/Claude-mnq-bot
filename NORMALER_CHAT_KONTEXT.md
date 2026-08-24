@@ -5,10 +5,14 @@ Für künftige Claude-Chat-Sessions ohne Zugriff auf den alten Verlauf.
 
 **Stand: 24. August 2026** — vollständig gegen Code, Datenbanken und Testlauf
 gegengeprüft, nicht aus Notizen fortgeschrieben.
-**Ergänzt 24. August 2026 (neue Sitzung): erste Hypothese des Projekts
+**Ergänzt 24. August 2026 (fünfte Sitzung): formale Validation-Phase, alle
+sechs Discovery-Kandidaten gleich geprüft auf einem neuen, nie berührten
+Block — 2 von 6 bestehen, Zirkularitätseinordnung aus der Vorsitzung
+relativiert (Abschnitt 18.9).**
+**Ergänzt 24. August 2026 (vierte Sitzung): erste Hypothese des Projekts
 (`vwap_trend`/RSI-Terzil) übersteht eine Validierung auf einem zweiten
 Datenblock, `rsi_mean_reversion`-Treffer als zirkulär entkräftet, neue Frage
-an Laurin zur OOS-Nutzung (Abschnitt 18.8).**
+an Laurin zur OOS-Nutzung (Abschnitt 18.8) — Einordnung in 18.9 präzisiert.**
 **Ergänzt 24. August 2026: vollständiger Discovery-Lauf ausgewertet (Abschnitt
 18.6), unautorisierte Codex-Nachtarbeit aufgeklärt und zurückgesetzt (Details
 in `CODE_CHAT_KONTEXT.md` Abschnitt 28), offene Repo-Namensfrage (18.7).**
@@ -784,6 +788,50 @@ Hypothese verwendet werden? Er ist bisher an keiner Stelle angerührt worden.
 Diese Sitzung hat die Entscheidung bewusst nicht selbst getroffen — der
 OOS-Block ist nach Masterplan G einmalig, ein „Versuch, ob es reicht" wäre
 keine Confirmation mehr.
+
+> **Von der nächsten Sitzung (18.9) überholt:** Die pauschale Einstufung
+> "vier `rsi_mean_reversion`-Treffer entkräftet" war zu schnell. Details dort.
+
+### 18.9 Formale Validation-Phase: alle sechs Kandidaten gleich geprüft
+
+24.08.2026, fünfte Sitzung: Auftrag war, die Validation-Phase streng nach
+Masterplan G durchzuführen — alle sechs Discovery-Kandidaten ohne
+Vorauswahl, auf einem Block, den Discovery nie gesehen hat, mit
+Walk-Forward-Konsistenz und vollständiger Multiple-Testing-Transparenz.
+Details in `CODE_CHAT_KONTEXT.md` Abschnitt 30 und
+`docs/VALIDATION_PHASE_2026-08-24.md`.
+
+**Neue Infrastruktur:** Der bisherige Zweiwege-Split (70 % Training /
+30 % Out-of-Sample) wird jetzt ein drittes Mal geteilt — die
+70-%-Trainingsgrenze bleibt exakt gleich, der Rest teilt sich in einen
+neuen, nie berührten Validation-Block und einen kleineren, weiterhin
+einmaligen Out-of-Sample-Rest für die spätere Confirmation.
+
+**Ergebnis, alle sechs Kandidaten gleich behandelt:** Fünf von sechs sind
+überhaupt testbar (einer zu selten für die Mindestgröße). Alle fünf
+behalten ihr Vorzeichen. **Zwei überstehen die eigene, strengere
+Bonferroni-Korrektur dieser Phase** — beide bei `rsi_mean_reversion`
+(RSI- und Stochastik-Terzil-Mitte), mit durchgehender Walk-Forward-
+Konsistenz.
+
+**Korrektur der eigenen Vorsitzung:** Die vier `rsi_mean_reversion`-Treffer
+waren in 18.8 als "entkräftet" eingestuft worden, weil der Faktor
+mechanisch nah an der eigenen Einstiegsregel liegt (Zirkularitätsprüfung).
+Diese Sitzung zeigt: die eingefrorene, ORIGINALE Faktordefinition sagt auf
+dem neuen, unabhängigen Block trotzdem weiter etwas voraus — teils sogar
+deutlicher als im Training. Beide Befunde (Zirkularität UND Vorhersagekraft)
+stehen nebeneinander, keiner hebt den anderen auf; das wird im Bericht
+ausdrücklich offengehalten statt aufgelöst.
+
+**Multiple-Testing-Trichter über beide Phasen:** Discovery 239 geprüft, 6
+bestehen. Validation 11 geprüft (5 der 6 Kandidaten testbar), 2 bestehen.
+
+**Rückfrage bleibt bestehen, jetzt mit stärkerem Befund:** Soll der
+einmalige Out-of-Sample-Rest für die Confirmation dieser zwei Hypothesen
+verwendet werden? Einschränkend: beide betreffen dieselbe Strategie mit
+stark korrelierten Faktoren (RSI und Stochastik auf demselben Kursverlauf)
+— das sind eher zwei Meßlatten an einem Fund als zwei unabhängige
+Bestätigungen. Der OOS-Block wurde weiterhin an keiner Stelle angerührt.
 
 ---
 

@@ -2,10 +2,18 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-24 (Abschnitt 29 — neue Sitzung, Übergabe aus Abschnitt 28
-übernommen: `rsi_mean_reversion`-RSI-Terzil-Treffer auf Zirkularität geprüft
-und bestätigt entkräftet, `vwap_trend`/RSI-Terzil-Hypothese auf einem zweiten
-Datenblock validiert und hält — Bericht in
+Stand: 2026-08-24 (Abschnitt 30 — formale Validation-Phase: neue
+Dreiteilung Training/Validation/Out-of-Sample (`backtest/splits.py`,
+`split_data_three_way`), alle sechs Discovery-Kandidaten gleich geprüft auf
+einem Block, den Discovery nie gesehen hat — 2 von 6 überstehen die
+Validation-eigene Bonferroni-Korrektur, alle 5 testbaren halten das
+Vorzeichen, Walk-Forward-Konsistenz durchgehend. Bericht in
+`docs/VALIDATION_PHASE_2026-08-24.md`, ersetzt die vorherige
+Einzelkandidaten-Prüfung aus Abschnitt 29. Repo-Frage geklärt (29.5,
+Remote jetzt `Lx1308/Claude-mnq-bot`); davor Abschnitt 29 — Übergabe aus
+Abschnitt 28 übernommen: `rsi_mean_reversion`-RSI-Terzil-Treffer auf
+Zirkularität geprüft (Einordnung in Abschnitt 30 relativiert), `vwap_trend`/
+RSI-Terzil-Hypothese informell validiert — Bericht in
 `docs/VALIDATION_RSI_TERZIL_2026-08-24.md`; davor Abschnitt 28 —
 `ib_breakout`-Fix committet, voller 20×5-Discovery-Lauf fertig ausgewertet
 (6/239 Hypothesen signifikant, Bericht in
@@ -19,12 +27,9 @@ Robustheitskennzahl log; Testsuite in der Linux-Sandbox lauffähig gemacht,
 Abschnitt 20, Qualitätsmessung der Dukascopy-Näherungshistorie, Abschnitt 19,
 und zwei bereinigte Tradovate-Defekte; Inhalt sonst 2026-08-22 nach Entfernung
 des Legacy-Pfads).
-Gegen den tatsächlichen Projektordner geprüft. **Testzahlen:** 411, am
+Gegen den tatsächlichen Projektordner geprüft. **Testzahlen:** 416, am
 24.08.2026 auf dem echten Windows-venv gemessen (`.venv\Scripts\python.exe -m
-pytest`, Exitcode 0) — kein Widerspruch zur vorherigen Zahl in dieser Datei,
-sie war schlicht veraltet (vorherige Einträge nannten 361/380/394 zu
-unterschiedlichen Zeitpunkten, keiner davon war ein Windows-Lauf nach dem
-`ib_breakout`-Fix).
+pytest`, Exitcode 0).
 
 ---
 
@@ -2257,11 +2262,114 @@ Vor dem Push geprüft: `origin/main` (5d0a888) ist Vorfahre des lokalen
 nötig, keine Divergenz. Nach dem Push `git fetch` + `git status` bestätigt:
 synchron. **Damit ist die Repo-Frage aus Abschnitt 28 endgültig erledigt.**
 
-### Offen für die nächste Sitzung
+### Offen für die nächste Sitzung (Stand vor Abschnitt 30, teilweise überholt)
 
-1. Laurins Antwort zur Market-Intelligence-Frage (Abschnitt 28) und neu:
-   OOS-Verwendung für `vwap_trend`/RSI-Terzil (29.3) abwarten.
+1. ~~Laurins Antwort zur Market-Intelligence-Frage (Abschnitt 28) und neu:
+   OOS-Verwendung für `vwap_trend`/RSI-Terzil (29.3) abwarten.~~ Repo-Frage
+   erledigt (29.5). Market-Intelligence und OOS-Verwendung weiterhin offen,
+   siehe Abschnitt 30.
 2. Codex-Automation und Windows-Task bleiben pausiert.
 3. Sollte Laurin die OOS-Confirmation freigeben: einmaliger Lauf,
-   `pruefe_nur_training` entfällt dann bewusst für genau diesen einen
-   Aufruf — kein Wiederholungslauf, falls das Ergebnis nicht gefällt.
+   `assert_validation_only`/`pruefe_nur_training` entfällt dann bewusst für
+   genau diesen einen Aufruf — kein Wiederholungslauf, falls das Ergebnis
+   nicht gefällt.
+
+---
+
+## 30. Formale Validation-Phase: alle sechs Discovery-Kandidaten (24.08.2026, fünfte Sitzung)
+
+Auftrag: streng nach Masterplan G (Discovery → Validation → Confirmation →
+Monitoring), keine privilegierten Hypothesen, Walk-Forward wo sinnvoll,
+Multiple-Testing-Transparenz über alle Phasen. Ausführlicher Bericht:
+**`docs/VALIDATION_PHASE_2026-08-24.md`**.
+
+### 30.1 Neue Infrastruktur: Dreiteilung statt Zweiteilung
+
+`backtest/splits.py`: `ThreeWaySplit` + `split_data_three_way(df, config)`
+teilt den bisherigen Out-of-Sample-Rest (30 % nach der 70-%-Trainingsgrenze)
+ein zweites Mal. Neues Config-Feld `SplitConfig.validation_fraction`
+(`config.yaml`, `backtest.split.validation_fraction`, Vorgabe 0,5) legt fest,
+welcher Anteil des Rests Validation wird — der Rest bleibt Out-of-Sample.
+Die 70-%-Trainingsgrenze selbst bleibt **unverändert** (Test
+`test_dreiwege_split_traingrenze_ist_dieselbe_wie_beim_zweiwege_split`
+sichert das ab — die bereits von Discovery verbrauchte Grenze darf sich
+nicht verschieben).
+
+Neuer Schutzriegel `assert_validation_only(df, split)` (analog
+`assert_in_sample_only`): wirft `OutOfSampleViolation`, sobald Daten aus dem
+Out-of-Sample-Teil in einen Validation-Lauf geraten. `Config.validate()`
+prüft jetzt zusätzlich `0 < validation_fraction < 1`.
+
+Gemessen auf `data/DUKA_5m.csv`: Training 2016-08-22 bis 2023-10-24
+(445 991 Kerzen, unverändert), **Validation 2023-10-24 bis 2025-03-25
+(95 569 Kerzen) — neu, nie zuvor berührt**, Out-of-Sample 2025-03-25 bis
+2026-08-21 (95 570 Kerzen, weiterhin unberührt).
+
+5 neue Tests in `tests/test_metrics_and_splits.py` (Chronologie ohne
+Überlappung, Trainingsgrenze identisch zum Zweiwege-Split, Fehler bei
+ungültigem `validation_fraction`, kein `mode="date"`, Schutzriegel).
+
+### 30.2 Alle sechs Kandidaten gleich geprüft — kein Ausschluss vorab
+
+Neues Werkzeug `werkzeuge/validation_discovery_kandidaten.py`. Alle sechs
+Discovery-Treffer (RSI- und Stochastik-Terzil bei `rsi_mean_reversion`,
+RSI-Terzil bei `vwap_trend` und `flag_breakout`) gehen in dieselbe Prüfung —
+**ausdrücklich auch die vier, die die letzte Sitzung als "vermutlich
+zirkulär" eingeordnet hatte.** Faktordefinition, Terzilgrenzen und Strategie
+sind eingefroren aus dem Discovery-Lauf, nichts wird auf dem
+Validation-Block neu angepasst. Bonferroni-Korrektur dieser Phase: 11
+Hypothesen (die tatsächlich auswertbaren Gruppen der vier betroffenen
+Strategie-Faktor-Kombinationen — `flag_breakout`/RSI-Terzil/mittel bleibt
+mit 7 Trades unter der 20-Trade-Schwelle unauswertbar, dieselbe dünne
+Ausreißer-Gruppe, die der Discovery-Bericht selbst schon markiert hatte).
+
+**Ergebnis:** Alle fünf testbaren Kandidaten behalten ihr Vorzeichen. Zwei
+überstehen die für diese Phase korrigierte Bonferroni-Schwelle
+(`rsi_mean_reversion`/RSI-Terzil-Mitte: t=+4,93, p_korr=0,0001;
+`rsi_mean_reversion`/Stochastik-Terzil-Mitte: t=+3,31, p_korr=0,013), beide
+mit 3/3 konsistenten Walk-Forward-Fenstern.
+
+### 30.3 Korrektur der eigenen Vorsitzung: Zirkularitätseinordnung war zu schnell
+
+Die eingefrorene, ORIGINALE RSI-Terzil-Definition (RSI der Einstiegskerze)
+sagt auf dem neuen, unabhängigen Block weiterhin etwas voraus — bei der
+Terzil-Mitte sogar deutlicher als im Training. Die Zirkularitätsprüfung aus
+Abschnitt 29.1 bleibt richtig (der Effekt verschwindet, wenn man den RSI der
+Signalkerze statt der Einstiegskerze nimmt), beantwortet aber eine andere
+Frage als diese Validierung. **Beide Befunde stehen nebeneinander, keiner
+hebt den anderen auf** — festgehalten statt stillschweigend aufgelöst
+(CLAUDE.md-Prinzip). Details und Einordnung in
+`docs/VALIDATION_PHASE_2026-08-24.md`, Abschnitt "Der Zirkularitätsbefund
+relativiert sich".
+
+### 30.4 Multiple-Testing-Trichter über alle Phasen
+
+```
+Discovery  : 239 Hypothesen geprueft -> 6 bestehen Bonferroni (Schwelle 0,000209)
+Validation : 11 Hypothesen geprueft  -> 2 bestehen Bonferroni (Schwelle 0,004545)
+             (5 der 6 Discovery-Kandidaten waren testbar; 1 zu wenig Daten)
+```
+
+### 30.5 Rückfragepflichtiger Punkt, weiterhin nicht selbst entschieden
+
+**Ob der einmalige Out-of-Sample-Block (85-100 %) jetzt für die Confirmation
+der beiden verbliebenen Hypothesen verwendet werden soll**, bleibt Laurins
+Entscheidung — dieselbe Frage wie in 29.3, jetzt mit einem stärkeren, aber
+weiterhin nicht abschließenden Befund (zwei Hypothesen betreffen dieselbe
+Strategie mit korrelierten Faktoren, siehe Bericht "Einordnung"-Abschnitt).
+Der OOS-Teil wurde an keiner Stelle angerührt.
+
+### 30.6 Tests
+
+416 Tests, alle grün, auf dem echten Windows-venv gemessen (`.venv\Scripts\
+python.exe -m pytest`, Exitcode 0). 5 neu (Dreiteilung), keine Testdatei
+sonst geändert.
+
+### Offen für die nächste Sitzung
+
+1. Laurins Antwort zur Market-Intelligence-Frage (Abschnitt 28) und zur
+   OOS-Verwendung für Confirmation (30.5) abwarten.
+2. Codex-Automation und Windows-Task bleiben pausiert.
+3. Sollte Laurin die Confirmation freigeben: einmaliger Lauf auf dem
+   85-100-%-Block, `assert_validation_only` entfällt dann bewusst für genau
+   diesen einen Aufruf.
