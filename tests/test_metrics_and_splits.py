@@ -10,7 +10,14 @@ import pytest
 
 from backtest.engine import LONG, SHORT, BacktestResult, Trade
 from backtest.metrics import compute_metrics, max_consecutive_losses, max_drawdown
-from backtest.splits import OutOfSampleViolation, assert_in_sample_only, split_data, walk_forward_windows
+from backtest.splits import (
+    OutOfSampleViolation,
+    assert_in_sample_only,
+    assert_validation_only,
+    split_data,
+    split_data_three_way,
+    walk_forward_windows,
+)
 from common.config import SplitConfig
 from tests.conftest import make_ohlcv
 
@@ -156,6 +163,73 @@ def test_optimierung_auf_out_of_sample_wird_verhindert():
     # ... der volle Datensatz nicht.
     with pytest.raises(OutOfSampleViolation, match="Out-of-Sample"):
         assert_in_sample_only(frame, split)
+
+
+# ---------------------------------------------------------------------------
+# Dreiwege-Split: Training / Validation / Out-of-Sample
+# ---------------------------------------------------------------------------
+
+def test_dreiwege_split_teilt_chronologisch_ohne_ueberlappung():
+    frame = make_ohlcv(list(range(100)))
+    split = split_data_three_way(
+        frame, SplitConfig(mode="fraction", in_sample_fraction=0.7, validation_fraction=0.5)
+    )
+
+    assert len(split.train) == 70
+    # Rest sind 30 Kerzen, davon die Haelfte Validation, die Haelfte OOS.
+    assert len(split.validation) == 15
+    assert len(split.out_of_sample) == 15
+    assert len(split.train) + len(split.validation) + len(split.out_of_sample) == len(frame)
+    assert split.train.index.max() < split.validation.index.min()
+    assert split.validation.index.max() < split.out_of_sample.index.min()
+
+
+def test_dreiwege_split_traingrenze_ist_dieselbe_wie_beim_zweiwege_split():
+    """Die Dreiteilung darf die bereits von Discovery verbrauchte Grenze nicht verschieben."""
+    frame = make_ohlcv(list(range(200)))
+    cfg = SplitConfig(mode="fraction", in_sample_fraction=0.7, validation_fraction=0.5)
+
+    zweiwege = split_data(frame, cfg)
+    dreiwege = split_data_three_way(frame, cfg)
+
+    assert dreiwege.validation_boundary == zweiwege.boundary
+    assert len(dreiwege.train) == len(zweiwege.in_sample)
+
+
+def test_dreiwege_split_wirft_bei_ungueltigem_validation_anteil():
+    frame = make_ohlcv(list(range(100)))
+    with pytest.raises(ValueError, match="validation_fraction"):
+        split_data_three_way(
+            frame, SplitConfig(mode="fraction", in_sample_fraction=0.7, validation_fraction=0.0)
+        )
+    with pytest.raises(ValueError, match="validation_fraction"):
+        split_data_three_way(
+            frame, SplitConfig(mode="fraction", in_sample_fraction=0.7, validation_fraction=1.0)
+        )
+
+
+def test_dreiwege_split_unterstuetzt_kein_datum():
+    frame = make_ohlcv(list(range(100)))
+    with pytest.raises(ValueError, match="mode='fraction'"):
+        split_data_three_way(
+            frame, SplitConfig(mode="date", split_date="2025-01-01", validation_fraction=0.5)
+        )
+
+
+def test_validation_auf_out_of_sample_wird_verhindert():
+    frame = make_ohlcv(list(range(100)))
+    split = split_data_three_way(
+        frame, SplitConfig(mode="fraction", in_sample_fraction=0.7, validation_fraction=0.5)
+    )
+
+    # Training und Validation gemeinsam sind erlaubt - Indikatoren brauchen
+    # den Trainingsvorlauf (Invariante 5).
+    training_und_validation = frame.loc[: split.validation.index[-1]]
+    assert_validation_only(training_und_validation, split)
+
+    # Der volle Datensatz reicht in den Out-of-Sample-Teil hinein.
+    with pytest.raises(OutOfSampleViolation, match="Out-of-Sample"):
+        assert_validation_only(frame, split)
 
 
 def test_ideas_bars_muessen_zwei_sessions_abdecken():

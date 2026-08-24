@@ -339,6 +339,11 @@ class SplitConfig:
     mode: str = "fraction"
     in_sample_fraction: float = 0.7
     split_date: str | None = None
+    # Anteil des NACH in_sample_fraction verbleibenden Rests, der bei einer
+    # Dreiweg-Aufteilung (backtest.splits.split_data_three_way) zur Validation
+    # wird. Der Rest bleibt Out-of-Sample - weiterhin einmalig fuer die
+    # Confirmation-Phase reserviert (Masterplan G).
+    validation_fraction: float = 0.5
 
 
 @dataclass(frozen=True)
@@ -535,6 +540,7 @@ class Config:
                 mode=str(split.get("mode", "fraction")).lower(),
                 in_sample_fraction=float(split.get("in_sample_fraction", 0.7)),
                 split_date=(split.get("split_date") or None),
+                validation_fraction=float(split.get("validation_fraction", 0.5)),
             ),
         )
 
@@ -655,6 +661,8 @@ class Config:
 
         if not 0.0 < self.backtest.split.in_sample_fraction < 1.0:
             raise ConfigError("backtest.split.in_sample_fraction muss zwischen 0 und 1 liegen.")
+        if not 0.0 < self.backtest.split.validation_fraction < 1.0:
+            raise ConfigError("backtest.split.validation_fraction muss zwischen 0 und 1 liegen.")
         if self.backtest.split.mode not in {"fraction", "date"}:
             raise ConfigError("backtest.split.mode muss 'fraction' oder 'date' sein.")
         if self.backtest.split.mode == "date" and not self.backtest.split.split_date:

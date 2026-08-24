@@ -377,3 +377,9 @@ backtest:
     in_sample_fraction: 0.7
     # Nur bei mode: date relevant (ISO-Datum, exklusiv fuer OOS-Start)
     split_date: null
+    # Nur fuer split_data_three_way (Research-Engine-Phase Validation, seit
+    # 24.08.2026): Anteil des NACH in_sample_fraction verbleibenden Rests, der
+    # zur Validation wird. Der Rest bleibt Out-of-Sample, weiterhin einmalig
+    # fuer die Confirmation-Phase reserviert. 0.5 heisst: von den 30 % nach dem
+    # 70-%-Trainingsschnitt werden 15 Prozentpunkte Validation, 15 bleiben OOS.
+    validation_fraction: 0.5
