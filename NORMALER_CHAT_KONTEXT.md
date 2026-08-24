@@ -5,6 +5,10 @@ Für künftige Claude-Chat-Sessions ohne Zugriff auf den alten Verlauf.
 
 **Stand: 24. August 2026** — vollständig gegen Code, Datenbanken und Testlauf
 gegengeprüft, nicht aus Notizen fortgeschrieben.
+**Ergänzt 24. August 2026 (neue Sitzung): erste Hypothese des Projekts
+(`vwap_trend`/RSI-Terzil) übersteht eine Validierung auf einem zweiten
+Datenblock, `rsi_mean_reversion`-Treffer als zirkulär entkräftet, neue Frage
+an Laurin zur OOS-Nutzung (Abschnitt 18.8).**
 **Ergänzt 24. August 2026: vollständiger Discovery-Lauf ausgewertet (Abschnitt
 18.6), unautorisierte Codex-Nachtarbeit aufgeklärt und zurückgesetzt (Details
 in `CODE_CHAT_KONTEXT.md` Abschnitt 28), offene Repo-Namensfrage (18.7).**
@@ -752,6 +756,29 @@ Laurin `Claude-mnq-bot` eigentlich als Namen wollte (passt zum
 MNQ-Override) — dann müsste die Umbenennung nur nachträglich bestätigt statt
 zurückgedreht werden. Kein Push ohne Laurins ausdrückliche Bestätigung,
 welches Repo es sein soll.
+
+### 18.8 Erste Hypothese übersteht eine Validierung — OOS-Nutzung offen
+
+24.08.2026, neue Sitzung: Die beiden von der letzten Sitzung offen
+gelassenen, nicht rückfragepflichtigen Punkte sind erledigt (Zirkularitäts-
+prüfung bei `rsi_mean_reversion`, Validierung von `vwap_trend`/RSI-Terzil auf
+einem zweiten Datenblock). Details in `CODE_CHAT_KONTEXT.md` Abschnitt 29 und
+`docs/VALIDATION_RSI_TERZIL_2026-08-24.md`.
+
+**Kurzfassung:** `vwap_trend` schneidet in der mittleren RSI-Terzil-Gruppe
+deutlich schlechter ab als in den beiden Randgruppen — dasselbe Muster wie im
+ursprünglichen Discovery-Lauf, jetzt auf einem separat gerechneten Block
+bestätigt (statistisch sogar deutlicher: t=−3,87 bei einem Viertel der
+Trade-Zahl). Die vier `rsi_mean_reversion`-Treffer aus demselben Lauf sind
+dagegen entkräftet — sie maßen strukturell nur, dass die Strategie ihre
+eigene Einstiegsregel erfüllt.
+
+**Neue Frage an Laurin:** Soll der einmalige Out-of-Sample-Block (letzte
+30 % der Näherungshistorie) jetzt für die Confirmation dieser einen
+Hypothese verwendet werden? Er ist bisher an keiner Stelle angerührt worden.
+Diese Sitzung hat die Entscheidung bewusst nicht selbst getroffen — der
+OOS-Block ist nach Masterplan G einmalig, ein „Versuch, ob es reicht" wäre
+keine Confirmation mehr.
 
 ---
 

@@ -2,9 +2,14 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-24 (Abschnitt 28 — Sitzungsende, `ib_breakout`-Fix committet,
-voller 20×5-Discovery-Lauf fertig ausgewertet (6/239 Hypothesen signifikant,
-Bericht in `docs/DISCOVERY_VOLLSTAENDIG_2026-08-24.md`), unautorisierte
+Stand: 2026-08-24 (Abschnitt 29 — neue Sitzung, Übergabe aus Abschnitt 28
+übernommen: `rsi_mean_reversion`-RSI-Terzil-Treffer auf Zirkularität geprüft
+und bestätigt entkräftet, `vwap_trend`/RSI-Terzil-Hypothese auf einem zweiten
+Datenblock validiert und hält — Bericht in
+`docs/VALIDATION_RSI_TERZIL_2026-08-24.md`; davor Abschnitt 28 —
+`ib_breakout`-Fix committet, voller 20×5-Discovery-Lauf fertig ausgewertet
+(6/239 Hypothesen signifikant, Bericht in
+`docs/DISCOVERY_VOLLSTAENDIG_2026-08-24.md`), unautorisierte
 Codex-Nachtarbeit aufgeklärt und zurückgesetzt, `ntbridge` von der
 CLI-Sitzung entkoppelt; davor Abschnitt 27 — Faktor-Bausteine für den
 vollständigen Indikatorensatz ergänzt; davor `walkforward`-Kommando,
@@ -14,9 +19,12 @@ Robustheitskennzahl log; Testsuite in der Linux-Sandbox lauffähig gemacht,
 Abschnitt 20, Qualitätsmessung der Dukascopy-Näherungshistorie, Abschnitt 19,
 und zwei bereinigte Tradovate-Defekte; Inhalt sonst 2026-08-22 nach Entfernung
 des Legacy-Pfads).
-Gegen den tatsächlichen Projektordner geprüft. **Testzahlen:** 361, gemessen am
-23.08.2026 — allerdings in der Linux-Ersatzumgebung (Abschnitt 20), nicht unter
-dem Windows-venv. Der Windows-Lauf bleibt vor einer Freigabe auszuführen.
+Gegen den tatsächlichen Projektordner geprüft. **Testzahlen:** 411, am
+24.08.2026 auf dem echten Windows-venv gemessen (`.venv\Scripts\python.exe -m
+pytest`, Exitcode 0) — kein Widerspruch zur vorherigen Zahl in dieser Datei,
+sie war schlicht veraltet (vorherige Einträge nannten 361/380/394 zu
+unterschiedlichen Zeitpunkten, keiner davon war ein Windows-Lauf nach dem
+`ib_breakout`-Fix).
 
 ---
 
@@ -2165,3 +2173,73 @@ eingerichtet wurde. Vor jedem Push klären, welches Repo tatsächlich gewollt is
    statt der Einstiegskerze), bevor sie in dieselbe Validation gehen.
 4. Codex-Automation und Windows-Task bleiben pausiert, bis Laurin sich
    entschieden hat, ob/wie sie wieder aktiviert werden.
+
+---
+
+## 29. Validation-Schritte aus Abschnitt 28 erledigt (24.08.2026, neue Sitzung)
+
+Übernommen: Punkte 2 und 3 aus dem "Nächster Schritt"-Abschnitt oben — beides
+unabhängig von Laurins noch ausstehenden Antworten zu Repo-Frage und
+Market-Intelligence-Frage (Punkt 1), deshalb ohne Rückfrage bearbeitet.
+Ausführlicher Bericht: **`docs/VALIDATION_RSI_TERZIL_2026-08-24.md`**.
+
+### 29.1 `rsi_mean_reversion`: Zirkularitätsvermutung bestätigt
+
+Neues Werkzeug `werkzeuge/rsi_zirkularitaet.py`. Der RSI-Terzil-Faktor aus
+dem Discovery-Lauf las den RSI-Wert der **Einstiegskerze**
+(Eröffnung der Folgekerze); die Regel selbst feuert aber auf dem
+RSI-Übertritt der **Signalkerze** (eine Zeile davor,
+`backtest/engine.py:310-329`). Mit dem RSI-Wert der Signalkerze statt der
+Einstiegskerze bricht die Spannweite zwischen den Terzil-Gruppen von
+16,924 auf 1,841 Punkte ein, und keine der drei Gruppen unterschreitet mehr
+die Bonferroni-Schwelle. **Die vier `rsi_mean_reversion`-Treffer aus dem
+Discovery-Lauf (RSI- und Stochastik-Terzil, je mittel/hoch) gelten damit als
+entkräftet** — sie maßen überwiegend, dass die Strategie ihre eigene
+Einstiegsregel erfüllt, kein unabhängiges Regimemerkmal.
+
+### 29.2 `vwap_trend`/RSI-Terzil: hält auf einem zweiten Datenblock
+
+Neues Werkzeug `werkzeuge/validation_vwap_trend_rsi.py`. Da der
+Out-of-Sample-Block einmalig ist und für eine erste Validierung nicht
+verbraucht werden sollte, wurde der bestehende 70-%-Trainingsteil intern bei
+50 % noch einmal geschnitten: 0-50 % blieb wie im Discovery-Lauf gepoolt,
+50-70 % diente als Validierungsblock (804 Trades, 2021-12-08 bis
+2023-10-24), 70-100 % (OOS) unverändert unberührt. Terzilgrenzen **eingefroren
+aus dem Discovery-Lauf** (45,902 / 56,596 RSI-Punkte), nicht neu bestimmt.
+
+Ergebnis: dasselbe Muster wie im Discovery-Lauf — beide Randgruppen positiv,
+die Mittelgruppe klar negativ (−8,092 Punkte/Trade, t=−3,87, p_korr=0,0004,
+unter der strengen 3-Hypothesen-Bonferroni-Schwelle 0,016667). **Die
+Hypothese hält auf einem unabhängig gerechneten Block** — mit der
+ausdrücklich dokumentierten Einschränkung, dass der Validierungsblock Teil
+des ursprünglich gepoolten 70-%-Trainingsteils war (siehe Bericht,
+Abschnitt 2, "Offen ausgewiesene Einschränkung"). Das ist die erste
+Hypothese im gesamten Projekt, die einen zweiten unabhängigen Blick
+übersteht.
+
+### 29.3 Rückfragepflichtiger Punkt, nicht selbst entschieden
+
+**Ob der einmalige OOS-Block jetzt für die Confirmation von
+`vwap_trend`/RSI-Terzil verwendet werden soll**, ist eine Entscheidung, die
+Laurin gehört — genau wie die Repo-Frage und die Market-Intelligence-Frage,
+die aus der vorherigen Sitzung offen sind (Abschnitt 28). Der OOS-Block wurde
+in dieser Sitzung an keiner Stelle angerührt (`pruefe_nur_training` bricht
+sonst laut ab).
+
+### 29.4 Tests
+
+411 Tests, alle grün, **auf dem echten Windows-venv gemessen**
+(`.venv\Scripts\python.exe -m pytest`, Exitcode 0) — kein Linux-Ersatzlauf
+diesmal, die Sitzung lief bereits im Windows-Projektordner. Keine
+Testdatei geändert; die beiden neuen Skripte liegen unter `werkzeuge/` und
+sind reine Analysewerkzeuge, kein Teil der Pipeline.
+
+### Offen für die nächste Sitzung
+
+1. Laurins Antwort zu Repo-Frage, Market-Intelligence-Frage (beide
+   Abschnitt 28) und neu: OOS-Verwendung für `vwap_trend`/RSI-Terzil
+   (29.3) abwarten.
+2. Codex-Automation und Windows-Task bleiben pausiert.
+3. Sollte Laurin die OOS-Confirmation freigeben: einmaliger Lauf,
+   `pruefe_nur_training` entfällt dann bewusst für genau diesen einen
+   Aufruf — kein Wiederholungslauf, falls das Ergebnis nicht gefällt.
