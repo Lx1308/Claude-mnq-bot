@@ -736,26 +736,31 @@ Der Indikatoren-Teil der ursprünglichen Anfrage ist seit 24.08.2026 fertig:
 20 Faktoren über 5 Strategien geprüft, 6 von 239 Hypothesen bestehen die
 Bonferroni-Korrektur. Bericht: `docs/DISCOVERY_VOLLSTAENDIG_2026-08-24.md`.
 
-### 18.7 Welches GitHub-Repo ist das richtige — GEKLÄRT, Remote zurückgesetzt
+### 18.7 Welches GitHub-Repo ist das richtige — ENDGÜLTIG GEKLÄRT: `Claude-mnq-bot`
 
 Aufgeklärt am 24.08.2026: `git remote -v` zeigte zwischenzeitlich
-`Lx1308/Claude-mnq-bot` statt des in dieser Sitzung eingerichteten
+`Lx1308/Claude-mnq-bot` statt des in jener Sitzung eingerichteten
 `Lx1308/claude-chart-bot`. Ursache **nicht** Codex, **nicht** ein Hook oder
 eine Automation — die interaktive PowerShell-Verlaufsdatei
 (`ConsoleHost_history.txt`) zeigt manuell eingetippte Befehle
 (`git remote add/set-url origin .../Claude-mnq-bot.git`, `git push --force`),
 zeitlich vor Codex' erster überhaupt existierender lokaler Sitzung. Das war
 jemand von Hand an diesem Rechner, sehr wahrscheinlich Laurin selbst,
-zeitgleich zu diesem Chat, ohne es hier zu erwähnen. `Claude-mnq-bot`
+zeitgleich zu jenem Chat, ohne es dort zu erwähnen. `Claude-mnq-bot`
 existiert auf GitHub (privat, ein Push, Inhalt identisch zu `claude-chart-bot`
 zu dem Zeitpunkt — nichts davon verloren).
 
 Der `create-pr-command`-Block wurde deshalb **nicht ausgeführt**, und der
-Remote wurde auf `Lx1308/claude-chart-bot` zurückgesetzt. **Noch offen:** ob
-Laurin `Claude-mnq-bot` eigentlich als Namen wollte (passt zum
-MNQ-Override) — dann müsste die Umbenennung nur nachträglich bestätigt statt
-zurückgedreht werden. Kein Push ohne Laurins ausdrückliche Bestätigung,
-welches Repo es sein soll.
+Remote wurde vorsorglich auf `Lx1308/claude-chart-bot` zurückgesetzt, die
+Frage offengelassen: ob Laurin `Claude-mnq-bot` eigentlich als Namen wollte.
+
+**Laurins Entscheidung (24.08.2026, neue Sitzung):** `Claude-mnq-bot` ist das
+gewollte Repo — beim Verbinden mit `claude-chart-bot` gab es eine
+Fehlermeldung, `Claude-mnq-bot` funktioniert. Remote auf
+`https://github.com/Lx1308/Claude-mnq-bot.git` gesetzt, lokaler Stand per
+sauberem Fast-Forward gepusht (`5d0a888..6849d33`) — beide Historien gingen
+vom selben Commit `5d0a888` aus, kein Force nötig. **Erledigt, nicht mehr
+offen.**
 
 ### 18.8 Erste Hypothese übersteht eine Validierung — OOS-Nutzung offen
 

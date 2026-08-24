@@ -2163,6 +2163,11 @@ ebenfalls auf `Claude-mnq-bot` — **nicht ausgeführt**, da die Anfrage nicht a
 Chat-Nachricht von Laurin kam und das Ziel nicht zu dem passte, was hier
 eingerichtet wurde. Vor jedem Push klären, welches Repo tatsächlich gewollt ist.
 
+> **Geklärt in der nächsten Sitzung, 24.08.2026:** Laurin will
+> `Claude-mnq-bot` behalten (`claude-chart-bot` gab beim Verbinden einen
+> Fehler). Remote umgestellt, lokaler Stand per Fast-Forward gepusht — siehe
+> Abschnitt 29.5. Kein offener Punkt mehr.
+
 ### Nächster Schritt für die neue Sitzung (Masterplan-Priorität)
 
 1. Mit Laurin klären: Repo-Frage (siehe oben) und Market-Intelligence-Frage
@@ -2234,11 +2239,28 @@ diesmal, die Sitzung lief bereits im Windows-Projektordner. Keine
 Testdatei geändert; die beiden neuen Skripte liegen unter `werkzeuge/` und
 sind reine Analysewerkzeuge, kein Teil der Pipeline.
 
+### 29.5 Repo-Frage geklärt: `Claude-mnq-bot`
+
+Laurin hat die in Abschnitt 28 offen gelassene Frage direkt in dieser
+Sitzung beantwortet: `Claude-mnq-bot` ist das gewollte Repo, nicht
+`claude-chart-bot` — beim Verbinden mit Letzterem gab es eine
+Fehlermeldung.
+
+```
+git remote set-url origin https://github.com/Lx1308/Claude-mnq-bot.git
+git fetch origin      # origin/main stand auf 5d0a888
+git push origin main  # 5d0a888..6849d33, sauberer Fast-Forward
+```
+
+Vor dem Push geprüft: `origin/main` (5d0a888) ist Vorfahre des lokalen
+`HEAD` (6849d33) — beide Historien gingen vom selben Commit aus, kein Force
+nötig, keine Divergenz. Nach dem Push `git fetch` + `git status` bestätigt:
+synchron. **Damit ist die Repo-Frage aus Abschnitt 28 endgültig erledigt.**
+
 ### Offen für die nächste Sitzung
 
-1. Laurins Antwort zu Repo-Frage, Market-Intelligence-Frage (beide
-   Abschnitt 28) und neu: OOS-Verwendung für `vwap_trend`/RSI-Terzil
-   (29.3) abwarten.
+1. Laurins Antwort zur Market-Intelligence-Frage (Abschnitt 28) und neu:
+   OOS-Verwendung für `vwap_trend`/RSI-Terzil (29.3) abwarten.
 2. Codex-Automation und Windows-Task bleiben pausiert.
 3. Sollte Laurin die OOS-Confirmation freigeben: einmaliger Lauf,
    `pruefe_nur_training` entfällt dann bewusst für genau diesen einen
