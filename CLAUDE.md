@@ -19,9 +19,21 @@ Sie müssen deshalb **ohne diesen Chatverlauf verständlich** bleiben.
 
 > **Override vom 23.08.2026, geht allen älteren Angaben vor:** Das Projekt
 > arbeitet **ausschließlich mit MNQ und NinjaTrader 8**. Kein MGC, kein
-> Tradovate, keine Multi-Instrument-Architektur. Zum verbliebenen
-> MGC-Register-Eintrag siehe `NORMALER_CHAT_KONTEXT.md` 18.2 — **Entscheidung
-> steht aus**.
+> Tradovate, keine Multi-Instrument-Architektur. Zum MGC-Register-Eintrag
+> siehe `NORMALER_CHAT_KONTEXT.md` 18.2 — **entschieden: bleibt** (Register
+> ist der einzige Beleg, dass `expiry_rule` instrumentspezifisch ist, keine
+> Datenhaltung dahinter).
+>
+> **Präzisiert am 25.08.2026, Cross-Asset-Referenzdaten:** Die
+> NinjaTrader-Bridge bleibt **ausschließlich MNQ** — auch für passive
+> Referenzdaten kein zweiter NT8-Instrument-Stream, keine Multi-Instrument-
+> Bridge. Cross-Asset-Kontextdaten (VIX, DXY, Zinsen etc.) für
+> Research/Regime-Analyse sind ausdrücklich erlaubt, aber **ausschließlich
+> über separate externe Quellen** (z.B. FRED), **niemals über die
+> NT8-MNQ-Bridge**. Rein passive Kontextdaten — nie gehandelt, nie an
+> Order-Ausführung gekoppelt. Bestehende Architektur nicht unnötig
+> umbauen. Details und Prüfung, ob FRED dafür allein reicht:
+> `CODE_CHAT_KONTEXT.md` Abschnitt 31.
 
 **Am Ende einer Aufgabe prüfen und selbständig aktualisieren**, wenn dauerhaft
 relevantes Wissen entstanden ist:

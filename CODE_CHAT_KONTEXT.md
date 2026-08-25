@@ -2393,7 +2393,7 @@ Cross-Asset umsetzen — **nur** die kostenlosen, unstrittigen Bausteine
 Trading-Economics-Kalender bewusst nicht verdrahtet (unverifiziertes
 Preismodell), Cross-Asset via NinjaTrader bewusst ausgeklammert.
 
-### 31.1 Konflikt gefunden, nicht selbst aufgelöst: Cross-Asset vs. MNQ-Override
+### 31.1 Konflikt gefunden — von Laurin am 25.08.2026 final geklärt
 
 Die Cross-Asset-Empfehlung (VIX/DXY/Treasury-Futures über die bestehende
 NinjaTrader-Bridge) ist technisch trivial — `ntbridge/store.py` hat keine
@@ -2401,9 +2401,17 @@ Instrument-Allowlist, ein neuer NT8-Chart könnte ohne Codeänderung
 schreiben. **Aber das ist exakt ein "Mehr-Instrument-Stream"**, den der
 MNQ-Override vom 23.08.2026 wörtlich ausschließt (`CLAUDE.md`,
 `NORMALER_CHAT_KONTEXT.md`, auch `IdeasConfig`-Kommentar in
-`common/config.py:261-262`). Ob der Override auch für rein passive,
-nie gehandelte Referenzdaten gilt, ist offen — an Laurin weitergegeben,
-nicht selbst entschieden. **Bis zur Klärung: nichts davon gebaut.**
+`common/config.py:261-262`).
+
+**Laurins Klärung (25.08.2026), präzisiert in `CLAUDE.md`:** Die
+NinjaTrader-Bridge bleibt ausschließlich MNQ, auch für passive
+Referenzdaten — keine zweite NT-Bridge, kein zusätzlicher Instrument-Stream
+über NinjaTrader, in welcher Form auch immer. Cross-Asset-Kontextdaten sind
+für Research/Regime-Analyse ausdrücklich erlaubt, aber **nur über separate
+externe Quellen** (z.B. FRED), nie über die NT8-MNQ-Bridge — rein passiv,
+nie gehandelt, nie an Order-Ausführung gekoppelt. Damit ist der eigentliche
+Konflikt (NT-Bridge ja/nein) entschieden; offen bleibt nur noch, welche
+externe Quelle die konkreten Reihen liefert — siehe 31.8.
 
 ### 31.2 Neues Paket `macro/`
 
@@ -2509,3 +2517,44 @@ description / region`. Abgeglichen gegen `macro/model.py::MacroObservation`
 
 **Fazit:** Kein Schema-Umbau nötig. Zwei mögliche additive Spalten für
 später (`description`, `region`), keine davon jetzt gebraucht.
+
+### 31.8 Reicht FRED allein für Cross-Asset, oder braucht es noch eine zweite Quelle?
+
+Nach Laurins Klärung (31.1) ist die NT8-Bridge fuer Cross-Asset ohnehin raus
+— die eigentliche Frage ist, ob `macro/` (FRED/ALFRED) die genannten Reihen
+technisch abdeckt oder ob noch eine dritte, externe Quelle nötig würde.
+
+**Geprüft, nicht angenommen** (`curl` gegen die öffentlichen FRED-Serienseiten,
+25.08.2026 — kein API-Aufruf, nur Existenzprüfung der Seite):
+
+| Reihe | FRED-ID | Status |
+|---|---|---|
+| VIX (Schlusskurs) | `VIXCLS` | vorhanden (HTTP 200) |
+| Dollar-Index, breit | `DTWEXBGS` | vorhanden (HTTP 200) — der aktuelle, nicht der ältere `DTWEXM` |
+| 10J-Treasury-Rendite | `DGS10` (täglich) / `GS10` (monatlich) | beide vorhanden (HTTP 200) |
+| WTI-Rohöl | `DCOILWTICO` | vorhanden (HTTP 200) |
+| Brent-Rohöl | `DCOILBRENTEU` | vorhanden (HTTP 200) |
+| **Gold** | `GOLDAMGBD228NLBM` / `GOLDPMGBD228NLBM` | **NICHT mehr vorhanden** — beide leiten auf `news.research.stlouisfed.org/2022/01/ice-benchmark-administration-ltd-iba-data-to-be-removed-from-fred/` um. FRED hat die LBMA-Goldpreise im Januar 2022 wegen eines Lizenzwechsels bei ICE Benchmark Administration entfernt. Ein `curl` gegen eine frei erfundene ID (`XYZNOTREAL123`) liefert zum Vergleich 404, nicht 301 — der Befund ist also kein Prüfartefakt. |
+
+**Antwort: FRED deckt VIX, Dollar-Index, Zinsen und Öl ab — Gold nicht.**
+Für Gold bräuchte es tatsächlich eine zweite, externe Quelle (nicht die
+NT8-Bridge) — noch nicht gesucht, da MNQ ohnehin kein Goldbezug hat und der
+Bedarf bislang nur aus der Recherche kommt, nicht aus einer konkreten
+Research-Frage.
+
+**Zweite Einschränkung, unabhängig von der Serienliste:** FRED liefert
+**Tagesschlusswerte**, keine Intraday-Bars. Für Regime-Klassifikation auf
+Session- oder Tagesebene (Masterplan-Vorschlag: "ATR-Perzentil über N
+Sessions") reicht das voraussichtlich; für einen Faktor, der wissen muss,
+ob VIX **gerade jetzt** (innerhalb der laufenden Session) ausschlägt, reicht
+es nicht. Diese Unterscheidung ist noch nicht entschieden — sie hängt davon
+ab, was die künftige Regime Engine (Masterplan H) tatsächlich braucht, und
+wird dort neu bewertet, nicht hier vorweggenommen.
+
+**Praktische Konsequenz:** Kein Kinetick-Abo, kein neuer Provider nötig, um
+mit VIX/DXY/Zinsen/Öl als Tageskontext zu starten — die acht kuratierten
+FRED-Reihen in `macro/provider.py::STANDARD_SERIEN` ließen sich um diese
+fünf (minus Gold) erweitern, ohne neue Infrastruktur. **Nicht umgesetzt** —
+das wäre eine neue Serienauswahl und damit wieder eine
+Trading-Logik-benachbarte Entscheidung, die Laurin gehört, kein reiner
+Verifikationsschritt.

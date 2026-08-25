@@ -849,7 +849,7 @@ stark korrelierten Faktoren (RSI und Stochastik auf demselben Kursverlauf)
 — das sind eher zwei Meßlatten an einem Fund als zwei unabhängige
 Bestätigungen. Der OOS-Block wurde weiterhin an keiner Stelle angerührt.
 
-### 18.10 Market Intelligence, Phase 1 umgesetzt — Cross-Asset-Frage neu aufgeworfen
+### 18.10 Market Intelligence, Phase 1 umgesetzt — Cross-Asset-Konflikt final geklärt
 
 25.08.2026: Laurin hat die Market-Intelligence-Frage aus 18.6 per
 ChatGPT-Recherche entschieden — FRED/ALFRED und Marktkalender jetzt bauen
@@ -857,12 +857,14 @@ ChatGPT-Recherche entschieden — FRED/ALFRED und Marktkalender jetzt bauen
 verifiziert), News weiterhin draußen. Umgesetzt, Details in
 `CODE_CHAT_KONTEXT.md` Abschnitt 31.
 
-**Dabei ein neuer Konflikt gefunden, nicht selbst aufgelöst:** die
-Cross-Asset-Empfehlung (VIX/DXY/Treasury-Futures über die bestehende
-NinjaTrader-Bridge) widerspricht wörtlich dem MNQ-Override vom 23.08.2026
-("kein Mehr-Instrument-Stream"). Deshalb **nicht gebaut**, bis Laurin
-klärt: gilt der Override auch für rein passive, nie gehandelte
-Referenzdaten, oder nur gegen weitere handelbare Instrumente wie MGC?
+**Cross-Asset/MNQ-Override-Konflikt, noch am selben Tag geklärt:** die
+NinjaTrader-Bridge bleibt ausschließlich MNQ, auch für passive
+Referenzdaten — keine zweite NT-Bridge, in keiner Form. Cross-Asset-
+Kontextdaten (VIX, DXY, Zinsen etc.) sind für Research erlaubt, aber nur
+über separate externe Quellen, nie über die NT8-MNQ-Bridge. Präzisiert in
+`CLAUDE.md`. Geprüft: FRED deckt VIX/Dollar-Index/Zinsen/Öl kostenlos ab,
+**Gold nicht** (2022 aus FRED entfernt) — Details in
+`CODE_CHAT_KONTEXT.md` Abschnitt 31.8.
 
 ---
 
