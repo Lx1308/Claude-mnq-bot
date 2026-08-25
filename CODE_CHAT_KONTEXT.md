@@ -7,6 +7,9 @@ Stand: 2026-08-25 (Abschnitt 31 — neues Paket `macro/` für Makro-Vintages
 für CME-Feiertage/Frühschlüsse — Phase 1 der Research-Engine-
 Datenarchitektur, ausdrücklich OHNE den Cross-Asset-Teil, der dem
 MNQ-Override widerspricht und noch auf Laurins Klärung wartet. 438 Tests.
+31.6/31.7: Laurins eigene Zusatzrecherche (Datenquellen-Matrix, Event-Schema)
+als Referenz für Phase 2/3 vermerkt, nicht implementiert — GDELT/ACLED/UCDP
+und FRED-VIXCLS als neue Kandidaten, Schema-Abgleich ohne Änderungsbedarf.
 Davor Abschnitt 30 — formale Validation-Phase: neue
 Dreiteilung Training/Validation/Out-of-Sample (`backtest/splits.py`,
 `split_data_three_way`), alle sechs Discovery-Kandidaten gleich geprüft auf
@@ -2451,9 +2454,58 @@ DST-Regressionstest. **438 Tests gesamt, alle grün, echter Windows-Lauf.**
 
 ### 31.5 Offen
 
-1. MNQ-Override-Frage (31.1) — an Laurin weitergegeben.
+1. MNQ-Override-Frage (31.1) — an Laurin weitergegeben, Stand 25.08.2026
+   Nachmittag weiterhin unklar beantwortet, siehe 31.7.
 2. Trading-Economics-Preise/Endpunkt verifizieren, bevor
    `EconomicCalendarProvider` implementiert wird.
 3. BLS/BEA-Zusatzindikatoren, FOMC-Tage über FRED (Laurins Phase 2).
 4. Noch kein Pipeline-Aufruf regelmäßig eingerichtet (Aufgabenplanung) —
    analog zur `ideas`-Situation bewusst nicht ungefragt automatisiert.
+
+### 31.6 Referenz-Fundgrube für Phase 2/3 (Laurins eigene ChatGPT-Recherche, 25.08.2026)
+
+**Nicht implementiert, nur vermerkt** — ändert nichts an der Phase-1-Entscheidung
+(FRED/ALFRED, Marktkalender, kein Trading Economics, keine News). Breitere
+Recherche zu Marktdaten-Provider, Zins/Anleihen, Cross-Asset, Volatilität/
+Optionen, News/Sentiment, geopolitischen Events, Marktinterna,
+Futures-Mechanik. Der darin enthaltene Gantt-Zeitplan (Monate bis 2027) ist
+generischer ChatGPT-Filler und wird ignoriert — passt nicht zu diesem
+Projekt-Tempo.
+
+**Neue Kandidaten, vorher nicht auf dem Schirm:**
+
+| Kandidat | Datenklasse | Kurzeinschätzung |
+|---|---|---|
+| **GDELT** | geopolitische Events | Kostenlos, extrem hochfrequent (15-Minuten-Updates), global. Bekannt notorisch verrauscht/geräuschbehaftet - Sentiment-Scores sind grobe Heuristiken, keine kuratierten Ereignisse. Für ein Blackout-artiges Flag ("heute viel geopolitisches Rauschen") denkbar, für einen sauberen Einzelfaktor eher nicht. |
+| **ACLED** | politische Gewalt/Konflikt-Events | Teils kostenlose Stufe (eingeschränkt), akademischer Zugang oft gratis. Ereignisbasiert mit Zeitstempel und Ort - deutlich kuratierter als GDELT, aber auf Konflikt/Protest fokussiert, nicht auf marktbewegende Wirtschaftsereignisse. |
+| **UCDP** (Uppsala Conflict Data Program) | Konfliktdaten | Rein akademisch, kostenlos, aber jährliche/grobe Aktualisierung - für Research auf 5m/15m-Zeitebene zu grobkörnig, allenfalls als Makro-Regime-Hintergrund brauchbar. |
+| **CBOE-Daten (Volatilität)** | Volatilität/Optionen | CBOE DataShop verkauft historische Optionsdaten (kostenpflichtig, nicht geprüft). **Aber:** der VIX-Schlusskurs selbst liegt vermutlich schon kostenlos in FRED (Serie `VIXCLS`) - Existenz der Seriennseite am 25.08.2026 verifiziert (`https://fred.stlouisfed.org/series/VIXCLS`, HTTP 200), der eigentliche Datenabruf über die API NICHT getestet (kein `FRED_API_KEY` lokal gesetzt). Falls die Serie brauchbar ist, ließe sie sich mit der **bereits gebauten** `macro/`-Infrastruktur ohne neue Anbindung abrufen (einfach ein weiterer Eintrag in `STANDARD_SERIEN` bzw. `macro.serien`) - anders als der NinjaTrader-Cross-Asset-Weg berührt das den MNQ-Override nicht, weil es Tages-EOD-Daten über FRED sind, kein zusätzlicher Live-Instrument-Stream. |
+
+**Weitere genannte Kategorien** (Marktdaten-Provider, Zins/Anleihen-Feeds,
+News/Sentiment-Anbieter, Marktinterna, Futures-Mechanik-Datenquellen) ohne
+konkrete neue Kandidaten, die nicht schon in Abschnitt F des Masterplans
+oder in der vorherigen Recherche (Abschnitt 30/31 hier) auftauchten.
+
+### 31.7 Schema-Abgleich: Laurins Vorschlag gegen das bereits gebaute Schema
+
+Laurins Vorschlag: `timestamp / availability / event_type / category /
+severity / source / expected_value / actual_value / revision /
+description / region`. Abgeglichen gegen `macro/model.py::MacroObservation`
+- **keine Änderung vorgenommen**, nur die Lücken benannt:
+
+| Vorschlag | Bereits vorhanden als | Einschätzung |
+|---|---|---|
+| `availability` | `available_at_utc` | deckungsgleich |
+| `event_type` | `event_type` | deckungsgleich |
+| `category` | `category` | deckungsgleich |
+| `source` | `source` | deckungsgleich |
+| `expected_value` | `forecast` | deckungsgleich, anderer Name |
+| `actual_value` | `actual` | deckungsgleich, anderer Name |
+| `revision` | `revision` + `revision_at_utc` | eigenes Schema ist feiner (Revision UND Revisionszeitpunkt getrennt) |
+| `severity` | `importance` | vermutlich dasselbe Konzept, anderer Name - keine Aktion |
+| `timestamp` (ein Feld) | drei Felder: `beobachtungszeitraum_utc`, `scheduled_at_utc`, `released_at_utc` | **bewusste Abweichung, kein Nachholbedarf** - ein einzelnes `timestamp`-Feld verwischt genau die Unterscheidung (Berichtsperiode vs. Ankündigung vs. Veröffentlichung), die der Moduldocstring von `macro/model.py` extra begründet. Ein einziges Feld wäre ein Rückschritt. |
+| `description` | **fehlt** | echte Lücke, additiv nachrüstbar (eine weitere nullable Spalte) - noch kein Bedarf, da `event_name` fürs bisherige FRED-Set reicht |
+| `region` | teilweise `country`/`currency` | `region` wäre breiter (z.B. "Eurozone" statt ein Land) - für das aktuelle US-only-Set von acht FRED-Reihen ohne Belang, relevant erst bei internationalen Reihen |
+
+**Fazit:** Kein Schema-Umbau nötig. Zwei mögliche additive Spalten für
+später (`description`, `region`), keine davon jetzt gebraucht.
