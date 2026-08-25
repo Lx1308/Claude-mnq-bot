@@ -284,6 +284,35 @@ event_risk:
   # Liefert Impact, Minutengenauigkeit, Forecast und Previous - aber KEIN
   # Actual. Die tatsaechlichen Werte kommen aus FRED (FRED_API_KEY in .env).
   forex_factory_url: "https://nfs.faireconomy.media/ff_calendar_thisweek.json"
+
+# ---------------------------------------------------------------------------
+# Makro-Vintages fuer die Research-Engine (FRED/ALFRED) - seit 25.08.2026.
+# Getrennt von event_risk oben: das speist den Live-Snapshot, dieses hier
+# die persistierte, revisionsfeste Historie fuer Backtests. Siehe macro/.
+# ---------------------------------------------------------------------------
+macro:
+  enabled: true
+  datenbank: "data/macro.sqlite3"
+
+  # Leer = die kuratierte Vorgabemenge aus macro/provider.py::STANDARD_SERIEN
+  # wird verwendet. Eigene Reihen-IDs stammen von https://fred.stlouisfed.org
+  serien: {}
+
+  # Kalendername fuer common/marktkalender.py (pandas_market_calendars).
+  # CME_Equity ist der richtige Kalender fuer CME-Index-Futures (MNQ/MES/
+  # ES/NQ) - empirisch gegen die installierte Bibliothek geprueft
+  # (schliesst 25.12./1.1. korrekt aus, zeigt 24.12. korrekt als
+  # Fruehschluss). ANDERE CME-Kalender (Agriculture/Rate/...) haben andere
+  # Feiertage und waeren hier falsch.
+  marktkalender: "CME_Equity"
+
+  # Kalenderanbieter fuer echte Wirtschaftstermine (z.B. Trading Economics) -
+  # ABSICHTLICH NICHT ueber diese Datei konfigurierbar. Ein Anbieter wird
+  # ausschliesslich ueber die Umgebungsvariable ECONOMIC_CALENDAR_PROVIDER
+  # eingehaengt (siehe .env.example) und erst, wenn er verifiziert ist -
+  # Stand 24.08.2026 ist keiner implementiert (macro/provider.py::
+  # EconomicCalendarProvider, Grund im Docstring dort).
+
 logging:
   level: INFO
   directory: logs

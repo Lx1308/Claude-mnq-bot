@@ -9,6 +9,7 @@ python-dotenv>=1.0.0       # .env laden
 # --- Analyse / Backtesting ---
 pandas>=2.1.0
 numpy>=1.26.0
+pandas_market_calendars>=5.0.0   # common/marktkalender.py: CME-Feiertage/Fruehschluesse
 
 # --- Reporting (Backtest-Vergleich) ---
 tabulate>=0.9.0

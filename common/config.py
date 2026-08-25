@@ -302,6 +302,23 @@ class EventRiskConfig:
 
 
 @dataclass(frozen=True)
+class MacroConfig:
+    """Makro-Vintages fuer die Research-Engine (FRED/ALFRED), siehe ``macro/``.
+
+    Getrennt von ``EventRiskConfig``: jenes speist den Live-Snapshot in
+    Claude Desktop, dieses die persistierte, revisionsfeste Historie fuer
+    Backtests. Ein gemeinsamer Abschnitt haette beide Zwecke vermischt.
+    """
+
+    enabled: bool = True
+    datenbank: str = "data/macro.sqlite3"
+    # Reihen-ID -> Anzeigename. Leer bedeutet: die kuratierte Vorgabemenge
+    # aus macro/provider.py::STANDARD_SERIEN wird verwendet.
+    serien: dict[str, str] = field(default_factory=dict)
+    marktkalender: str = "CME_Equity"
+
+
+@dataclass(frozen=True)
 class AnalyseConfig:
     """Parameter der Struktur- und Zonenanalyse im Snapshot.
 
@@ -378,6 +395,7 @@ class Config:
     # in Tests und Skripten aufbauen, ohne jede Sektion auszubuchstabieren.
     analyse: AnalyseConfig = field(default_factory=AnalyseConfig)
     event_risk: EventRiskConfig = field(default_factory=EventRiskConfig)
+    macro: MacroConfig = field(default_factory=MacroConfig)
     ntbridge: NtBridgeConfig = field(default_factory=NtBridgeConfig)
     ideas: IdeasConfig = field(default_factory=IdeasConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
@@ -458,6 +476,17 @@ class Config:
                     "https://nfs.faireconomy.media/ff_calendar_thisweek.json",
                 )
             ),
+        )
+
+        mc = dict(data.get("macro", {}) or {})
+        macro = MacroConfig(
+            enabled=bool(mc.get("enabled", True)),
+            datenbank=str(mc.get("datenbank", "data/macro.sqlite3")),
+            serien={
+                str(series_id).upper(): str(name)
+                for series_id, name in (mc.get("serien", {}) or {}).items()
+            },
+            marktkalender=str(mc.get("marktkalender", "CME_Equity")),
         )
 
         nb = dict(data.get("ntbridge", {}) or {})
@@ -549,6 +578,7 @@ class Config:
             indicators=indicators,
             analyse=analyse,
             event_risk=event_risk,
+            macro=macro,
             ntbridge=ntbridge,
             ideas=ideas,
             logging=logging_cfg,
@@ -667,4 +697,9 @@ class Config:
             raise ConfigError("backtest.split.mode muss 'fraction' oder 'date' sein.")
         if self.backtest.split.mode == "date" and not self.backtest.split.split_date:
             raise ConfigError("backtest.split.mode='date' erfordert backtest.split.split_date.")
+
+        if not self.macro.datenbank.strip():
+            raise ConfigError("macro.datenbank darf nicht leer sein.")
+        if not self.macro.marktkalender.strip():
+            raise ConfigError("macro.marktkalender darf nicht leer sein.")
 
