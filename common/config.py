@@ -316,6 +316,16 @@ class MacroConfig:
     # aus macro/provider.py::STANDARD_SERIEN wird verwendet.
     serien: dict[str, str] = field(default_factory=dict)
     marktkalender: str = "CME_Equity"
+    # Reihen-ID -> "High"/"Medium"/"Low". Eigene fachliche Einordnung
+    # (CPI/NFP/PCE = High, PPI/Retail Sales/Claims = Medium, ...) - KEINE
+    # externe Messung, keine Kalenderquelle. Begruendung: es gibt keine
+    # verlaessliche Gratis-Quelle fuer Forecast UND Impact zusammen
+    # (Trading Economics kostenpflichtig, ForexFactory-Scraping widerspricht
+    # der "kein fragiles Scraping als Kernarchitektur"-Regel), aber die
+    # Impact-Stufe selbst ist statisches Fachwissen, das sich nicht aendert -
+    # anders als ein Forecast-Wert ist sie nicht "erfunden", wenn wir sie
+    # selbst festlegen. Siehe CODE_CHAT_KONTEXT.md Abschnitt 31.10.
+    wichtigkeit: dict[str, str] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)
@@ -487,6 +497,10 @@ class Config:
                 for series_id, name in (mc.get("serien", {}) or {}).items()
             },
             marktkalender=str(mc.get("marktkalender", "CME_Equity")),
+            wichtigkeit={
+                str(series_id).upper(): str(stufe)
+                for series_id, stufe in (mc.get("wichtigkeit", {}) or {}).items()
+            },
         )
 
         nb = dict(data.get("ntbridge", {}) or {})
@@ -702,4 +716,10 @@ class Config:
             raise ConfigError("macro.datenbank darf nicht leer sein.")
         if not self.macro.marktkalender.strip():
             raise ConfigError("macro.marktkalender darf nicht leer sein.")
+        unbekannte_stufen = set(self.macro.wichtigkeit.values()) - {"High", "Medium", "Low"}
+        if unbekannte_stufen:
+            raise ConfigError(
+                f"macro.wichtigkeit enthaelt unbekannte Stufen {sorted(unbekannte_stufen)} - "
+                "erlaubt sind nur 'High', 'Medium', 'Low'."
+            )
 

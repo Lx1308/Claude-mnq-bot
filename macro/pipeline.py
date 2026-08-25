@@ -9,6 +9,7 @@ kostet also nur unnoetigen Netzwerkverkehr, keine Dateninkonsistenz.
 
 from __future__ import annotations
 
+import dataclasses
 import logging
 
 from common.logging_setup import log_event
@@ -23,6 +24,7 @@ def aktualisiere(
     provider: FredAlfredProvider,
     *,
     serien: dict[str, str] | None = None,
+    wichtigkeit: dict[str, str] | None = None,
 ) -> dict[str, int]:
     """Holt jede konfigurierte Reihe und speichert neue Vintages.
 
@@ -30,8 +32,15 @@ def aktualisiere(
     bei der die Abfrage fehlschlaegt, bricht NICHT den ganzen Lauf ab -
     andere Reihen sollen trotzdem ankommen - wird aber namentlich als Fehler
     ausgewiesen, nicht stillschweigend als "0 neue" verbucht.
+
+    ``wichtigkeit`` traegt die kuratierte Impact-Einstufung
+    (``config.yaml``, ``macro.wichtigkeit``) in die gespeicherten Zeilen ein
+    - FRED liefert selbst keine Einstufung, das ist reine fachliche
+    Einordnung (Begruendung: CODE_CHAT_KONTEXT.md Abschnitt 31.10). Eine
+    Reihe ohne Eintrag bleibt ``importance = None``, nicht geraten.
     """
     ziel_serien = serien if serien is not None else STANDARD_SERIEN
+    wichtigkeit = wichtigkeit or {}
     ergebnis: dict[str, int] = {}
 
     for series_id in ziel_serien:
@@ -48,6 +57,10 @@ def aktualisiere(
             )
             ergebnis[series_id] = -1  # -1 heisst "Fehler", nicht "0 neue"
             continue
+
+        stufe = wichtigkeit.get(series_id)
+        if stufe is not None:
+            vintages = [dataclasses.replace(v, importance=stufe) for v in vintages]
 
         neu = store.speichere(vintages)
         ergebnis[series_id] = neu

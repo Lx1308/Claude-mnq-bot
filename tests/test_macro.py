@@ -9,12 +9,13 @@ Calendar-Provider.
 from __future__ import annotations
 
 import asyncio
-import json
 from datetime import datetime, timezone
 
 import httpx
 import pytest
+import yaml
 
+from common.config import Config, ConfigError
 from macro.model import MacroObservation
 from macro.pipeline import aktualisiere
 from macro.provider import (
@@ -242,6 +243,37 @@ def test_pipeline_isoliert_fehler_je_reihe(tmp_path):
     store.close()
 
 
+def test_pipeline_traegt_kuratierte_wichtigkeit_in_gespeicherte_zeilen_ein(tmp_path):
+    store = MacroStore(tmp_path / "macro.sqlite3")
+    provider = _FakeProvider({"CPIAUCSL": [obs()], "RSAFS": [obs(source_event_id="RSAFS:2026-07-01")]})
+
+    aktualisiere(
+        store,
+        provider,
+        serien={"CPIAUCSL": "VPI", "RSAFS": "Einzelhandel"},
+        wichtigkeit={"CPIAUCSL": "High", "RSAFS": "Medium"},
+    )
+
+    cpi = store.stand_zum_zeitpunkt("fred_alfred", "CPIAUCSL:2026-07-01", datetime(2026, 8, 20, tzinfo=UTC))
+    rsafs = store.stand_zum_zeitpunkt("fred_alfred", "RSAFS:2026-07-01", datetime(2026, 8, 20, tzinfo=UTC))
+    assert cpi["importance"] == "High"
+    assert rsafs["importance"] == "Medium"
+    store.close()
+
+
+def test_pipeline_laesst_importance_leer_ohne_eintrag_in_wichtigkeit(tmp_path):
+    """Eine Reihe ohne Eintrag in macro.wichtigkeit wird nicht geraten -
+    importance bleibt None, nicht z.B. stillschweigend 'Medium'."""
+    store = MacroStore(tmp_path / "macro.sqlite3")
+    provider = _FakeProvider({"CPIAUCSL": [obs()]})
+
+    aktualisiere(store, provider, serien={"CPIAUCSL": "VPI"}, wichtigkeit={})
+
+    zeile = store.stand_zum_zeitpunkt("fred_alfred", "CPIAUCSL:2026-07-01", datetime(2026, 8, 20, tzinfo=UTC))
+    assert zeile["importance"] is None
+    store.close()
+
+
 # ---------------------------------------------------------------------------
 # Economic-Calendar-Provider: Schnittstelle vorhanden, nichts angeschaltet
 # ---------------------------------------------------------------------------
@@ -255,3 +287,22 @@ def test_calendar_provider_bricht_bei_unbekanntem_wert_laut_ab(monkeypatch):
     monkeypatch.setenv("ECONOMIC_CALENDAR_PROVIDER", "trading_economics")
     with pytest.raises(MacroProviderError, match="kein Kalenderanbieter implementiert"):
         create_economic_calendar_provider()
+
+
+# ---------------------------------------------------------------------------
+# Config: die kuratierte Wichtigkeit ist keine freie Zeichenkette
+# ---------------------------------------------------------------------------
+
+def test_config_bricht_bei_unbekannter_wichtigkeitsstufe_ab():
+    with open("config.yaml", encoding="utf-8") as handle:
+        daten = yaml.safe_load(handle)
+    daten["macro"]["wichtigkeit"] = {"CPIAUCSL": "Hoch"}  # nicht "High"
+
+    with pytest.raises(ConfigError, match="wichtigkeit"):
+        Config.from_dict(daten)
+
+
+def test_config_akzeptiert_die_vorgabe_aus_config_yaml():
+    cfg = Config.load("config.yaml")
+    assert cfg.macro.wichtigkeit["CPIAUCSL"] == "High"
+    assert set(cfg.macro.wichtigkeit.values()) <= {"High", "Medium", "Low"}

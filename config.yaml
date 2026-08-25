@@ -306,12 +306,33 @@ macro:
   # Feiertage und waeren hier falsch.
   marktkalender: "CME_Equity"
 
+  # Kuratierte Impact-Einstufung je Reihe (High/Medium/Low) - eigene
+  # fachliche Einordnung, KEINE externe Messung oder Kalenderquelle. Grund:
+  # es gibt keine verlaessliche Gratis-Quelle fuer Forecast UND Impact
+  # zusammen (Trading Economics kostenpflichtig, ForexFactory-Scraping
+  # widerspricht der "kein fragiles Scraping"-Regel) - die Impact-Stufe
+  # selbst aendert sich aber nicht wie ein Forecast-Wert, deshalb hier fest
+  # eingetragen statt offengelassen. Siehe CODE_CHAT_KONTEXT.md 31.10.
+  # Erlaubt: "High", "Medium", "Low" - Config.validate() bricht sonst ab.
+  wichtigkeit:
+    CPIAUCSL: High     # VPI
+    CPILFESL: High     # Kern-VPI
+    PCEPILFE: High     # Kern-PCE, von der Fed bevorzugtes Inflationsmass
+    PAYEMS: High        # Non-Farm Payrolls
+    PPIACO: Medium     # EPI
+    PPILFE: Medium     # Kern-EPI
+    RSAFS: Medium      # Einzelhandelsumsaetze
+    ICSA: Medium       # Erstantraege Arbeitslosenhilfe (woechentlich)
+
   # Kalenderanbieter fuer echte Wirtschaftstermine (z.B. Trading Economics) -
   # ABSICHTLICH NICHT ueber diese Datei konfigurierbar. Ein Anbieter wird
   # ausschliesslich ueber die Umgebungsvariable ECONOMIC_CALENDAR_PROVIDER
-  # eingehaengt (siehe .env.example) und erst, wenn er verifiziert ist -
-  # Stand 24.08.2026 ist keiner implementiert (macro/provider.py::
-  # EconomicCalendarProvider, Grund im Docstring dort).
+  # eingehaengt (siehe .env.example). Stand 25.08.2026 ist keiner
+  # implementiert: Trading Economics ist final verworfen (~22 USD/Monat,
+  # abgelehnt), ForexFactory-Scraping widerspricht der Scraping-Regel.
+  # Forecast/Consensus-Werte bleiben deshalb bis auf Weiteres unbefuellt -
+  # siehe macro/provider.py::EconomicCalendarProvider und
+  # CODE_CHAT_KONTEXT.md 31.10.
 
 logging:
   level: INFO

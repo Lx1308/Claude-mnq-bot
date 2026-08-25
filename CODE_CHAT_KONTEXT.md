@@ -5,12 +5,15 @@
 Stand: 2026-08-25 (Abschnitt 31 — neues Paket `macro/` für Makro-Vintages
 (FRED/ALFRED, revisionsfest, lookahead-sicher), `common/marktkalender.py`
 für CME-Feiertage/Frühschlüsse — Phase 1 der Research-Engine-
-Datenarchitektur. 438 Tests. MNQ-Override final präzisiert: NT-Bridge
+Datenarchitektur. MNQ-Override final präzisiert: NT-Bridge
 bleibt MNQ-only, Cross-Asset nur über externe Quellen wie FRED (31.1,
 `CLAUDE.md`) — FRED deckt VIX/Dollar/Zinsen/Öl ab, Gold nicht (31.8).
-Trading Economics final verworfen (~22$/Monat, Laurin zahlt nicht, 31.9);
-verbleibende Lücke Forecast/Importance sucht Laurin parallel per ChatGPT.
-31.6/31.7: Laurins eigene Zusatzrecherche (Datenquellen-Matrix, Event-Schema)
+Trading Economics final verworfen (~22$/Monat, Laurin zahlt nicht, 31.9).
+31.10: Forecast bleibt blockiert (keine akzeptable Gratis-Quelle, offen
+markiert statt weggelassen), Importance/Impact dagegen selbst kuratiert
+(`macro.wichtigkeit` in config.yaml, `Config.validate()` prüft die Werte,
+4 neue Tests, 442 gesamt) — kein Zahlenwert, deshalb keine "erfundene
+Messung". 31.6/31.7: Laurins eigene Zusatzrecherche (Datenquellen-Matrix, Event-Schema)
 als Referenz für Phase 2/3 vermerkt, nicht implementiert — GDELT/ACLED/UCDP
 und FRED-VIXCLS als neue Kandidaten, Schema-Abgleich ohne Änderungsbedarf.
 Davor Abschnitt 30 — formale Validation-Phase: neue
@@ -2588,3 +2591,54 @@ Berührung dieser Datei mitziehen.
 geliefert hätte. Laurin lässt das parallel über ChatGPT recherchieren,
 Ergebnis steht aus. Bis dahin bleibt der Economic-Calendar-Provider
 unverändert unscharf.
+
+### 31.10 Ergebnis der Forecast/Importance-Recherche (25.08.2026)
+
+Laurins Recherche: **keine verlässliche Gratis-Quelle für Forecast UND
+Impact zusammen.** Die einzigen zwei Optionen wären Trading Economics
+(kostenpflichtig, final verworfen, 31.9) oder ForexFactory-Scraping
+(kostenlos, aber rechtlich unklar, wartungsintensiv, nur Wochenexporte —
+widerspricht der "kein fragiles Scraping als Kernarchitektur"-Regel aus dem
+Master-Auftrag). Entscheidung: **beide abgelehnt.**
+
+**Forecast/Consensus-Feld: bleibt offen markiert, nicht stillschweigend
+weggelassen.** `MacroObservation.forecast` bleibt `None` für alle
+FRED/ALFRED-Zeilen (FRED liefert von sich aus keinen Konsenswert - das war
+schon vor dieser Entscheidung so). Damit bleibt das "Surprise"-Feature
+(`actual - forecast`) **blockiert, nicht gebaut, nicht geschätzt** - Grund
+im Feld selbst nachvollziehbar: "keine akzeptable Gratis-Quelle, Trading
+Economics abgelehnt (Kosten), Scraping abgelehnt (Policy)". Kein
+Statusfeld in der Datenbank dafür angelegt (das Fehlen von `forecast` IST
+die Aussage) - aber hier, im Langzeitgedächtnis, ausdrücklich als offener
+Punkt vermerkt, falls später doch eine akzeptable Quelle auftaucht.
+
+**Importance/Impact: anders behandelt, denn es ist keine externe Messung.**
+Anders als ein Forecast-Wert (der sich vor jeder Veröffentlichung ändert)
+ist die Impact-Einstufung eines Termintyps stabiles Fachwissen - CPI/NFP/
+Kern-PCE sind immer hochwirksam, PPI/Einzelhandel/Erstanträge immer
+mittel, unabhängig vom Tag. Deshalb **selbst kuratiert statt extern
+eingekauft**, analog zu anderen Schwellenwerten im Projekt: neues Feld
+`common/config.py::MacroConfig.wichtigkeit` (Reihen-ID -> "High"/"Medium"/
+"Low"), befüllt in `config.yaml` unter `macro.wichtigkeit` für alle acht
+kuratierten Reihen. `Config.validate()` bricht bei einer unbekannten Stufe
+ab (Tippfehler wie "Hoch" statt "High" fallen sofort auf, nicht erst beim
+Auswerten). `macro/pipeline.py::aktualisiere()` trägt die Stufe beim
+Speichern in `MacroObservation.importance` ein - eine Reihe ohne Eintrag
+bleibt `None`, nicht geraten. 4 neue Tests.
+
+**Wichtig, um Verwechslung zu vermeiden:** `wichtigkeit` ist eine bewusste
+Klassifikation, keine Messung - anders als jeder andere Wert in
+`economic_events` (die ausnahmslos von FRED/ALFRED stammen). Diese
+Unterscheidung ist der Grund, warum Forecast NICHT ebenso kuratiert wird:
+ein Forecast ist eine Prognose eines konkreten Zahlenwerts zu einem
+konkreten Termin und würde als Schätzung aussehen, die wie eine Messung
+wirkt (Invariante 11) - eine Impact-Stufe ist das nicht, sie behauptet
+keinen Zahlenwert.
+
+**Praktische Konsequenz für Event-Proximity/Event-State-Features (Phase
+1/2):** FRED-Actuals plus Release-Timing (`available_at_utc`) reichen dafür
+aus, auch ohne Surprise-Feature - "war kürzlich ein hochwirksamer Termin"
+und "wie weit weicht der neue Wert vom vorherigen ab" (`actual` vs.
+`previous`-Vintage in derselben Reihe) sind ohne Forecast bereits baubar.
+Nicht umgesetzt in dieser Sitzung - das wäre die nächste inhaltliche
+Erweiterung von `macro/`, kein reiner Verifikations-/Konfigurationsschritt.
