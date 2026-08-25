@@ -3,8 +3,11 @@
 **Dauerhaftes Gedächtnis der inhaltlichen Projektseite.**
 Für künftige Claude-Chat-Sessions ohne Zugriff auf den alten Verlauf.
 
-**Stand: 24. August 2026** — vollständig gegen Code, Datenbanken und Testlauf
+**Stand: 25. August 2026** — vollständig gegen Code, Datenbanken und Testlauf
 gegengeprüft, nicht aus Notizen fortgeschrieben.
+**Ergänzt 25. August 2026: Market-Intelligence Phase 1 gebaut (FRED/ALFRED,
+Marktkalender), Cross-Asset-Teil widerspricht dem MNQ-Override und wartet
+auf Klärung (Abschnitt 18.10).**
 **Ergänzt 24. August 2026 (fünfte Sitzung): formale Validation-Phase, alle
 sechs Discovery-Kandidaten gleich geprüft auf einem neuen, nie berührten
 Block — 2 von 6 bestehen, Zirkularitätseinordnung aus der Vorsitzung
@@ -845,6 +848,21 @@ verwendet werden? Einschränkend: beide betreffen dieselbe Strategie mit
 stark korrelierten Faktoren (RSI und Stochastik auf demselben Kursverlauf)
 — das sind eher zwei Meßlatten an einem Fund als zwei unabhängige
 Bestätigungen. Der OOS-Block wurde weiterhin an keiner Stelle angerührt.
+
+### 18.10 Market Intelligence, Phase 1 umgesetzt — Cross-Asset-Frage neu aufgeworfen
+
+25.08.2026: Laurin hat die Market-Intelligence-Frage aus 18.6 per
+ChatGPT-Recherche entschieden — FRED/ALFRED und Marktkalender jetzt bauen
+(kostenlos), Trading-Economics-Kalender vorerst NICHT (Preise nicht
+verifiziert), News weiterhin draußen. Umgesetzt, Details in
+`CODE_CHAT_KONTEXT.md` Abschnitt 31.
+
+**Dabei ein neuer Konflikt gefunden, nicht selbst aufgelöst:** die
+Cross-Asset-Empfehlung (VIX/DXY/Treasury-Futures über die bestehende
+NinjaTrader-Bridge) widerspricht wörtlich dem MNQ-Override vom 23.08.2026
+("kein Mehr-Instrument-Stream"). Deshalb **nicht gebaut**, bis Laurin
+klärt: gilt der Override auch für rein passive, nie gehandelte
+Referenzdaten, oder nur gegen weitere handelbare Instrumente wie MGC?
 
 ---
 

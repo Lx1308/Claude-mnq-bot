@@ -2,7 +2,12 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-24 (Abschnitt 30 — formale Validation-Phase: neue
+Stand: 2026-08-25 (Abschnitt 31 — neues Paket `macro/` für Makro-Vintages
+(FRED/ALFRED, revisionsfest, lookahead-sicher), `common/marktkalender.py`
+für CME-Feiertage/Frühschlüsse — Phase 1 der Research-Engine-
+Datenarchitektur, ausdrücklich OHNE den Cross-Asset-Teil, der dem
+MNQ-Override widerspricht und noch auf Laurins Klärung wartet. 438 Tests.
+Davor Abschnitt 30 — formale Validation-Phase: neue
 Dreiteilung Training/Validation/Out-of-Sample (`backtest/splits.py`,
 `split_data_three_way`), alle sechs Discovery-Kandidaten gleich geprüft auf
 einem Block, den Discovery nie gesehen hat — 2 von 6 überstehen die
@@ -2365,11 +2370,90 @@ Der OOS-Teil wurde an keiner Stelle angerührt.
 python.exe -m pytest`, Exitcode 0). 5 neu (Dreiteilung), keine Testdatei
 sonst geändert.
 
-### Offen für die nächste Sitzung
+### Offen für die nächste Sitzung (Stand vor Abschnitt 31, teilweise überholt)
 
-1. Laurins Antwort zur Market-Intelligence-Frage (Abschnitt 28) und zur
-   OOS-Verwendung für Confirmation (30.5) abwarten.
+1. Laurins Antwort zur Market-Intelligence-Frage (Abschnitt 28, jetzt
+   teilweise beantwortet — siehe 31) und zur OOS-Verwendung für Confirmation
+   (30.5) abwarten.
 2. Codex-Automation und Windows-Task bleiben pausiert.
 3. Sollte Laurin die Confirmation freigeben: einmaliger Lauf auf dem
    85-100-%-Block, `assert_validation_only` entfällt dann bewusst für genau
    diesen einen Aufruf.
+
+---
+
+## 31. Research-Engine-Datenarchitektur, Phase 1: `macro/` + Marktkalender (25.08.2026)
+
+Auftrag: Laurins Entscheidung aus einer ChatGPT-Recherche zu News/Makro/
+Cross-Asset umsetzen — **nur** die kostenlosen, unstrittigen Bausteine
+(FRED/ALFRED, Marktkalender, kanonisches Event-Schema, Lookahead-Schutz),
+Trading-Economics-Kalender bewusst nicht verdrahtet (unverifiziertes
+Preismodell), Cross-Asset via NinjaTrader bewusst ausgeklammert.
+
+### 31.1 Konflikt gefunden, nicht selbst aufgelöst: Cross-Asset vs. MNQ-Override
+
+Die Cross-Asset-Empfehlung (VIX/DXY/Treasury-Futures über die bestehende
+NinjaTrader-Bridge) ist technisch trivial — `ntbridge/store.py` hat keine
+Instrument-Allowlist, ein neuer NT8-Chart könnte ohne Codeänderung
+schreiben. **Aber das ist exakt ein "Mehr-Instrument-Stream"**, den der
+MNQ-Override vom 23.08.2026 wörtlich ausschließt (`CLAUDE.md`,
+`NORMALER_CHAT_KONTEXT.md`, auch `IdeasConfig`-Kommentar in
+`common/config.py:261-262`). Ob der Override auch für rein passive,
+nie gehandelte Referenzdaten gilt, ist offen — an Laurin weitergegeben,
+nicht selbst entschieden. **Bis zur Klärung: nichts davon gebaut.**
+
+### 31.2 Neues Paket `macro/`
+
+| Datei | Inhalt |
+|---|---|
+| `macro/model.py` | `MacroObservation` — kanonisches Event-Schema, getrimmt auf den tatsächlich befüllbaren Kern (Monetary-Policy- und News-Zusatzfelder aus der Recherche bewusst weggelassen, additiv nachrüstbar). Naive Zeitstempel werden abgelehnt. |
+| `macro/store.py` | `MacroStore`, eigene DB `data/macro.sqlite3` (WAL). Revisionen werden nie überschrieben (`ON CONFLICT DO NOTHING`, nicht `DO UPDATE` — anders als `ideas/store.py`, bewusst). `stand_zum_zeitpunkt()` ist der einzige lookahead-sichere Lesepfad. |
+| `macro/provider.py` | `FredAlfredProvider` (volle ALFRED-Vintage-Historie über `realtime_start`/`realtime_end`), `MacroProviderError` (Fail-safe, nie leere Liste bei Ausfall), `EconomicCalendarProvider`-Protocol (Schnittstelle für Trading Economics o.ä. — **keine Implementierung**), `create_economic_calendar_provider()` liest `ECONOMIC_CALENDAR_PROVIDER` und bricht bei gesetztem, aber unbekanntem Wert laut ab statt still `None` zu liefern. |
+| `macro/pipeline.py` | `aktualisiere()` — pro Reihe fehlertolerant, ein Ausfall bricht nicht den ganzen Lauf ab. |
+
+`STANDARD_SERIEN` in `provider.py` dupliziert bewusst dieselben acht
+FRED-Reihen aus `mcp_server/calendar_provider.py::FRED_SERIES_BY_KEYWORD`
+statt sie zu importieren — sonst würde die Research-Schicht von der
+Live-MCP-Schicht abhängen (Masterplan D: Schichten dürfen nur nach unten
+greifen).
+
+### 31.3 `common/marktkalender.py` — ein DST-Fund unterwegs
+
+Wrapper um `pandas_market_calendars` (neue Abhängigkeit, `CME_Equity`
+empirisch gegen die installierte Bibliothek geprüft: schließt 25.12./1.1.
+korrekt aus, erkennt 24.12. als Frühschluss).
+
+**Bug gefunden und behoben, bevor er committet wurde:** `ist_fruehschluss()`
+verglich zuerst gegen einen festen UTC-Stunden-Schwellenwert (22). Das
+bestand den Weihnachtstest, fiel aber bei einem ganz normalen August-Tag —
+CMEs Regelschluss ist 16:00 **CT**, das sind in UTC je nach Sommer-/
+Winterzeit 21:00 oder 22:00. Ein fester UTC-Wert ist also die Hälfte des
+Jahres falsch — dieselbe Fehlerklasse wie Bug-Lehre 3
+(`CODE_CHAT_KONTEXT.md` Abschnitt 8), nur an neuer Stelle. Behoben: Vergleich
+in der kalendereigenen Zeitzone (`self._kalender.tz`) gegen
+`self._kalender.close_time` — beides aus der Bibliothek selbst, nichts
+geraten. Regressionstest `test_normaler_handelstag_ist_kein_fruehschluss`
+ist der, der die alte Fassung tatsächlich zu Fall gebracht hat.
+
+### 31.4 Config, Secrets, Tests
+
+`common/config.py`: neue `MacroConfig` (Abschnitt `macro:` in
+`config.yaml`), `Config.validate()` prüft `datenbank`/`marktkalender` nicht
+leer. `.env.example` bereinigt (tote Tradovate/Anthropic/Telegram-Reste
+entfernt, `ECONOMIC_CALENDAR_PROVIDER` als auskommentierter Platzhalter mit
+Begründung, warum er nicht gesetzt werden soll). `requirements.txt`:
+`pandas_market_calendars` ergänzt.
+
+22 neue Tests (`tests/test_macro.py`, `tests/test_marktkalender.py`) —
+Lookahead, Revision-Unveränderlichkeit, Idempotenz, Timezone-Ablehnung,
+Fail-safe bei Providerausfall, Pipeline-Fehlerisolation je Reihe,
+DST-Regressionstest. **438 Tests gesamt, alle grün, echter Windows-Lauf.**
+
+### 31.5 Offen
+
+1. MNQ-Override-Frage (31.1) — an Laurin weitergegeben.
+2. Trading-Economics-Preise/Endpunkt verifizieren, bevor
+   `EconomicCalendarProvider` implementiert wird.
+3. BLS/BEA-Zusatzindikatoren, FOMC-Tage über FRED (Laurins Phase 2).
+4. Noch kein Pipeline-Aufruf regelmäßig eingerichtet (Aufgabenplanung) —
+   analog zur `ideas`-Situation bewusst nicht ungefragt automatisiert.
