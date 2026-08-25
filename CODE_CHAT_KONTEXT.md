@@ -5,8 +5,11 @@
 Stand: 2026-08-25 (Abschnitt 31 — neues Paket `macro/` für Makro-Vintages
 (FRED/ALFRED, revisionsfest, lookahead-sicher), `common/marktkalender.py`
 für CME-Feiertage/Frühschlüsse — Phase 1 der Research-Engine-
-Datenarchitektur, ausdrücklich OHNE den Cross-Asset-Teil, der dem
-MNQ-Override widerspricht und noch auf Laurins Klärung wartet. 438 Tests.
+Datenarchitektur. 438 Tests. MNQ-Override final präzisiert: NT-Bridge
+bleibt MNQ-only, Cross-Asset nur über externe Quellen wie FRED (31.1,
+`CLAUDE.md`) — FRED deckt VIX/Dollar/Zinsen/Öl ab, Gold nicht (31.8).
+Trading Economics final verworfen (~22$/Monat, Laurin zahlt nicht, 31.9);
+verbleibende Lücke Forecast/Importance sucht Laurin parallel per ChatGPT.
 31.6/31.7: Laurins eigene Zusatzrecherche (Datenquellen-Matrix, Event-Schema)
 als Referenz für Phase 2/3 vermerkt, nicht implementiert — GDELT/ACLED/UCDP
 und FRED-VIXCLS als neue Kandidaten, Schema-Abgleich ohne Änderungsbedarf.
@@ -2460,12 +2463,12 @@ Lookahead, Revision-Unveränderlichkeit, Idempotenz, Timezone-Ablehnung,
 Fail-safe bei Providerausfall, Pipeline-Fehlerisolation je Reihe,
 DST-Regressionstest. **438 Tests gesamt, alle grün, echter Windows-Lauf.**
 
-### 31.5 Offen
+### 31.5 Offen (Stand bei Erstfassung — siehe 31.9 für den aktuellen Stand)
 
-1. MNQ-Override-Frage (31.1) — an Laurin weitergegeben, Stand 25.08.2026
-   Nachmittag weiterhin unklar beantwortet, siehe 31.7.
-2. Trading-Economics-Preise/Endpunkt verifizieren, bevor
-   `EconomicCalendarProvider` implementiert wird.
+1. ~~MNQ-Override-Frage (31.1) — an Laurin weitergegeben~~ **erledigt**,
+   siehe 31.1 (final geklärt 25.08.2026) und `CLAUDE.md`.
+2. ~~Trading-Economics-Preise/Endpunkt verifizieren~~ **erledigt, Ergebnis:
+   verworfen** — siehe 31.9.
 3. BLS/BEA-Zusatzindikatoren, FOMC-Tage über FRED (Laurins Phase 2).
 4. Noch kein Pipeline-Aufruf regelmäßig eingerichtet (Aufgabenplanung) —
    analog zur `ideas`-Situation bewusst nicht ungefragt automatisiert.
@@ -2558,3 +2561,30 @@ fünf (minus Gold) erweitern, ohne neue Infrastruktur. **Nicht umgesetzt** —
 das wäre eine neue Serienauswahl und damit wieder eine
 Trading-Logik-benachbarte Entscheidung, die Laurin gehört, kein reiner
 Verifikationsschritt.
+
+### 31.9 Trading Economics final verworfen (25.08.2026)
+
+**Nicht mehr "Preise unverifiziert", sondern endgültig entschieden:**
+Trading Economics kostet für API-/Downloadzugriff rund 22 USD/Monat (die
+Web-Ansicht selbst ist kostenlos, aber ohne Export). Laurin ist explizit
+nicht bereit, dafür zu zahlen — **Trading Economics ist als
+Economic-Calendar-Provider raus**, nicht nur pausiert.
+
+Ändert nichts an der Architektur: `macro/provider.py::
+EconomicCalendarProvider` bleibt eine reine Schnittstelle ohne
+Implementierung, `ECONOMIC_CALENDAR_PROVIDER` bleibt ungesetzt. Der
+Ablehnungsgrund in `create_economic_calendar_provider()` und die
+`.env.example`-Notiz ("Preise nicht verifiziert") sind damit **präzisierungsbedürftig,
+aber nicht falsch** — beide sagen "kein Anbieter implementiert", was
+weiterhin zutrifft; nur der Grund hat sich von "ungeklärt" zu "abgelehnt"
+verschoben. Nicht umbenannt, um keine Änderung ohne echten Bedarf zu machen
+(dieselbe Konsequenz: Variable bleibt leer) — bei der nächsten inhaltlichen
+Berührung dieser Datei mitziehen.
+
+**Die verbleibende echte Lücke:** FRED deckt Ist-Werte (`actual`) und
+– über Forex Factory – Ankündigungstermine bereits ab. Was fehlt, ist eine
+**kostenlose** Quelle für Forecast/Konsens-Werte und Impact-Einstufung
+(`importance`) zu Wirtschaftsterminen — genau das, was Trading Economics
+geliefert hätte. Laurin lässt das parallel über ChatGPT recherchieren,
+Ergebnis steht aus. Bis dahin bleibt der Economic-Calendar-Provider
+unverändert unscharf.
