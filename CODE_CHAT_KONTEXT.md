@@ -456,6 +456,45 @@ wird nie geschätzt — eine Schätzung sähe aus wie eine Messung.
 Sonst kollidiert ein Payload-Feld `message` mit dem Positionsparameter, und zwar
 im Fehlerpfad.
 
+### 5.10 Indikator statt AddOn geprüft und verworfen (25.08.2026)
+
+Laurins Frage: brächte ein NinjaTrader-**AddOn** statt des chart-gebundenen
+Indikators Zugriff auf bereits geladene Chart-Historie (Backfill), nicht
+nur neue Live-Bars? **Antwort: nein, das kann die bestehende Komponente
+schon** - `ClaudeBridge.cs` verarbeitet `State.Historical` explizit
+(`OnBarUpdate`, Zeile 278-287): jede historische Kerze wird gepuffert und
+beim Umschalten auf `State.Realtime` in einem Paket verschickt
+(`FlushHistoricalBuffers`). Das ist seit dem Start am 21.08.2026 belegt
+lauffähig: bei "Days to load: 7" kamen 3015 von 3000 angeforderten
+1m-Kerzen an (Abschnitt 17 in `NORMALER_CHAT_KONTEXT.md`) - kein
+Live-only-Pfad.
+
+**Wo eine AddOn tatsächlich anders wäre:** sie könnte ohne offenen Chart
+laufen und über `BarsRequest`/`Instrument`-APIs beliebige historische
+Bereiche programmatisch anfordern, statt an "Days to load" eines Charts
+gebunden zu sein. Das löst aber nicht das eigentliche Problem: wie weit
+zurück reicht die Historie ist eine Eigenschaft des angeschlossenen
+**Datenfeeds** (Kinetick/Sim), nicht der NinjaScript-Objektart - ein AddOn
+bekäme aus demselben Feed nicht mehr Jahre an Minutendaten als ein
+Indikator, nur denselben begrenzten Vorrat auf einem anderen Weg abgefragt.
+
+**Die eigentliche Backfill-Frage (Jahre an Historie fürs Backtesting) ist
+bereits bewusst anders gelöst**, nicht über NT8: die Dukascopy-Näherung
+(10 Jahre, als Näherung gekennzeichnet, Invariante 11) übernimmt das, weil
+zehn Jahre echte MNQ-Minutendaten kostenlos nirgends erhältlich sind -
+auch nicht über einen NT8-Feed, ob per Indikator oder AddOn abgefragt.
+
+**Empfehlung: nicht umbauen.** Kein belegter Vorteil, der den Umbau der
+"kritischsten Komponente des Systems" rechtfertigt (zweimal bereits von
+außen zerstört, Bug-Lehre 11; aktuell 0 abgelehnte Kerzen bei >6800
+empfangenen). Falls mehr Backfill-Tiefe gewünscht ist: "Days to load" im
+NT8-Chart erhöhen und `HistoricalBarsBase` im Indikator entsprechend
+anheben - dieselbe Architektur, keine Codeänderung, in Minuten testbar, ob
+der Feed überhaupt mehr als 7 Tage 1m-Historie vorhält. Nur falls dieser
+Test zeigt, dass deutlich mehr Historie verfügbar wäre UND ein Betrieb
+ganz ohne offenen Chart gebraucht wird, wäre eine AddOn-Prüfung überhaupt
+neu zu bewerten - beides bisher nicht der Fall. **Nichts umgebaut.**
+
 ---
 
 ## 6. Etappe C: gebaut am 22.08.2026
