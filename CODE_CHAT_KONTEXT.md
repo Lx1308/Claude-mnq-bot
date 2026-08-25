@@ -2708,3 +2708,76 @@ und "wie weit weicht der neue Wert vom vorherigen ab" (`actual` vs.
 `previous`-Vintage in derselben Reihe) sind ohne Forecast bereits baubar.
 Nicht umgesetzt in dieser Sitzung - das wäre die nächste inhaltliche
 Erweiterung von `macro/`, kein reiner Verifikations-/Konfigurationsschritt.
+
+---
+
+## 32. Architekturvergleich: TradeX (Kumpel-Projekt), 25.08.2026
+
+Auftrag: `github.com/MrT2044/TradeX` read-only geprüft (geklont, gelesen,
+danach wieder gelöscht - nichts ausgeführt, nichts installiert, nichts
+kopiert), Order-Ausführung/UI bewertet, ehrlicher Vergleich, Empfehlung
+eigenständig vs. Merge. **Reine Analyse, kein Bauauftrag - nichts an
+unserem Code geändert.**
+
+### 32.1 Was TradeX ist
+
+FastAPI-Backend + React/TypeScript-Oberfläche (`lightweight-charts`),
+NinjaTrader-**AddOn** als reine Datenquelle (kein Order-Kanal), Order-
+Ausführung separat über Interactive Brokers. 536 Tests, `ruff` + `tsc` als
+Lint-/Typecheck-Gates (haben wir nicht). Eigenes `CLAUDE.md` mit auffällig
+ähnlicher Diszipliner-Sprache.
+
+**Kein "schnell gebautes" Projekt.** Die Order-Sicherheitskette ist
+mehrstufig, fail-closed, reine Funktionen ohne I/O (testbar ohne laufendes
+Gateway): Konfiguration → Port → Konto → Kontrakt → Risk Engine →
+Datenalter → Rate-Limit → Duplikatprüfung, jede Stufe einzeln UND in
+Gegenrichtung getestet (`test_ohne_orderrecht_sperrt_die_kette_den_socket_nicht`
+/ `test_mit_orderrecht_sperrt_...sehr_wohl`). Live-Port ist **strukturell**
+nie erreichbar (keine Codeverzweigung dafür, nicht nur ein Flag). Paper-
+Konto-Nachweis über zwei offen als unsicher gekennzeichnete Indizien
+(Allowlist ODER `DU`/`DF`-Präfix, Letzteres explizit "Konvention, keine
+API-Zusicherung"). Dreifacher Duplikatschutz. Backtest und Order-Ausführung
+laufen durch denselben Entscheidungscode, nur die Füllquelle ist
+austauschbar - dieselbe Invariante 1, nur auf Order-Ausführung angewendet.
+
+**Bemerkenswerte unabhängige Konvergenz:** TradeX nutzt für Wirtschafts-
+termine **exakt unsere Kombination** FRED + Forex Factory, mit derselben
+Begründung ("keine kostenlose Quelle kann Historie UND genaue Uhrzeit") und
+demselben Fail-safe-Prinzip ("ein stiller Filter wäre der teuerste
+Fehler" - wortwörtlich unsere eigene Formulierung, unabhängig entstanden).
+
+### 32.2 Vergleich
+
+| | TradeX | Wir |
+|---|---|---|
+| Order-Ausführung | gebaut, gegen echtes IB-Gateway getestet, Live strukturell gesperrt | bewusst zurückgestellt |
+| Eigene UI | React-Dashboard, SSE-Live-Updates | keine - Claude Desktop interpretiert |
+| Linting | `ruff` + `tsc` | keins |
+| Tests | 536 | 442 |
+| Scope | Multi-Instrument (MNQ+MES), Ziel volle Autonomie | MNQ-only (Override), Claude bleibt Interpretationsschicht |
+| Nachgewiesener Edge | keiner | keiner |
+
+**Kein Qualitätsgefälle, sondern ein Zielunterschied:** TradeX steuert auf
+volle Autonomie zu (eigene Strategie-/Risiko-/Order-Engine, Claude Code nur
+Entwicklungswerkzeug). Unser Projekt hält Claude Desktop bewusst als
+dauerhafte Interpretationsschicht - kein Vorstufe zu TradeX, ein anderes
+Zielbild. **Kein Konflikt mit unseren Grundregeln**, eher unabhängige
+Bestätigung (gleiche Phasentrennung, gleiche Lookahead-Disziplin, gleiche
+"keine erfundenen Zahlen"-Haltung bei Gebühren-Schätzungen).
+
+### 32.3 Empfehlung: eigenständig bleiben
+
+Laurins Ausgangsgefühl bestätigt - die Codequalität von TradeX ändert daran
+nichts. Ein Vollmerge zweier unterschiedlicher Zielbilder (Autonomie vs.
+Claude-als-Interpret) mit unterschiedlichen Tech-Stacks wäre ein großer,
+riskanter Umbau ohne klaren Gewinn - beide Projekte haben noch keinen
+nachgewiesenen Edge, ein Merge legte zwei ungetestete Hypothesen zusammen,
+keine bewährte mit einer neuen.
+
+**Konzepte als Referenz für eine spätere, eigene Order-Ausführungs-Etappe**
+(nicht jetzt bauen, nichts kopiert - reine Beobachtung):
+- fail-closed Order-Sicherheitskette (Vorbild für unsere künftige Etappe)
+- `config_hash` an jedem gespeicherten Lauf (Reproduzierbarkeit)
+- Reason-Code-System statt Freitext (generalisiert unser Drei-Ausgänge-Filterprinzip)
+- SSE statt Dauerabfrage, für eine künftige eigene Oberfläche
+- gehaltenes File-Handle als Startsperre (übersteht Abstürze)
