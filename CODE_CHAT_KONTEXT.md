@@ -495,6 +495,33 @@ Test zeigt, dass deutlich mehr Historie verfügbar wäre UND ein Betrieb
 ganz ohne offenen Chart gebraucht wird, wäre eine AddOn-Prüfung überhaupt
 neu zu bewerten - beides bisher nicht der Fall. **Nichts umgebaut.**
 
+### 5.11 Andere Frage, andere Antwort: AddOn gegen Neustart-Robustheit (25.08.2026)
+
+Nicht dieselbe Frage wie 5.10 noch einmal, sondern Laurins eigentliche
+Sorge: nach einem Neustart von PC/NinjaTrader muss der Indikator manuell
+neu an den Chart gehängt werden. **Hier stimmt der technische Kern seines
+Arguments** - eine AddOn läuft auf Applikationsebene und braucht dafür
+keinen Chart, ein Indikator zwingend schon. Anders als bei 5.10 ist das
+kein Missverständnis.
+
+**Trotzdem nicht umgebaut, weil es eine deutlich billigere Lösung gibt:**
+NinjaTrader-**Workspaces**. Ein gespeicherter Workspace enthält den Chart
+samt bereits konfiguriertem Indikator; als Start-Workspace hinterlegt,
+öffnet sich das beim NT8-Start automatisch, ohne manuellen Klick - reine
+NinjaTrader-Bedienungseinstellung, keine Codeänderung. **Nicht an einer
+laufenden NT8-Instanz verifiziert** (kein Zugriff von hier aus) - das ist
+Standard-Plattformverhalten, keine Messung, und sollte von Laurin über
+ein paar echte Neustarts geprüft werden. Das README dokumentiert diesen
+Schritt bisher gar nicht - das ist vermutlich die eigentliche Lücke.
+
+**Empfehlung:** Erst Workspace-Autoload testen. Eine AddOn haette dafuer
+ein komplett anderes Lebenszyklus-Modell noetig (kein `OnBarUpdate`/
+`State.Historical`, die gesamte Puffer-/Flush-/Zeitzonenlogik muesste neu
+gebaut werden) - fuer ein reines Bedienkomfort-Problem an der bereits
+zweimal zerstoerten Kernkomponente unverhaeltnismaessig, wenn ein
+Bordmittel dasselbe Ergebnis liefert. Nur falls der Workspace-Test
+nachweislich scheitert, waere eine AddOn-Pruefung neu aufzurollen.
+
 ---
 
 ## 6. Etappe C: gebaut am 22.08.2026
