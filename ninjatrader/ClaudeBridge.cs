@@ -586,6 +586,7 @@ namespace NinjaTrader.NinjaScript.Indicators
                 // die dieses Projekt vermeiden will.
                 if (period.Value == 1440) return null;
                 if (period.Value == 60) return "1h";
+                if (period.Value == 240) return "4h";
                 return period.Value.ToString(CultureInfo.InvariantCulture) + "m";
             }
 

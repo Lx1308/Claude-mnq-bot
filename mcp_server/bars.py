@@ -58,7 +58,7 @@ log = logging.getLogger(__name__)
 # Unterstuetzte Timeframes und ihre Laenge in Minuten. "1d" ist ein
 # Sonderfall: NinjaTrader liefert Tageskerzen ueber BarsPeriodType.Day,
 # also gemaess Handelszeiten-Vorlage des Kontrakts - nicht als 1440 Minuten.
-TIMEFRAME_MINUTES: dict[str, int] = {"1m": 1, "5m": 5, "15m": 15, "1h": 60}
+TIMEFRAME_MINUTES: dict[str, int] = {"1m": 1, "5m": 5, "15m": 15, "1h": 60, "4h": 240}
 DAILY = "1d"
 ALL_TIMEFRAMES = (*TIMEFRAME_MINUTES, DAILY)
 
@@ -75,6 +75,7 @@ DEFAULT_BAR_COUNTS: dict[str, int] = {
     "5m": 800,     # ~2.8 Sessions
     "15m": 500,    # ~5 Sessions
     "1h": 300,
+    "4h": 200,
     DAILY: 120,
 }
 

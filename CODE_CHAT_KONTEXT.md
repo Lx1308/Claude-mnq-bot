@@ -2,20 +2,16 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-25 (Abschnitt 31 — neues Paket `macro/` für Makro-Vintages
-(FRED/ALFRED, revisionsfest, lookahead-sicher), `common/marktkalender.py`
-für CME-Feiertage/Frühschlüsse — Phase 1 der Research-Engine-
-Datenarchitektur. MNQ-Override final präzisiert: NT-Bridge
-bleibt MNQ-only, Cross-Asset nur über externe Quellen wie FRED (31.1,
-`CLAUDE.md`) — FRED deckt VIX/Dollar/Zinsen/Öl ab, Gold nicht (31.8).
-Trading Economics final verworfen (~22$/Monat, Laurin zahlt nicht, 31.9).
-31.10: Forecast bleibt blockiert (keine akzeptable Gratis-Quelle, offen
-markiert statt weggelassen), Importance/Impact dagegen selbst kuratiert
-(`macro.wichtigkeit` in config.yaml, `Config.validate()` prüft die Werte,
-4 neue Tests, 442 gesamt) — kein Zahlenwert, deshalb keine "erfundene
-Messung". 31.6/31.7: Laurins eigene Zusatzrecherche (Datenquellen-Matrix, Event-Schema)
-als Referenz für Phase 2/3 vermerkt, nicht implementiert — GDELT/ACLED/UCDP
-und FRED-VIXCLS als neue Kandidaten, Schema-Abgleich ohne Änderungsbedarf.
+Stand: 2026-08-27 (Abschnitt 33 — Vollständige Formalisierung der Marktprimitive
+(FVG, Displacement, EQH/EQL, Liquidity Sweeps BSL/SSL, Reclaims, MSS/BOS/CHoCH)
+in `common/market_primitives.py`, Multi-Timeframe Resampling & 4h-Integration
+in `common/timeframes.py`, `mcp_server/bars.py` und `ClaudeBridge.cs`,
+kanonisches, deterministisches `MarketState`-Modell in `common/market_state.py`,
+MAE/MFE-Pfad-Exkursionsanalyse in `backtest/excursions.py`, empirische
+Conditional Outcome Engine in `backtest/conditional_outcomes.py`,
+persistentes Forschungsregister (`HYP-000xxx`) in `backtest/research_register.py`.
+15 neue Tests, 457 Tests gesamt, 100% grün).
+Davor Abschnitt 31/32 — Makro-Vintages (`macro/`), CME-Marktkalender, TradeX-Referenzvergleich.
 Davor Abschnitt 30 — formale Validation-Phase: neue
 Dreiteilung Training/Validation/Out-of-Sample (`backtest/splits.py`,
 `split_data_three_way`), alle sechs Discovery-Kandidaten gleich geprüft auf
@@ -2781,3 +2777,35 @@ keine bewährte mit einer neuen.
 - Reason-Code-System statt Freitext (generalisiert unser Drei-Ausgänge-Filterprinzip)
 - SSE statt Dauerabfrage, für eine künftige eigene Oberfläche
 - gehaltenes File-Handle als Startsperre (übersteht Abstürze)
+
+---
+
+## 33. Quantitative Marktprimitive, 4h-Timeframe, Deterministischer MarketState, MAE/MFE & Forschungsregister (27.08.2026)
+
+Vollständige Implementierung der quantitativen Kernarchitektur für die MNQ-Market-Research-Engine:
+
+### 33.1 Neue Module & Komponenten
+1. **`common/market_primitives.py`**:
+   - Strikte Trennung von `event_time`, `confirmation_time` und `availability_time`.
+   - **Fair Value Gaps (FVG)**: 3-Kerzen-Imbalance mit kontinuierlichem Mitigation-Tracking (Fill-Ratio, Consequent Encroachment).
+   - **Displacement**: Quantitative Impuls-Bars (Body/Range-Ratio, ATR-Multiples, Relativvolumen).
+   - **Equal Highs/Lows (EQH/EQL)**: Liquiditätspool-Erkennung aus Swing-Clustern mit Sweep-Tracking.
+   - **Liquidity Sweeps (BSL/SSL)**: Buy-Side & Sell-Side Sweeps von Schlüsselmarken (PDH/PDL/ONH/ONL/EQH/EQL/Swings) mit Reclaim-Verhalten.
+   - **Market Structure Shifts (MSS)**: Strukturbruch gegen den Trend mit zwingendem Displacement/FVG-Nachweis (BOS vs. CHoCH vs. MSS).
+2. **`common/timeframes.py`**:
+   - Universelles Resampling für `1m`, `5m`, `15m`, `30m`, `1h`, `4h`, `1d`.
+   - Strikte Einhaltung der CME-Globex-Sessiongrenzen (18:00 ET Rollover) und NinjaTrader-Zeitstempelkonvention (`closed="left", label="right"`).
+   - 4h-Zeitebene in `mcp_server/bars.py` (`TIMEFRAME_MINUTES`, `ALL_TIMEFRAMES`, `DEFAULT_BAR_COUNTS`) und `ClaudeBridge.cs` (Mapping `240` -> `"4h"`) integriert.
+3. **`common/market_state.py`**:
+   - Kanonisches, deterministisches, lookahead-sicheres `MarketState`-Datenmodell für den exakten Zeitpunkt T.
+   - Bündelt Multi-Timeframe-Zustände (4h, 1h, 15m, 5m, 1m), Liquiditäts-Distanzen (Punkte/Ticks/ATR), Volatilitätsregime, Sessionkontext und Makro-Zustände.
+   - `to_feature_vector()` erzeugt deterministische Feature-Vektoren für empirische Tabellen und Machine Learning.
+4. **`backtest/excursions.py` & `backtest/conditional_outcomes.py`**:
+   - Intrabar-Pfad-Analyse mit Maximum Favorable Excursion (MFE), Maximum Adverse Excursion (MAE) und Time-to-Extremum.
+   - Empirische Conditional Outcome Engine: Forward-Renditeverteilung und Target-vs-Stop-Trefferquoten (1R, 2R, 3R) im direkten Vergleich zur bedingungslosen Baseline.
+5. **`backtest/research_register.py`**:
+   - Persistentes Forschungsregister (`data/research_register.sqlite3`) mit eindeutigen IDs (`HYP-000xxx`), SHA256-Datensatz-Hashes, Git-Commit-Hashes, Bonferroni-Korrekturen und Negativ-Befund-Dokumentation.
+
+### 33.2 Test-Suite
+15 neue Tests in 5 Testdateien (`test_timeframes.py`, `test_market_primitives.py`, `test_market_state.py`, `test_excursions_outcomes.py`, `test_research_register.py`).  
+**Gesamtstand: 457 Tests, 100% grün auf Windows (`.venv\Scripts\python.exe -m pytest`).**
