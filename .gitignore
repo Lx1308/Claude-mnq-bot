@@ -51,3 +51,8 @@ data/dukascopy_*.sqlite3-wal
 .fuse_hidden*
 data/DUKA_5m.csv
 data/DUKA_5m.csv.HERKUNFT.txt
+
+# Node.js
+node_modules/
+dist/
+

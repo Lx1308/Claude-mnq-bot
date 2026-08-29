@@ -144,6 +144,13 @@ def main(argv: list[str] | None = None) -> int:
     print(f"\n  Status pruefen: http://{host}:{port}/status")
     print("  Beenden mit Strg+C\n")
 
+    # TCP Proxy für das TradayriBridge AddOn im Hintergrund starten
+    import threading
+    import ntbridge.tcp_proxy
+    proxy_thread = threading.Thread(target=ntbridge.tcp_proxy.main, daemon=True)
+    proxy_thread.start()
+    log.info("TradayriBridge TCP Proxy gestartet")
+
     try:
         server.serve_forever()
     except KeyboardInterrupt:
