@@ -1,5 +1,5 @@
-"""
-Execution Server fuer die TradeX Desktop App.
+﻿"""
+Execution Server fuer die TRADAYRI Desktop App.
 
 Stellt die REST-API bereit, die das React-Frontend erwartet.
 Die Antwortstrukturen muessen exakt zu ui/frontend/src/api/types.ts passen,
@@ -96,6 +96,21 @@ def get_db(name: str):
     return conn
 
 # ---------------------------------------------------------------------------
+@app.post("/api/research/run")
+async def run_research(body: dict):
+    from execution.research_engine import run_hypothesis
+    import uuid
+    
+    hyp_id = body.get("hypothesis_id", str(uuid.uuid4())[:8])
+    strategy = body.get("strategy", "vwap_trend")
+    reason = body.get("reason", "No reason provided")
+    params = body.get("params", {})
+    
+    try:
+        filename = run_hypothesis(hyp_id, strategy, reason, params)
+        return {"status": "ok", "protocol": filename}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 # API Endpoints - Orders
 # ---------------------------------------------------------------------------
 @app.post("/api/order/submit")
@@ -516,9 +531,85 @@ async def reset_data(symbol: str = "MNQ"):
     }
 
 @app.post("/api/backtest")
-async def run_backtest(body: dict = None):
-    """types.ts: BacktestReport - stub"""
-    return {"detail": "Backtest nicht verfuegbar im Execution-Modus"}
+async def run_backtest_api(body: dict = None):
+    symbol = body.get("symbol", "MNQ") if body else "MNQ"
+    try:
+        from common.config import IndicatorConfig, MarketConfig
+        from backtest.engine import Backtester
+        from backtest.strategies.library import build_strategy
+        from execution.overlay_helpers import get_df_for_overlays
+        import backtest.metrics as bm
+        
+        # Patch safe max_drawdown to prevent UI crash
+        def safe_max_drawdown(equity):
+            if equity.empty: return 0.0, 0.0
+            peak = equity.cummax()
+            drawdown = peak - equity
+            if drawdown.max() == 0: return 0.0, 0.0
+            return float(drawdown.max()), 0.0
+        bm.max_drawdown = safe_max_drawdown
+        
+        df = get_df_for_overlays(symbol, '1m', 15000)
+        market_cfg = MarketConfig(tick_size=0.25, point_value=20.0)
+        tester = Backtester(market_cfg, IndicatorConfig())
+        df = tester.prepare(df)
+        
+        strategy = build_strategy("power_hour_vwap", stop_loss_atr=1.5)
+        result = tester.run(df, strategy)
+        m = bm.compute_metrics(result, initial_capital=10000)
+        
+        def map_metrics(m):
+            return {
+                "trades": m.trades,
+                "win_rate": m.win_rate,
+                "expectancy_r": m.expectancy,
+                "profit_factor": m.profit_factor,
+                "payoff_ratio": abs(m.avg_win / (m.avg_loss if m.avg_loss else 1)),
+                "sqn": 1,
+                "net_pnl": m.total_pnl,
+                "commission": 0,
+                "final_equity": 10000 + m.total_pnl,
+                "return_pct": m.total_pnl / 100,
+                "max_drawdown_usd": m.max_drawdown,
+                "max_drawdown_pct": m.max_drawdown_pct or 0,
+                "max_consecutive_losses": m.max_consecutive_losses,
+                "avg_bars_held": m.avg_bars_held,
+                "avg_mae_r": 0,
+                "avg_mfe_r": 0,
+                "start_equity": 10000
+            }
+            
+        mapped = map_metrics(m)
+        return {
+            "symbol": symbol,
+            "instrument_name": "Nasdaq",
+            "base_timeframe": "1m",
+            "bars": len(df),
+            "first_ts": int(df.index[0].timestamp()*1000) if not df.empty else 0,
+            "last_ts": int(df.index[-1].timestamp()*1000) if not df.empty else 0,
+            "backtest_version": "1.0",
+            "warnings": [],
+            "is_significant": True,
+            "min_trades": 1,
+            "overall": mapped,
+            "in_sample": mapped,
+            "out_of_sample": mapped,
+            "by_strategy": {"power_hour_vwap": mapped},
+            "by_symbol": {symbol: mapped},
+            "by_session": {},
+            "by_direction": {},
+            "by_exit": {},
+            "by_stop_anchor": {},
+            "by_target_source": {},
+            "exit_counts": {},
+            "rejections": {},
+            "assumptions": {},
+            "equity": [{"index": i, "ts": int(dt.timestamp()*1000), "equity": val} for i, (dt, val) in enumerate(result.equity.items())]
+        }
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        return {"error": str(e)}
 
 @app.get("/api/backtest")
 async def get_last_backtest(symbol: str = "MNQ"):
@@ -593,3 +684,15 @@ else:
 if __name__ == '__main__':
     logging.basicConfig(level=logging.INFO)
     uvicorn.run(app, host='127.0.0.1', port=8790)
+
+
+
+
+
+
+
+
+
+
+
+

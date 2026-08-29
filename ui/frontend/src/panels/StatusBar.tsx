@@ -50,7 +50,7 @@ export function StatusBar({
   return (
     <header className={`statusbar${isDemo ? ' statusbar--demo' : ''}`}>
       <div className="statusbar__brand">
-        <span className="statusbar__logo">TradeX</span>
+        <span className="statusbar__logo">TRADAYRI</span>
         <span className="statusbar__subtitle">{de.app.subtitle}</span>
       </div>
 

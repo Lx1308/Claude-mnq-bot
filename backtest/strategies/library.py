@@ -1,4 +1,4 @@
-"""Fertige Strategien als Bausteine - alle rein aus Regel-Objekten gebaut.
+﻿"""Fertige Strategien als Bausteine - alle rein aus Regel-Objekten gebaut.
 
 Jede Fabrikfunktion nimmt nur Parameter entgegen und liefert eine
 :class:`RuleStrategy`. Parametervarianten sind damit reine Daten und
@@ -306,7 +306,44 @@ def vwap_reversion(
     )
 
 
+
+def power_hour_vwap(
+    *,
+    deviation_atr: float = 2.0,
+    stop_loss_atr: float | None = 1.5,
+    take_profit_atr: float | None = 3.0,
+    max_bars_in_trade: int | None = 60,
+    trade_short: bool = True,
+    session_start: str = "15:00",
+    session_end: str = "15:55",
+    timezone: str = "America/New_York",
+) -> RuleStrategy:
+    window = SessionTimeWindow(
+        _parse_time(session_start), _parse_time(session_end), timezone
+    )
+    long_entry = DeviationReentry("close", "vwap", deviation_atr, "below") & window
+    short_entry = DeviationReentry("close", "vwap", deviation_atr, "above") & window
+
+    return RuleStrategy(
+        name="power_hour_vwap",
+        long_entry=long_entry,
+        long_exit=ColumnAbove("close", "vwap"),
+        short_entry=short_entry if trade_short else None,
+        short_exit=ColumnBelow("close", "vwap") if trade_short else None,
+        stop_loss_atr=stop_loss_atr,
+        take_profit_atr=take_profit_atr,
+        max_bars_in_trade=max_bars_in_trade,
+        params={
+            "deviation_atr": deviation_atr,
+            "stop_loss_atr": stop_loss_atr,
+            "take_profit_atr": take_profit_atr,
+            "max_bars_in_trade": max_bars_in_trade,
+            "trade_short": trade_short,
+        },
+    )
+
 STRATEGY_LIBRARY: dict[str, Callable[..., RuleStrategy]] = {
+    'power_hour_vwap': power_hour_vwap,
     "prev_day_breakout": prev_day_breakout,
     "rsi_mean_reversion": rsi_mean_reversion,
     "flag_breakout": flag_breakout,
@@ -334,3 +371,7 @@ def build_strategy(name: str, **params: Any) -> RuleStrategy:
 def _parse_time(value: str) -> dtime:
     hour, minute = value.split(":")
     return dtime(int(hour), int(minute))
+
+
+
+

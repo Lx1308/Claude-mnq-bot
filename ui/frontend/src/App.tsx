@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+﻿import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 
 import { ApiError, api } from './api/client';
 import type {
@@ -102,6 +102,8 @@ function sindToggles(wert: unknown): wert is ChartToggles {
   if (typeof wert !== 'object' || wert === null) return false;
   return TOGGLE_KEYS.every((key) => typeof (wert as Record<string, unknown>)[key] === 'boolean');
 }
+
+import { OrderPanel } from './panels/OrderPanel';
 
 export default function App() {
   const [health, setHealth] = useState<Health | null>(null);
@@ -845,6 +847,7 @@ export default function App() {
         </div>
 
         <aside className="layout__side">
+          <OrderPanel />
           <AnalysisPanel snapshot={snapshot} entryTimeframe={ENTRY_TIMEFRAME} />
           <StrategyPanel strategy={strategy} />
           <BacktestPanel
@@ -868,3 +871,5 @@ export default function App() {
     </div>
   );
 }
+
+

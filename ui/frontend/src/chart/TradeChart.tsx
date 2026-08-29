@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Kurschart mit Analyse-Overlays.
  *
  * Das Chart rechnet NICHTS selbst nach. Es zeichnet ausschliesslich, was die
@@ -8,6 +8,7 @@
 
 import {
   CandlestickSeries,
+  LineSeries,
   createChart,
   createSeriesMarkers,
   type CandlestickData,
@@ -212,6 +213,8 @@ export function TradeChart({
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+
+  const smaSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick', Time> | null>(null);
   const primitiveRef = useRef<OverlayPrimitive | null>(null);
   const markersRef = useRef<ReturnType<typeof createSeriesMarkers<Time>> | null>(null);
@@ -255,6 +258,8 @@ export function TradeChart({
       wickDownColor: COLORS.candleDown,
     });
 
+    const smaSeries = chart.addSeries(LineSeries, { color: 'rgba(41, 98, 255, 0.7)', lineWidth: 2, crosshairMarkerVisible: false });
+    smaSeriesRef.current = smaSeries;
     const primitive = new OverlayPrimitive();
     series.attachPrimitive(primitive);
 
@@ -320,6 +325,17 @@ export function TradeChart({
     if (zeigeForming && bars.forming) data.push(kerze(bars.forming));
     if (bars.live) data.push(kerze(bars.live));
 
+        const smaData = [];
+    let sum = 0;
+    const period = 50;
+    for (let i = 0; i < data.length; i++) {
+      sum += data[i].close;
+      if (i >= period) sum -= data[i - period].close;
+      if (i >= period - 1) {
+        smaData.push({ time: data[i].time, value: sum / period });
+      }
+    }
+    smaSeriesRef.current?.setData(smaData);
     series.setData(data);
 
     // Nur bei einem WIRKLICH neuen Datenbestand einpassen - nicht bei jeder
@@ -375,3 +391,6 @@ export function TradeChart({
 
   return <div className="chart-canvas" ref={containerRef} />;
 }
+
+
+

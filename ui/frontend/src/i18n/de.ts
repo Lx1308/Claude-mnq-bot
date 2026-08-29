@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Deutsche Oberflaechentexte.
  *
  * Die Engine liefert Reason-Codes plus Parameter, nie fertige Saetze. Erst hier
@@ -29,13 +29,13 @@ const STATE_WORD: Record<string, string> = {
   range: 'seitwaerts',
 };
 
-/** Welche Strategie - siehe tradex/strategy/registry.py. */
+/** Welche Strategie - siehe tradayri/strategy/registry.py. */
 export const STRATEGY_LABEL: Record<string, string> = {
   ict_chain: 'Pflichtkette (ICT)',
   opening_range: 'Eroeffnungsspanne',
 };
 
-/** Wodurch eine simulierte Position endete - siehe tradex/domain/enums.py. */
+/** Wodurch eine simulierte Position endete - siehe tradayri/domain/enums.py. */
 export const EXIT_REASON: Record<string, string> = {
   stop: 'Stop',
   target: 'Ziel',
@@ -43,9 +43,9 @@ export const EXIT_REASON: Record<string, string> = {
   end_of_data: 'Datenende',
 };
 
-/** Woran der Stop verankert ist - siehe tradex/strategy/stops.py. */
+/** Woran der Stop verankert ist - siehe tradayri/strategy/stops.py. */
 export const STOP_ANCHOR: Record<string, string> = {
-  retracement: 'Rücklauf-Tief',
+  retracement: 'RÃ¼cklauf-Tief',
   sweep: 'Sweep-Extrem',
   swing: 'letzter Hoch-/Tiefpunkt',
   fvg: 'Kursluecken-Kante',
@@ -55,7 +55,7 @@ export const STOP_ANCHOR: Record<string, string> = {
 export const reasonText: Record<string, (p: ReasonParams) => string> = {
   'htf.bias': (p) =>
     `Gesamtrichtung der hoeheren Timeframes: ${BIAS_WORD[String(p.bias)] ?? p.bias}` +
-    ` (Wert ${num(p.score, 3)}, neutral bis ±${num(p.neutral_band, 2)})`,
+    ` (Wert ${num(p.score, 3)}, neutral bis Â±${num(p.neutral_band, 2)})`,
   'htf.structure': (p) =>
     `${p.timeframe}: Marktstruktur laeuft ${STATE_WORD[String(p.state)] ?? p.state}`,
   'htf.fvg_balance': (p) =>
@@ -101,14 +101,14 @@ export const reasonText: Record<string, (p: ReasonParams) => string> = {
 
   'stop.placed': (p) =>
     `Stop bei ${price(p.price)} (${num(p.ticks, 0)} Ticks, Anker: ${STOP_ANCHOR[String(p.anchor)] ?? p.anchor})`,
-  // `stop_ticks`, nicht `ticks` — der Code liefert diesen Namen (opening_range.py,
-  // chain.py). Hier stand `p.ticks`, und die Meldung rendete deshalb „NaN Ticks"
-  // ausgerechnet an der Stelle, die erklären soll, warum nicht gehandelt wurde.
+  // `stop_ticks`, nicht `ticks` â€” der Code liefert diesen Namen (opening_range.py,
+  // chain.py). Hier stand `p.ticks`, und die Meldung rendete deshalb â€žNaN Ticks"
+  // ausgerechnet an der Stelle, die erklÃ¤ren soll, warum nicht gehandelt wurde.
   'stop.too_wide': (p) =>
     `Stop zu weit: ${num(p.stop_ticks, 0)} Ticks, erlaubt sind ${num(p.max, 0)}` +
     (p.atr_ticks === undefined
       ? ''
-      : ` (${num(p.atr_mult, 1)} × ATR von ${num(p.atr_ticks, 0)} Ticks)`),
+      : ` (${num(p.atr_mult, 1)} Ã— ATR von ${num(p.atr_ticks, 0)} Ticks)`),
   'stop.too_tight': (p) =>
     `Stop zu eng: ${num(p.stop_ticks, 0)} Ticks - er laege im normalen Rauschen (mindestens ${p.min})`,
   'stop.no_atr': () =>
@@ -245,7 +245,7 @@ export function translateReasonLabel(code: string): string {
 
 export const de = {
   app: {
-    title: 'TradeX',
+    title: 'TRADAYRI',
     subtitle: 'Nasdaq-100 Futures - regelbasierte Analyse',
   },
   status: {
@@ -440,6 +440,21 @@ export const de = {
     progress: 'Fortschritt',
     speed: 'Tempo',
   },
+  order: {
+    title: 'Order Ausfuehrung',
+    market: 'Market',
+    buyStop: 'Buy Stop',
+    sellStop: 'Sell Stop',
+    buyLimit: 'Buy Limit',
+    sellLimit: 'Sell Limit',
+    size: 'Kontrakte',
+    sl: 'Stop Loss (Ticks)',
+    tp: 'Take Profit (Ticks)',
+    trailing: 'Trailing Drawdown (Ticks)',
+    submitBuy: 'KAUFEN',
+    submitSell: 'VERKAUFEN',
+    reason: 'Grund / Idee',
+  },
   session: {
     title: 'Betrieb',
     stateIdle: 'gestoppt',
@@ -561,3 +576,4 @@ export const de = {
 };
 
 export type Translations = typeof de;
+

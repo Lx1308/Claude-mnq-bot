@@ -1,6 +1,6 @@
 @echo off
 cd /d "%~dp0"
-title TradeX Bridge (NT8 Receiver)
-echo Starte TradeX Bridge im Dauerbetrieb...
+title TRADAYRI Bridge (NT8 Receiver)
+echo Starte TRADAYRI Bridge im Dauerbetrieb...
 .venv\Scripts\python.exe -u -m ntbridge
 pause

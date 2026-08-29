@@ -1,5 +1,5 @@
 """
-TradeX Desktop App Launcher.
+TRADAYRI Desktop App Launcher.
 
 Startet den Execution Server als Unterprozess und oeffnet danach
 ein pywebview-Fenster. Beim Schliessen des Fensters wird der Server
@@ -68,7 +68,7 @@ def main():
         return
 
     window = webview.create_window(
-        "TradeX - NinjaTrader Live Bot",
+        "TRADAYRI - NinjaTrader Live Bot",
         f"http://{host}:{port}",
         width=1680,
         height=1000,
