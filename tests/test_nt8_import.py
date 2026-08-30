@@ -225,3 +225,78 @@ def test_gepackter_export_wird_gelesen(tmp_path):
     df = lies_export(datei, "UTC")
     assert len(df) == 1
     assert df["close"].iloc[0] == 20003.75
+
+
+# -- Formatnachweis und Anschlusspruefung -----------------------------------
+
+def test_anschlusspruefung_akzeptiert_einen_rollsprung():
+    """Ein Rollsprung bei MNQ liegt bei Dutzenden bis wenigen Hundert
+    Punkten - Zinsdifferenz und Dividenden ueber ein Quartal."""
+    from werkzeuge.nt8_import import pruefe_anschluss
+
+    alt = _reihe(START, 300, basis=20000.0)
+    neu = _reihe(START + timedelta(minutes=400), 300, basis=20180.0)
+
+    bestanden, meldungen = pruefe_anschluss(neu, alt)
+    assert bestanden, meldungen
+
+
+def test_anschlusspruefung_erkennt_den_falschen_kontrakt():
+    """Mehrere Tausend Punkte Sprung heisst: falsches Jahr oder falsches
+    Instrument."""
+    from werkzeuge.nt8_import import pruefe_anschluss
+
+    alt = _reihe(START, 300, basis=20000.0)
+    neu = _reihe(START + timedelta(minutes=400), 300, basis=8000.0)
+
+    bestanden, meldungen = pruefe_anschluss(neu, alt)
+    assert not bestanden
+    assert any("kein Rollsprung" in m for m in meldungen)
+
+
+def test_ohne_nachbarn_gibt_es_nichts_anzuschliessen():
+    from werkzeuge.nt8_import import pruefe_anschluss
+
+    leer = _reihe(START, 0)
+    bestanden, _ = pruefe_anschluss(_reihe(START, 10), leer)
+    assert bestanden
+
+
+def test_nachweis_wird_geschrieben_und_gelesen(tmp_path, monkeypatch):
+    """Der Nachweis belegt den EXPORTWEG, nicht den einzelnen Kontrakt.
+
+    Ohne ihn koennte kein alter Kontrakt importiert werden - alte Kontrakte
+    ueberschneiden sich mit nichts, was 2026 gesammelt wurde.
+    """
+    from werkzeuge import nt8_import
+
+    monkeypatch.setattr(nt8_import, "NACHWEIS", tmp_path / "nachweis.json")
+    assert nt8_import.lies_nachweis() == {}
+
+    nt8_import.schreibe_nachweis("MNQ", "1m", "America/New_York", 4321)
+    daten = nt8_import.lies_nachweis()
+
+    assert "MNQ/1m/America/New_York" in daten
+    assert daten["MNQ/1m/America/New_York"]["gemeinsame_kerzen"] == 4321
+
+
+def test_nachweis_gilt_je_zeitzone_getrennt(tmp_path, monkeypatch):
+    """Eine andere Zeitzone ist ein anderer Exportweg - und der Nachweis
+    darf sich nicht auf sie uebertragen."""
+    from werkzeuge import nt8_import
+
+    monkeypatch.setattr(nt8_import, "NACHWEIS", tmp_path / "nachweis.json")
+    nt8_import.schreibe_nachweis("MNQ", "1m", "America/New_York", 500)
+    daten = nt8_import.lies_nachweis()
+
+    assert "MNQ/1m/UTC" not in daten
+
+
+def test_kaputter_nachweis_wird_wie_keiner_behandelt(tmp_path, monkeypatch):
+    from werkzeuge import nt8_import
+
+    pfad = tmp_path / "nachweis.json"
+    pfad.write_text("{kaputt", encoding="utf-8")
+    monkeypatch.setattr(nt8_import, "NACHWEIS", pfad)
+
+    assert nt8_import.lies_nachweis() == {}

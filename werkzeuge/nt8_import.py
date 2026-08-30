@@ -299,6 +299,106 @@ def kreuzvergleich(
     return True, meldungen
 
 
+#: Wo festgehalten wird, dass das Exportformat einmal gegen echte Kerzen
+#: geprueft wurde.
+NACHWEIS = PROJECT_ROOT / "data" / "nt8_import_nachweis.json"
+
+
+def lies_nachweis() -> dict:
+    import json
+
+    if not NACHWEIS.exists():
+        return {}
+    try:
+        return json.loads(NACHWEIS.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def schreibe_nachweis(symbol: str, timeframe: str, zeitzone: str,
+                      gemeinsame: int) -> None:
+    """Festhalten, dass Format, Zeitzone und Beschriftung geprueft sind.
+
+    WARUM DAS NOETIG IST
+    --------------------
+    Der Kreuzvergleich braucht Ueberlappung mit Kerzen, die schon in der
+    Datenbank liegen. Die gibt es nur beim aktuell laufenden Kontrakt - ein
+    Export von MNQ SEP19 ueberschneidet sich mit nichts, was 2026 gesammelt
+    wurde.
+
+    Ohne diesen Nachweis muesste man entweder die Pruefung fuer alte
+    Kontrakte ganz weglassen (dann waere sie wertlos) oder sie unmoeglich
+    machen. Beides ist falsch.
+
+    Was der Nachweis belegt, ist genau das, was er belegen kann: dass DIESES
+    Exportformat, in DIESER Zeitzone, mit DIESER Beschriftung mit echten
+    NinjaTrader-Kerzen uebereinstimmt. Das ist eine Eigenschaft des
+    Exportwegs, nicht des einzelnen Kontrakts - und sie uebertraegt sich
+    deshalb auf weitere Exporte aus derselben Quelle.
+
+    Was er NICHT belegt: dass die Kurse eines bestimmten alten Kontrakts
+    stimmen. Dafuer gibt es die Anschlusspruefung.
+    """
+    import json
+    from datetime import datetime, timezone as _tz
+
+    daten = lies_nachweis()
+    daten[f"{symbol}/{timeframe}/{zeitzone}"] = {
+        "geprueft_utc": datetime.now(_tz.utc).isoformat(),
+        "gemeinsame_kerzen": gemeinsame,
+    }
+    NACHWEIS.parent.mkdir(parents=True, exist_ok=True)
+    NACHWEIS.write_text(json.dumps(daten, indent=2), encoding="utf-8")
+
+
+def pruefe_anschluss(
+    neu_df, referenz_df, *, max_sprung_punkte: float = 400.0
+) -> tuple[bool, list[str]]:
+    """Passt der Kontrakt zeitlich und preislich an das Vorhandene an?
+
+    Fuer alte Kontrakte, die sich mit nichts ueberschneiden, ist das die
+    einzige moegliche Pruefung. Sie ist schwaecher als der Kreuzvergleich und
+    wird auch so benannt.
+
+    Geprueft wird der Preissprung an der Nahtstelle. Ein Rollsprung bei MNQ
+    liegt in der Groessenordnung von Dutzenden bis wenigen Hundert Punkten
+    (Zinsdifferenz und Dividenden ueber ein Quartal). Ein Sprung von mehreren
+    Tausend Punkten heisst dagegen: falscher Kontrakt, falsches Jahr oder
+    falsches Instrument.
+    """
+    meldungen: list[str] = []
+    if referenz_df.empty or neu_df.empty:
+        return True, ["Kein Nachbar zum Anschliessen - nichts zu pruefen."]
+
+    davor = referenz_df[referenz_df.index < neu_df.index[0]]
+    danach = referenz_df[referenz_df.index > neu_df.index[-1]]
+
+    for nachbar, seite, eigener in (
+        (davor, "davor", neu_df["open"].iloc[0]),
+        (danach, "danach", neu_df["close"].iloc[-1]),
+    ):
+        if nachbar.empty:
+            continue
+        nachbarkurs = (
+            float(nachbar["close"].iloc[-1]) if seite == "davor"
+            else float(nachbar["open"].iloc[0])
+        )
+        sprung = abs(float(eigener) - nachbarkurs)
+        meldungen.append(
+            f"  Anschluss {seite}: {sprung:.1f} Punkte Sprung "
+            f"({nachbarkurs:.2f} -> {float(eigener):.2f})"
+        )
+        if sprung > max_sprung_punkte:
+            meldungen.append(
+                f"ABBRUCH: {sprung:.1f} Punkte sind kein Rollsprung. Das "
+                "deutet auf einen falschen Kontrakt, ein falsches Jahr oder "
+                "ein anderes Instrument hin."
+            )
+            return False, meldungen
+
+    return True, meldungen
+
+
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="nt8_import",
@@ -399,21 +499,69 @@ def main(argv: list[str] | None = None) -> int:
         referenz = speicher.load_frame(args.symbol, args.timeframe)
         print(f"  Referenz in der Datenbank: {len(referenz)} Kerzen")
 
-        if referenz.empty:
+        # Ueberschneidet sich dieser Export mit dem, was schon da ist?
+        # Nur dann ist der vollstaendige Kreuzvergleich moeglich. Alte
+        # Kontrakte ueberschneiden sich mit nichts - fuer sie greift der
+        # einmal erbrachte Formatnachweis plus die Anschlusspruefung.
+        gemeinsam = len(neu.index.intersection(referenz.index))
+        nachweis = lies_nachweis().get(
+            f"{args.symbol}/{args.timeframe}/{args.zeitzone}"
+        )
+
+        if gemeinsam >= MIN_UEBERLAPPUNG:
+            bestanden, meldungen = kreuzvergleich(neu, referenz)
+            print()
+            for meldung in meldungen:
+                print(" ", meldung)
+            if bestanden and args.schreiben:
+                schreibe_nachweis(
+                    args.symbol, args.timeframe, args.zeitzone, gemeinsam
+                )
+                print(
+                    "  Formatnachweis gespeichert - weitere Kontrakte aus "
+                    "demselben Exportweg brauchen keine eigene Ueberlappung."
+                )
+        elif nachweis is not None:
+            print()
             print(
-                "\nABBRUCH: keine Referenzkerzen in der Datenbank.\n"
-                "Ohne Kreuzvergleich wird nicht importiert - eine um eine "
-                "Minute verschobene oder in der falschen Zeitzone gelesene "
-                "Reihe saehe lueckenlos und plausibel aus. Starte zuerst die "
+                f"  Keine Ueberlappung ({gemeinsam} gemeinsame Kerzen) - das ist "
+                "bei einem alten Kontrakt normal."
+            )
+            print(
+                f"  Formatnachweis liegt vor (geprueft {nachweis['geprueft_utc'][:10]} "
+                f"an {nachweis['gemeinsame_kerzen']} gemeinsamen Kerzen):"
+            )
+            print(
+                "  Exportformat, Zeitzone und Beschriftung sind damit belegt. "
+                "Was er NICHT belegt, ist die Richtigkeit dieses Kontrakts - "
+                "dafuer die Anschlusspruefung:"
+            )
+            bestanden, meldungen = pruefe_anschluss(neu, referenz)
+            for meldung in meldungen:
+                print(" ", meldung)
+        elif referenz.empty:
+            print(
+                "ABBRUCH: keine Referenzkerzen in der Datenbank.",
+                "Ohne Kreuzvergleich wird nicht importiert - eine um eine",
+                "Minute verschobene oder in der falschen Zeitzone gelesene",
+                "Reihe saehe lueckenlos und plausibel aus. Starte zuerst die",
                 "Bridge und lass NinjaTrader ein paar hundert Kerzen liefern.",
-                file=sys.stderr,
+                sep=chr(10), file=sys.stderr,
             )
             return 3
-
-        bestanden, meldungen = kreuzvergleich(neu, referenz)
-        print()
-        for meldung in meldungen:
-            print(" ", meldung)
+        else:
+            print(
+                "ABBRUCH: dieser Export ueberschneidet sich nicht mit den",
+                f"vorhandenen Kerzen ({gemeinsam} gemeinsame), und es gibt noch",
+                "keinen Formatnachweis.",
+                "",
+                "Importiere zuerst den LAUFENDEN Kontrakt - der ueberschneidet",
+                "sich mit dem, was die Bridge gesammelt hat. Damit sind",
+                "Format, Zeitzone und Beschriftung belegt, und alle aelteren",
+                "Kontrakte gehen danach durch.",
+                sep=chr(10), file=sys.stderr,
+            )
+            return 3
 
         if not bestanden:
             print("\nEs wurde nichts geschrieben.", file=sys.stderr)
