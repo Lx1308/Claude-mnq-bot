@@ -19,6 +19,9 @@ import pandas as pd
 import pytest
 
 from common.muster_serie import (
+    STANDARD_LOOKBACK,
+    STANDARD_MAX_SPITZENABSTAND_ATR,
+    STANDARD_MIN_TALTIEFE_ATR,
     STANDARD_STRENGTH,
     doppelmuster_spalten,
     finde_doppelmuster,
@@ -237,3 +240,90 @@ def test_spaltensatz_ist_vollstaendig():
     spalten = doppelmuster_spalten(df, atr=atr)
     assert list(spalten.columns) == list(DOPPELMUSTER_SPALTEN)
     assert len(spalten) == len(df)
+
+
+# -- Vektorisierung: Gleichheit mit der vollen Zwischenpunkt-Suche ---------
+
+def _funde_mit_voller_suche(df, atr, *, strength=STANDARD_STRENGTH,
+                            lookback=STANDARD_LOOKBACK):
+    """Referenz: die alte O(Swings^2)-Fassung der Zwischenpunkt-Wahl.
+
+    Baut die Musterfunde mit einer Komplettschleife ueber alle Gegen-Swings
+    nach - genau so, wie es vor der searchsorted-Vektorisierung lief. Muss
+    Fund fuer Fund dasselbe Ergebnis liefern.
+    """
+    from common.patterns import _clamp
+    from common.structure import find_swing_points
+
+    atr_werte = np.asarray(atr, dtype=float)
+    punkte = find_swing_points(df, strength=strength)
+    letzter = len(df) - 1
+    geordnet = sorted(punkte, key=lambda p: letzter - p.bars_ago)
+    indizes = [letzter - p.bars_ago for p in geordnet]
+
+    raus = []
+    for art, kind in (("Doppelboden", "low"), ("Doppeltop", "high")):
+        gleiche = [(i, p) for i, p in zip(indizes, geordnet) if p.kind == kind]
+        gegen = [(i, p) for i, p in zip(indizes, geordnet) if p.kind != kind]
+        for k in range(1, len(gleiche)):
+            erst_idx, erst = gleiche[k - 1]
+            zweit_idx, zweit = gleiche[k]
+            verfuegbar = zweit_idx + strength
+            if verfuegbar > letzter or zweit_idx - erst_idx > lookback:
+                continue
+            a = atr_werte[verfuegbar]
+            if not np.isfinite(a) or a <= 0:
+                continue
+            spitzenabstand = abs(zweit.price - erst.price)
+            if spitzenabstand > STANDARD_MAX_SPITZENABSTAND_ATR * a:
+                continue
+            dazwischen = [(i, p) for i, p in gegen if erst_idx < i < zweit_idx]
+            if not dazwischen:
+                continue
+            if kind == "low":
+                _, tal = max(dazwischen, key=lambda paar: paar[1].price)
+            else:
+                _, tal = min(dazwischen, key=lambda paar: paar[1].price)
+            taltiefe = abs(((erst.price + zweit.price) / 2.0) - tal.price)
+            if taltiefe < STANDARD_MIN_TALTIEFE_ATR * a:
+                continue
+            raus.append((art, verfuegbar, round(tal.price, 6),
+                         round(spitzenabstand, 6)))
+    raus.sort(key=lambda t: t[1])
+    return raus
+
+
+def test_vektorisierte_zwischenpunkt_wahl_gleicht_der_vollen_suche():
+    """searchsorted statt Komplettschleife - dasselbe Ergebnis, O(n) statt
+    O(n^2). Lange, verrauschte Reihe, damit das Fenster zwischen zwei
+    gleichartigen Swings mal keinen, mal einen, mal mehrere Gegen-Swings
+    enthaelt.
+    """
+    from common.muster_serie import finde_doppelmuster
+
+    rng = np.random.default_rng(20260831)
+    n = 4000
+    preise = 20000.0 + np.cumsum(rng.normal(0.0, 6.0, n))
+    index = pd.date_range("2026-01-05 09:00", periods=n, freq="1min", tz="UTC")
+    spanne = np.abs(rng.normal(4.0, 1.5, n)) + 0.5
+    df = pd.DataFrame(
+        {
+            "open": preise,
+            "high": preise + spanne,
+            "low": preise - spanne,
+            "close": preise + rng.normal(0.0, 0.5, n),
+            "volume": rng.integers(100, 2000, n).astype(float),
+        },
+        index=index,
+    )
+    atr = pd.Series(np.full(n, 12.0), index=index)
+
+    funde = finde_doppelmuster(df, atr=atr)
+    gemessen = [
+        (f.art, f.verfuegbar_index, round(f.nackenlinie, 6),
+         round(f.spitzenabstand, 6))
+        for f in funde
+    ]
+    assert gemessen == _funde_mit_voller_suche(df, atr)
+    # Der Test taugt nur, wenn ueberhaupt Muster gefunden werden.
+    assert len(funde) >= 5

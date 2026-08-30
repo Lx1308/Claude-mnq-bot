@@ -139,6 +139,17 @@ def finde_doppelmuster(
         ]
         gegen = [(idx, p) for idx, p in zip(indizes, geordnet) if p.kind != kind]
 
+        # Die Gegen-Swings als aufsteigende Arrays: den "Berg"/"Talpunkt"
+        # zwischen zwei gleichartigen Swings sucht sonst je Paar eine
+        # Komplettschleife ueber alle Gegen-Swings - O(Swings^2), auf 2,5 Mio
+        # Kerzen (~250.000 Swings) nicht rechenbar. Mit searchsorted wird je
+        # Paar nur das kurze Fenster dazwischen betrachtet.
+        gegen_idx = np.fromiter((idx for idx, _ in gegen), dtype=np.int64,
+                                count=len(gegen))
+        gegen_preis = np.fromiter((p.price for _, p in gegen), dtype=float,
+                                  count=len(gegen))
+        gegen_punkt = [p for _, p in gegen]
+
         for n in range(1, len(gleiche)):
             erst_idx, erst = gleiche[n - 1]
             zweit_idx, zweit = gleiche[n]
@@ -159,18 +170,18 @@ def finde_doppelmuster(
             if spitzenabstand > max_spitzenabstand_atr * atr_wert:
                 continue
 
-            dazwischen = [
-                (idx, p) for idx, p in gegen if erst_idx < idx < zweit_idx
-            ]
-            if not dazwischen:
+            lo = int(np.searchsorted(gegen_idx, erst_idx, side="right"))
+            hi = int(np.searchsorted(gegen_idx, zweit_idx, side="left"))
+            if hi <= lo:
                 continue
 
             # Beim Doppelboden ist das Zwischenhoch das hoechste, beim
-            # Doppeltop das Zwischentief das tiefste.
-            if kind == "low":
-                _, tal = max(dazwischen, key=lambda paar: paar[1].price)
-            else:
-                _, tal = min(dazwischen, key=lambda paar: paar[1].price)
+            # Doppeltop das Zwischentief das tiefste. ``argmax``/``argmin``
+            # liefern - wie Pythons ``max``/``min`` - bei Gleichstand den
+            # ersten Treffer.
+            teil = gegen_preis[lo:hi]
+            rel = int(teil.argmax() if kind == "low" else teil.argmin())
+            tal = gegen_punkt[lo + rel]
 
             taltiefe = abs(((erst.price + zweit.price) / 2.0) - tal.price)
             if taltiefe < min_taltiefe_atr * atr_wert:
