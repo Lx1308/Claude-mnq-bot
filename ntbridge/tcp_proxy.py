@@ -1,174 +1,202 @@
-import socket
+"""Bruecke zum NinjaScript-AddOn ``TradayriBridge`` (TCP, 127.0.0.1:39473).
+
+Was dieser Baustein ist
+-----------------------
+Ein **Order-Kanal**, kein Datenkanal. Er holt die vom Execution-Server
+eingereihten Orders ab, schickt sie zeilenweise als JSON an das AddOn und
+meldet dessen Ausfuehrungsmeldungen zurueck.
+
+Warum er KEINE Kerzen mehr schreibt
+-----------------------------------
+Die erste Fassung baute aus den Ticks des AddOns selbst Minutenkerzen und
+schob sie in den Empfaenger (``POST /bars``). Das war aus zwei Gruenden
+falsch und ist deshalb entfernt:
+
+1. **Falsche Beschriftung.** Sie rechnete ``ts // 60s * 60s`` - das ist die
+   EROEFFNUNGSzeit der Minute. NinjaTrader beschriftet eine Kerze mit ihrem
+   ENDE (Ticks 14:00:00-14:00:59 ergeben die Kerze 14:01, Invariante 9 in
+   CLAUDE.md). Beide Wege schrieben damit auf denselben Primaerschluessel
+   ``(instrument, timeframe, ts_utc)`` zwei VERSCHIEDENE Zeitfenster.
+
+2. **Unfertige Kerzen.** Gesendet wurde jede Sekunde mit ``closed: false``.
+   Der Kerzenspeicher kennt kein "vorlaeufig" - er macht ein UPSERT. Die
+   laufende, halbfertige Minute haette die fertige Kerze des Indikators
+   ueberschrieben.
+
+Zusammen haette das ab der naechsten Boersenoeffnung die 1m-Reihe still um
+eine Minute verschoben, waehrend 5m/15m/1h/1d korrekt geblieben waeren -
+genau der Fehlertyp, der bei den Dukascopy-Daten erst im Kreuzvergleich
+auffiel und an den Kursen selbst nicht zu erkennen war.
+
+Kerzen kommen ausschliesslich aus ``ClaudeBridge.cs`` ueber den
+HTTP-Empfaenger. Das bleibt der einzige Schreibweg in den Kerzenspeicher.
+"""
+
+from __future__ import annotations
+
 import json
+import logging
+import socket
 import threading
 import time
 import urllib.request
-import datetime
-import logging
 
-logging.basicConfig(level=logging.INFO)
-log = logging.getLogger('TcpProxy')
+log = logging.getLogger("ntbridge.tcp_proxy")
 
-NT8_HOST = '127.0.0.1'
+NT8_HOST = "127.0.0.1"
 NT8_PORT = 39473
-BARS_URL = 'http://127.0.0.1:8787/bars'
-ORDERS_URL = 'http://127.0.0.1:8790/api/orders/pending'
-FILLS_URL = 'http://127.0.0.1:8790/api/orders/fill'
-MODIFIES_URL = 'http://127.0.0.1:8790/api/orders/modify_pending'
 
-def send_to_nt8(sock, msg_dict):
-    try:
-        data = json.dumps(msg_dict) + '\n'
-        sock.sendall(data.encode('utf-8'))
-    except Exception as e:
-        log.error(f'Failed to send to NT8: {e}')
+ORDERS_URL = "http://127.0.0.1:8790/api/orders/pending"
+FILLS_URL = "http://127.0.0.1:8790/api/orders/fill"
+MODIFIES_URL = "http://127.0.0.1:8790/api/orders/modify_pending"
 
-def post_to_server(url, payload):
-    try:
-        req = urllib.request.Request(url, data=json.dumps(payload).encode('utf-8'), headers={'Content-Type': 'application/json'})
-        with urllib.request.urlopen(req) as response:
-            pass
-    except Exception as e:
-        log.error(f'POST {url} failed: {e}')
+# Wie das AddOn die Richtung liest: side == "SELL" -> SellShort, sonst Buy.
+# Es gibt dort keinen dritten Zweig, deshalb muss hier eindeutig abgebildet
+# werden. Die frueher benutzte Kurzform
+#     "LONG" wenn "LONG" in richtung, sonst "SELL"
+# machte aus jedem "BUY" ein "SELL" - der autonome Bot schickte "BUY"/"SELL"
+# und drehte damit jede Long-Idee in einen Short. Die Oberflaeche schickt
+# zufaellig "LONG"/"SHORT" und war nicht betroffen; der Fehler war also nur
+# auf einem der beiden Wege sichtbar.
+_LONG = {"LONG", "BUY", "BUYTOCOVER"}
+_SHORT = {"SHORT", "SELL", "SELLSHORT"}
 
-def fetch_json(url):
+
+def richtung_fuer_nt8(wert: object) -> str | None:
+    """"LONG"/"SELL" fuer das AddOn - oder None, wenn unlesbar.
+
+    Lieber gar keine Order als eine in die falsche Richtung.
+    """
+    text = str(wert or "").strip().upper()
+    if text in _LONG:
+        return "LONG"
+    if text in _SHORT:
+        return "SELL"
+    return None
+
+
+def _sende(sock: socket.socket, nachricht: dict) -> None:
     try:
-        req = urllib.request.Request(url)
-        with urllib.request.urlopen(req) as response:
-            return json.loads(response.read().decode())
+        sock.sendall((json.dumps(nachricht) + "\n").encode("utf-8"))
+    except Exception as exc:  # noqa: BLE001 - der Faden darf nicht sterben
+        log.error("Senden an NT8 fehlgeschlagen: %s", exc)
+
+
+def _hole_json(url: str):
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url), timeout=5) as antwort:
+            return json.loads(antwort.read().decode("utf-8"))
     except Exception:
         return []
 
-def order_polling_thread(sock):
-    log.info('Started order polling thread')
-    while True:
-        orders = fetch_json(ORDERS_URL)
-        for o in orders:
-            kind_str = 'MARKET'
-            ot = str(o.get('order_type', '')).upper()
-            if 'LIMIT' in ot: kind_str = 'LIMIT'
-            if 'STOP' in ot: kind_str = 'STOP'
 
-            msg = {
-                'type': 'order_submit',
-                'order_key': str(o.get('order_id')),
-                'account': o.get('account_name', 'Sim101'),
-                'symbol': 'MNQ',
-                'side': 'LONG' if 'LONG' in str(o.get('direction')).upper() else 'SELL',
-                'quantity': int(o.get('quantity', 1)),
-                'kind': kind_str,
-                'limit_price': float(o.get('limit_price') or 0),
-                'stop_price': float(o.get('stop_price') or 0),
-                'stop_loss': float(o.get('stop_loss_price') or 0),
-                'take_profit': float(o.get('take_profit_price') or 0)
-            }
-            log.info(f'Sending order to NT8: {msg}')
-            send_to_nt8(sock, msg)
-            
-        modifies = fetch_json(MODIFIES_URL)
-        for m in modifies:
-            msg = {
-                'type': 'order_modify',
-                'order_key': str(m.get('order_id')),
-                'limit_price': float(m.get('limit_price') or 0),
-                'stop_price': float(m.get('stop_price') or 0)
-            }
-            log.info(f'Sending modify to NT8: {msg}')
-            send_to_nt8(sock, msg)
-            
-        time.sleep(0.5)
-
-current_bar = None
-last_post_time = 0
-
-def handle_tick(msg):
-    global current_bar, last_post_time
+def _melde(url: str, nutzlast: dict) -> None:
     try:
-        ts_ns = int(msg['ts'])
-        minute_ts = (ts_ns // 60_000_000_000) * 60_000_000_000
-        price = float(msg['price'])
-        vol = int(msg.get('volume', msg.get('size', 0)))
-        
-        if current_bar is None or current_bar['ts_ns'] != minute_ts:
-            current_bar = {
-                'ts_ns': minute_ts,
-                'open': price,
-                'high': price,
-                'low': price,
-                'close': price,
-                'volume': vol
-            }
-        else:
-            current_bar['high'] = max(current_bar['high'], price)
-            current_bar['low'] = min(current_bar['low'], price)
-            current_bar['close'] = price
-            current_bar['volume'] += vol
-            
-        now = time.time()
-        if now - last_post_time >= 1.0:
-            utc_str = datetime.datetime.fromtimestamp(minute_ts / 1e9, tz=datetime.timezone.utc).isoformat()
-            bar_payload = {
-                'bars': [{
-                    'time': int(minute_ts / 1e9),
-                    'timestampUtc': utc_str,
-                    'open': current_bar['open'],
-                    'high': current_bar['high'],
-                    'low': current_bar['low'],
-                    'close': current_bar['close'],
-                    'volume': current_bar['volume'],
-                    'vwap': None,
-                    'timeframe': '1m',
-                    'instrument': 'MNQ',
-                    'closed': False
-                }]
-            }
-            post_to_server(BARS_URL, bar_payload)
-            last_post_time = now
-            
-    except Exception as e:
-        log.error(f"Error handling tick: {e}")
+        anfrage = urllib.request.Request(
+            url,
+            data=json.dumps(nutzlast).encode("utf-8"),
+            headers={"Content-Type": "application/json"},
+        )
+        with urllib.request.urlopen(anfrage, timeout=5):
+            pass
+    except Exception as exc:  # noqa: BLE001
+        log.error("POST %s fehlgeschlagen: %s", url, exc)
 
-def main():
+
+def _order_schleife(sock: socket.socket, stopp: threading.Event) -> None:
+    log.info("Order-Abholung gestartet")
+    while not stopp.is_set():
+        for order in _hole_json(ORDERS_URL) or []:
+            richtung = richtung_fuer_nt8(order.get("direction"))
+            if richtung is None:
+                # Nicht raten. Die Order verfaellt hier und wird protokolliert.
+                log.error(
+                    "Order %s ohne lesbare Richtung (%r) - nicht gesendet",
+                    order.get("order_id"),
+                    order.get("direction"),
+                )
+                continue
+
+            art = str(order.get("order_type") or "MARKET").upper()
+            if "LIMIT" in art:
+                art = "LIMIT"
+            elif "STOP" in art:
+                art = "STOP"
+            else:
+                art = "MARKET"
+
+            nachricht = {
+                "type": "order_submit",
+                "order_key": str(order.get("order_id")),
+                "account": order.get("account_name", "Sim101"),
+                "symbol": order.get("symbol", "MNQ"),
+                "side": richtung,
+                "quantity": int(order.get("quantity", 1)),
+                "kind": art,
+                "limit_price": float(order.get("limit_price") or 0),
+                "stop_price": float(order.get("stop_price") or 0),
+                "stop_loss": float(order.get("stop_loss_price") or 0),
+                "take_profit": float(order.get("take_profit_price") or 0),
+            }
+            log.info("Order an NT8: %s", nachricht)
+            _sende(sock, nachricht)
+
+        for aenderung in _hole_json(MODIFIES_URL) or []:
+            _sende(
+                sock,
+                {
+                    "type": "order_modify",
+                    "order_key": str(aenderung.get("order_id")),
+                    "limit_price": float(aenderung.get("limit_price") or 0),
+                    "stop_price": float(aenderung.get("stop_price") or 0),
+                },
+            )
+
+        stopp.wait(0.5)
+
+
+def main() -> None:
     while True:
+        stopp = threading.Event()
         try:
-            log.info(f'Connecting to NT8 at {NT8_HOST}:{NT8_PORT}')
+            log.info("Verbinde zu NT8 %s:%s", NT8_HOST, NT8_PORT)
             with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
                 sock.connect((NT8_HOST, NT8_PORT))
-                log.info('Connected.')
-                
-                threading.Thread(target=order_polling_thread, args=(sock,), daemon=True).start()
+                log.info("Verbunden.")
 
-                send_to_nt8(sock, {'type': 'subscribe', 'symbol': 'MNQ', 'timeframe': '1m'})
-                
-                buffer = ''
+                threading.Thread(
+                    target=_order_schleife, args=(sock, stopp), daemon=True
+                ).start()
+
+                puffer = ""
                 while True:
-                    data = sock.recv(4096)
-                    if not data:
+                    rohdaten = sock.recv(4096)
+                    if not rohdaten:
                         break
-                    buffer += data.decode('utf-8')
-                    while '\n' in buffer:
-                        line, buffer = buffer.split('\n', 1)
-                        if not line.strip():
+                    puffer += rohdaten.decode("utf-8", errors="replace")
+                    while "\n" in puffer:
+                        zeile, puffer = puffer.split("\n", 1)
+                        if not zeile.strip():
                             continue
                         try:
-                            msg = json.loads(line)
-                            msg_type = msg.get('type')
-                            
-                            if msg_type == 'tick':
-                                handle_tick(msg)
-                            elif msg_type == 'bar':
-                                pass
-                            elif msg_type == 'execution':
-                                post_to_server(FILLS_URL, msg)
-                        except Exception as e:
-                            log.error(f"Error parsing message: {e}")
-                            
-        except ConnectionRefusedError:
-            log.warning('Connection refused, retrying in 5s...')
-            time.sleep(5)
-        except Exception as e:
-            log.error(f'Socket error: {e}')
-            time.sleep(5)
+                            nachricht = json.loads(zeile)
+                        except Exception as exc:  # noqa: BLE001
+                            log.error("Nachricht unlesbar: %s", exc)
+                            continue
 
-if __name__ == '__main__':
+                        if nachricht.get("type") == "execution":
+                            _melde(FILLS_URL, nachricht)
+                        # "tick" und "bar" werden bewusst verworfen - siehe
+                        # Modul-Docstring.
+        except ConnectionRefusedError:
+            log.warning("Keine Verbindung (AddOn nicht geladen?) - erneut in 5s")
+        except Exception as exc:  # noqa: BLE001
+            log.error("Socket-Fehler: %s", exc)
+        finally:
+            stopp.set()
+        time.sleep(5)
+
+
+if __name__ == "__main__":
+    logging.basicConfig(level=logging.INFO)
     main()

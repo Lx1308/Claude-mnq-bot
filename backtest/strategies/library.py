@@ -1,4 +1,4 @@
-﻿"""Fertige Strategien als Bausteine - alle rein aus Regel-Objekten gebaut.
+"""Fertige Strategien als Bausteine - alle rein aus Regel-Objekten gebaut.
 
 Jede Fabrikfunktion nimmt nur Parameter entgegen und liefert eine
 :class:`RuleStrategy`. Parametervarianten sind damit reine Daten und

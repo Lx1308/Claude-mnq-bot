@@ -1,4 +1,4 @@
-﻿"""
+"""
 Execution Server fuer die TRADAYRI Desktop App.
 
 Stellt die REST-API bereit, die das React-Frontend erwartet.
@@ -19,6 +19,7 @@ from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse
+import pandas as pd
 from pydantic import BaseModel
 from typing import Optional
 
@@ -85,6 +86,7 @@ class FillEvent(BaseModel):
 # ---------------------------------------------------------------------------
 # Database helpers
 # ---------------------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = Path("data")
 
 def get_db(name: str):
@@ -530,86 +532,163 @@ async def reset_data(symbol: str = "MNQ"):
         "new_displacements": 0,
     }
 
+#: Ab wie vielen Trades eine Kennzahlenreihe ueberhaupt aussagekraeftig ist.
+#: Darunter dimmt die Oberflaeche den Bericht ab (``is_significant``).
+MIN_TRADES_FUER_AUSSAGE = 30
+
+
 @app.post("/api/backtest")
 async def run_backtest_api(body: dict = None):
-    symbol = body.get("symbol", "MNQ") if body else "MNQ"
-    try:
-        from common.config import IndicatorConfig, MarketConfig
-        from backtest.engine import Backtester
-        from backtest.strategies.library import build_strategy
-        from execution.overlay_helpers import get_df_for_overlays
-        import backtest.metrics as bm
-        
-        # Patch safe max_drawdown to prevent UI crash
-        def safe_max_drawdown(equity):
-            if equity.empty: return 0.0, 0.0
-            peak = equity.cummax()
-            drawdown = peak - equity
-            if drawdown.max() == 0: return 0.0, 0.0
-            return float(drawdown.max()), 0.0
-        bm.max_drawdown = safe_max_drawdown
-        
-        df = get_df_for_overlays(symbol, '1m', 15000)
-        market_cfg = MarketConfig(tick_size=0.25, point_value=20.0)
-        tester = Backtester(market_cfg, IndicatorConfig())
-        df = tester.prepare(df)
-        
-        strategy = build_strategy("power_hour_vwap", stop_loss_atr=1.5)
-        result = tester.run(df, strategy)
-        m = bm.compute_metrics(result, initial_capital=10000)
-        
-        def map_metrics(m):
-            return {
-                "trades": m.trades,
-                "win_rate": m.win_rate,
-                "expectancy_r": m.expectancy,
-                "profit_factor": m.profit_factor,
-                "payoff_ratio": abs(m.avg_win / (m.avg_loss if m.avg_loss else 1)),
-                "sqn": 1,
-                "net_pnl": m.total_pnl,
-                "commission": 0,
-                "final_equity": 10000 + m.total_pnl,
-                "return_pct": m.total_pnl / 100,
-                "max_drawdown_usd": m.max_drawdown,
-                "max_drawdown_pct": m.max_drawdown_pct or 0,
-                "max_consecutive_losses": m.max_consecutive_losses,
-                "avg_bars_held": m.avg_bars_held,
-                "avg_mae_r": 0,
-                "avg_mfe_r": 0,
-                "start_equity": 10000
-            }
-            
-        mapped = map_metrics(m)
+    """Backtest aus der Oberflaeche - ueber dieselbe Maschinerie wie die CLI.
+
+    Drei Dinge sind hier nicht verhandelbar, weil eine fruehere Fassung sie
+    alle drei verletzt hat:
+
+    1. **In-Sample und Out-of-Sample sind zwei verschiedene Zeitraeume.**
+       Vorher stand in allen drei Feldern (``overall``, ``in_sample``,
+       ``out_of_sample``) dasselbe Objekt - die Oberflaeche zeigte damit ein
+       In-Sample-Ergebnis in der Out-of-Sample-Spalte an. Geteilt wird jetzt
+       ueber ``backtest.splits``/``backtest.compare``, also genau dort, wo
+       Invariante 5 die Indikatoren einmal ueber die Gesamthistorie rechnet
+       und erst danach schneidet.
+    2. **Kosten sind ein benanntes Profil, keine Null.** ``commission: 0`` war
+       schlicht falsch; gerechnet wird mit dem in ``config.yaml`` gesetzten
+       Profil, und der Name steht im Bericht (``assumptions``).
+    3. **Nichts wird erfunden.** ``sqn`` und die MAE/MFE-Felder kennt
+       ``backtest.metrics`` nicht - sie bleiben ``None`` statt mit einer
+       plausiblen Zahl gefuellt zu werden (Invariante 11).
+    """
+    body = body or {}
+    symbol = body.get("symbol", "MNQ")
+    strategie_name = body.get("strategy", "power_hour_vwap")
+    parameter = body.get("params") or {}
+    startkapital = float(body.get("initial_capital", 10000))
+
+    from common.config import Config
+    from backtest.engine import Backtester, CostModel
+    from backtest.kosten import profil_aus_config
+    from backtest.splits import SplitConfig, split_data
+    from backtest.compare import prepare_split
+    from backtest.strategies.library import STRATEGY_LIBRARY, build_strategy
+    from execution.overlay_helpers import get_df_for_overlays
+    import backtest.metrics as bm
+
+    if strategie_name not in STRATEGY_LIBRARY:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unbekannte Strategie {strategie_name!r}. "
+                   f"Bekannt: {', '.join(sorted(STRATEGY_LIBRARY))}",
+        )
+
+    df = get_df_for_overlays(symbol, "1m", 15000)
+    if df is None or df.empty:
+        raise HTTPException(
+            status_code=409,
+            detail=f"Keine 1m-Kerzen fuer {symbol} in data/ntbridge.sqlite3.",
+        )
+
+    # Konfiguration statt Inline-Werte: MarketConfig() steht per Vorgabe auf
+    # NQ (20 USD/Punkt). MNQ sind 2 USD/Punkt - jede USD-Zahl waere sonst
+    # zehnmal zu gross gewesen.
+    config = Config.load(str(PROJECT_ROOT / "config.yaml"))
+    profil = profil_aus_config(config.backtest)
+    kosten = CostModel.aus_profil(
+        profil,
+        tick_size=config.market.tick_size,
+        point_value=config.market.point_value,
+    )
+    tester = Backtester(config.market, config.indicators, kosten)
+
+    strategie = build_strategy(strategie_name, **parameter)
+
+    split = split_data(df, SplitConfig(mode="fraction", in_sample_fraction=0.5))
+    vorbereitet_is, vorbereitet_oos = prepare_split(tester, split)
+    vorbereitet_gesamt = pd.concat([vorbereitet_is, vorbereitet_oos])
+
+    lauf_gesamt = tester.run(vorbereitet_gesamt, strategie, already_prepared=True)
+    lauf_is = tester.run(vorbereitet_is, strategie, label="in-sample", already_prepared=True)
+    lauf_oos = tester.run(vorbereitet_oos, strategie, label="out-of-sample", already_prepared=True)
+
+    def kennzahlen(lauf) -> dict:
+        m = bm.compute_metrics(lauf, initial_capital=startkapital)
+        kommission = sum(abs(t.commission) for t in lauf.trades)
         return {
-            "symbol": symbol,
-            "instrument_name": "Nasdaq",
-            "base_timeframe": "1m",
-            "bars": len(df),
-            "first_ts": int(df.index[0].timestamp()*1000) if not df.empty else 0,
-            "last_ts": int(df.index[-1].timestamp()*1000) if not df.empty else 0,
-            "backtest_version": "1.0",
-            "warnings": [],
-            "is_significant": True,
-            "min_trades": 1,
-            "overall": mapped,
-            "in_sample": mapped,
-            "out_of_sample": mapped,
-            "by_strategy": {"power_hour_vwap": mapped},
-            "by_symbol": {symbol: mapped},
-            "by_session": {},
-            "by_direction": {},
-            "by_exit": {},
-            "by_stop_anchor": {},
-            "by_target_source": {},
-            "exit_counts": {},
-            "rejections": {},
-            "assumptions": {},
-            "equity": [{"index": i, "ts": int(dt.timestamp()*1000), "equity": val} for i, (dt, val) in enumerate(result.equity.items())]
+            "trades": m.trades,
+            "win_rate": m.win_rate,
+            "expectancy_r": m.expectancy,
+            "profit_factor": m.profit_factor,
+            "payoff_ratio": abs(m.avg_win / m.avg_loss) if m.avg_loss else None,
+            # backtest.metrics kennt kein SQN und keine MAE/MFE-Aggregate.
+            # Lieber leer als geschaetzt - siehe Invariante 11.
+            "sqn": None,
+            "net_pnl": m.total_pnl,
+            "commission": kommission,
+            "final_equity": startkapital + m.total_pnl,
+            "return_pct": (m.total_pnl / startkapital * 100) if startkapital else 0.0,
+            "max_drawdown_usd": m.max_drawdown,
+            "max_drawdown_pct": m.max_drawdown_pct,
+            "max_consecutive_losses": m.max_consecutive_losses,
+            "avg_bars_held": m.avg_bars_held,
+            "avg_mae_r": None,
+            "avg_mfe_r": None,
+            "start_equity": startkapital,
         }
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        return {"error": str(e)}
+
+    gesamt = kennzahlen(lauf_gesamt)
+
+    hinweise = [
+        f"Datenbasis: {len(vorbereitet_gesamt)} 1m-Kerzen aus der Live-Sammlung "
+        f"(ntbridge.sqlite3), {vorbereitet_gesamt.index[0]:%Y-%m-%d} bis "
+        f"{vorbereitet_gesamt.index[-1]:%Y-%m-%d}. Das ist kein geprueftes "
+        "Research-Ergebnis, sondern ein Probelauf auf einem kurzen Zeitraum.",
+        f"Kostenprofil: {profil.name} ({profil.summe_je_seite:.2f} USD je Seite"
+        + (", Annahme)" if profil.ist_annahme else ", belegt)"),
+        "Der Out-of-Sample-Block ist die zweite Haelfte desselben Zeitraums - "
+        "eine Aufteilung zur Orientierung, keine Confirmation nach Masterplan G.",
+    ]
+    if gesamt["trades"] < MIN_TRADES_FUER_AUSSAGE:
+        hinweise.append(
+            f"Nur {gesamt['trades']} Trades - unter {MIN_TRADES_FUER_AUSSAGE} "
+            "sagen Trefferquote und Profitfaktor nichts aus."
+        )
+
+    return {
+        "symbol": symbol,
+        "instrument_name": config.market.product,
+        "base_timeframe": "1m",
+        "bars": len(vorbereitet_gesamt),
+        "first_ts": int(vorbereitet_gesamt.index[0].timestamp() * 1000),
+        "last_ts": int(vorbereitet_gesamt.index[-1].timestamp() * 1000),
+        "backtest_version": "2.0",
+        "warnings": hinweise,
+        "is_significant": gesamt["trades"] >= MIN_TRADES_FUER_AUSSAGE,
+        "min_trades": MIN_TRADES_FUER_AUSSAGE,
+        "overall": gesamt,
+        "in_sample": kennzahlen(lauf_is),
+        "out_of_sample": kennzahlen(lauf_oos),
+        "by_strategy": {strategie_name: gesamt},
+        "by_symbol": {symbol: gesamt},
+        "by_session": {},
+        "by_direction": {},
+        "by_exit": {},
+        "by_stop_anchor": {},
+        "by_target_source": {},
+        "exit_counts": {},
+        "rejections": {},
+        "assumptions": {
+            "kostenprofil": profil.name,
+            "kosten_je_seite_usd": profil.summe_je_seite,
+            "kosten_ist_annahme": profil.ist_annahme,
+            "punktwert_usd": config.market.point_value,
+            "split": "50/50 chronologisch",
+            "strategie": strategie_name,
+            "parameter": strategie.params,
+        },
+        "equity": [
+            {"index": i, "ts": int(ts.timestamp() * 1000), "equity": wert}
+            for i, (ts, wert) in enumerate(lauf_gesamt.equity.items())
+        ],
+    }
 
 @app.get("/api/backtest")
 async def get_last_backtest(symbol: str = "MNQ"):

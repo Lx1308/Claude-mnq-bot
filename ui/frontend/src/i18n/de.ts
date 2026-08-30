@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Deutsche Oberflaechentexte.
  *
  * Die Engine liefert Reason-Codes plus Parameter, nie fertige Saetze. Erst hier

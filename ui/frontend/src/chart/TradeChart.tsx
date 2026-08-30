@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Kurschart mit Analyse-Overlays.
  *
  * Das Chart rechnet NICHTS selbst nach. Es zeichnet ausschliesslich, was die
