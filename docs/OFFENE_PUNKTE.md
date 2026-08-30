@@ -49,8 +49,8 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
       ab, dann in `config.yaml` unter `ausfuehrung.kontoprofile` eintragen —
       mit `quelle` und `ist_annahme: false`. **Solange das offen ist, darf kein
       Bericht behaupten, ein Lauf habe „die Lucid-Regeln" eingehalten.**
-      Offen ist außerdem, ob es eine 300k-Stufe gibt; in keiner der beiden
-      Quellen taucht sie auf.
+      *(Geklärt am 30.08.2026: eine 300k-Stufe gibt es bei Lucid nicht,
+      größte ist 150k — das war eine Verwechslung mit FTMO.)*
 
 ## P1 — Forschungsgrundlage
 
@@ -127,11 +127,7 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 
 ## Fragen an Laurin
 
-- **Lucid-Zahlen** (siehe P0) — und ob es eine 300k-Stufe gibt.
-- **Handelt der Bot ab Montag mit einem Lucid-Profil oder mit `frei`?**
-  Vorgabe steht auf `frei` mit selbst gesetzten Grenzen (1.800 USD gesamt,
-  600 USD je Tag, 150 USD je Trade), weil ein Lucid-25k mit den aktuellen
-  5m-Setups rechnerisch nicht funktioniert — ein einzelner Micro-Kontrakt
-  riskiert dort 11,9 % des Puffers. Details in `CODE_CHAT_KONTEXT.md` 34.4.
-- **Push nach GitHub:** Die lokalen Commits seit `fd29411` sind nicht gepusht.
-  Freigabe erteilen, wenn der Stand als „laufende Version" gelten soll.
+- **Lucid-Zahlen** (siehe P0). *(300k-Frage ist geklärt: gibt es nicht.)*
+*(Beantwortet am 30.08.2026: der Bot handelt mit `frei`; die Auswertung
+gegen die Prop-Regelwerke passiert im Nachhinein über `auswertung/`. Push nach
+GitHub freigegeben und ausgeführt.)*

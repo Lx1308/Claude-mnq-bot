@@ -76,6 +76,82 @@ MIN_UEBERLAPPUNG = 200
 MAX_ABWEICHUNG = 0.03
 
 
+#: NinjaTrader benennt Kontrakte "MNQ SEP19". Monatskuerzel -> Monatszahl.
+MONATE = {
+    "JAN": 1, "FEB": 2, "MAR": 3, "APR": 4, "MAY": 5, "JUN": 6,
+    "JUL": 7, "AUG": 8, "SEP": 9, "OCT": 10, "NOV": 11, "DEC": 12,
+}
+
+
+def kontrakt_aus_name(text: str) -> tuple[str, int, int] | None:
+    """"MNQ SEP19" -> ("MNQ", 2019, 9). ``None``, wenn unlesbar.
+
+    Auch aus einem Dateinamen wie "MNQ SEP19.Last.txt" oder
+    "MNQ_SEP19_minute.txt" - NinjaTrader benennt die Exportdatei nach dem
+    Kontrakt, und den Namen von Hand nachzutragen waere eine Fehlerquelle.
+    """
+    import re
+
+    treffer = re.search(
+        r"([A-Z]{2,4})[ _-]?(" + "|".join(MONATE) + r")[ _-]?(\d{2}|\d{4})",
+        text.upper(),
+    )
+    if not treffer:
+        return None
+    wurzel, monat, jahr = treffer.groups()
+    jahreszahl = int(jahr)
+    if jahreszahl < 100:
+        # Zweistellig: 19 -> 2019. Futures laufen nicht 80 Jahre.
+        jahreszahl += 2000
+    return wurzel, jahreszahl, MONATE[monat]
+
+
+def rollfenster(
+    wurzel: str, jahr: int, monat: int, *, rolltage: int
+) -> tuple[datetime, datetime]:
+    """Von wann bis wann dieser Kontrakt der Frontmonat war.
+
+    WARUM DAS NOETIG IST
+    --------------------
+    Die Kerzen liegen unter ``(instrument, timeframe, ts_utc)`` als
+    Primaerschluessel, und der Import macht ein UPSERT. Wuerde man alle
+    Kontrakte ungefiltert einlesen, ueberschrieben sich ihre
+    Ueberschneidungszeitraeume gegenseitig - und welcher Kontrakt am Ende in
+    der Datenbank steht, haenge an der Reihenfolge der Importe.
+
+    Das Ergebnis saehe lueckenlos und plausibel aus. Es waere aber eine
+    Mischung aus zwei verschiedenen Kontrakten mit unterschiedlichem
+    Kursniveau - derselbe Fehlertyp wie bei den Dukascopy-Daten, nur an einer
+    anderen Stelle.
+
+    Das Fenster reicht deshalb vom Rolltermin des VORgaengerkontrakts bis zum
+    eigenen. ``rolltage`` ist der Abstand zum Verfall, an dem das Volumen
+    ueblicherweise umschlaegt.
+    """
+    from datetime import timedelta
+
+    from common.instruments import get_instrument
+
+    instrument = get_instrument(wurzel)
+    eigener_verfall = instrument.expiry_rule(jahr, monat)
+
+    # Quartalskontrakte: der Vorgaenger liegt drei Monate frueher.
+    vor_monat = monat - 3
+    vor_jahr = jahr
+    if vor_monat < 1:
+        vor_monat += 12
+        vor_jahr -= 1
+    vorheriger_verfall = instrument.expiry_rule(vor_jahr, vor_monat)
+
+    von = datetime.combine(
+        vorheriger_verfall - timedelta(days=rolltage), datetime.min.time()
+    ).replace(tzinfo=ZoneInfo("UTC"))
+    bis = datetime.combine(
+        eigener_verfall - timedelta(days=rolltage), datetime.min.time()
+    ).replace(tzinfo=ZoneInfo("UTC"))
+    return von, bis
+
+
 def lies_export(pfad: Path, zeitzone: str) -> pd.DataFrame:
     """NinjaTraders Exportformat lesen.
 
@@ -229,6 +305,23 @@ def main(argv: list[str] | None = None) -> int:
              "seiner Anzeigezeitzone - im Zweifel im Exportdialog nachsehen.",
     )
     parser.add_argument(
+        "--kontrakt",
+        help="z.B. 'MNQ SEP19'. Ohne Angabe aus dem Dateinamen gelesen. "
+             "Wird gebraucht, um den Zeitraum zu bestimmen, in dem dieser "
+             "Kontrakt der Frontmonat war.",
+    )
+    parser.add_argument(
+        "--rolltage", type=int, default=8,
+        help="Wie viele Tage vor dem Verfall auf den naechsten Kontrakt "
+             "gerollt wird (Vorgabe 8).",
+    )
+    parser.add_argument(
+        "--alle-kerzen", action="store_true",
+        help="Ohne Beschraenkung auf das Rollfenster importieren. NUR fuer "
+             "einen einzelnen Kontrakt sinnvoll - bei mehreren ueberschreiben "
+             "sich die Ueberschneidungen gegenseitig.",
+    )
+    parser.add_argument(
         "--schreiben",
         action="store_true",
         help="Nach bestandener Pruefung tatsaechlich schreiben. Ohne diesen "
@@ -249,6 +342,48 @@ def main(argv: list[str] | None = None) -> int:
     print(f"Lese {args.datei} ...")
     neu = lies_export(args.datei, args.zeitzone)
     print(f"  {len(neu)} Kerzen, {neu.index[0]} bis {neu.index[-1]}")
+
+    if not args.alle_kerzen:
+        kennung = kontrakt_aus_name(args.kontrakt or args.datei.name)
+        if kennung is None:
+            print(
+                "ABBRUCH: Kontrakt nicht erkennbar.",
+                "Aus dem Dateinamen liess sich kein Kontrakt lesen (erwartet",
+                "wird etwas wie 'MNQ SEP19'). Gib ihn mit --kontrakt an.",
+                "",
+                "Warum das noetig ist: mehrere Kontrakte ueberschneiden sich",
+                "zeitlich. Ungefiltert importiert ueberschreiben sie einander,",
+                "und welcher am Ende in der Datenbank steht, haengt an der",
+                "Reihenfolge der Importe. Das Ergebnis saehe lueckenlos aus und",
+                "waere eine Mischung aus zwei Kontrakten mit verschiedenem",
+                "Kursniveau.",
+                "",
+                "Wenn du wirklich nur einen einzigen Kontrakt hast und alles",
+                "davon willst: --alle-kerzen.",
+                sep=chr(10), file=sys.stderr,
+            )
+            return 2
+
+        wurzel, jahr, monat = kennung
+        von, bis = rollfenster(wurzel, jahr, monat, rolltage=args.rolltage)
+        vorher = len(neu)
+        neu = neu[(neu.index >= von) & (neu.index < bis)]
+        print(
+            f"  Kontrakt {wurzel} {jahr}-{monat:02d}, Frontmonat von "
+            f"{von:%Y-%m-%d} bis {bis:%Y-%m-%d} "
+            f"({args.rolltage} Tage vor Verfall gerollt)"
+        )
+        print(
+            f"  {vorher - len(neu)} Kerzen ausserhalb des Fensters verworfen, "
+            f"{len(neu)} bleiben"
+        )
+        if neu.empty:
+            print(
+                "Nichts uebrig. Entweder deckt der Export das Rollfenster "
+                "nicht ab, oder die Zeitzone stimmt nicht.",
+                file=sys.stderr,
+            )
+            return 3
 
     speicher = BarStore(datenbank)
     try:

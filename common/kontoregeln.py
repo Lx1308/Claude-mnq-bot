@@ -38,9 +38,10 @@ habe "die Lucid-Regeln eingehalten" - er hat die hier hinterlegte Annahme
 eingehalten. Laurin bestaetigt die Zahlen aus seinem Konto-Dashboard, dann
 wird ``ist_annahme`` auf False gesetzt und ``quelle`` benannt.
 
-Ein 300k-Konto ist in beiden Quellen **nicht** aufgefuehrt; die groesste
-Stufe ist 150k. Es ist deshalb auch hier nicht eingetragen - lieber ein
-"kenne ich nicht" als eine erfundene Stufe.
+Ein 300k-Konto gibt es bei Lucid **nicht**; die groesste Stufe ist 150k.
+Laurin hat das am 30.08.2026 bestaetigt - die 300k stammten aus einer
+Verwechslung mit FTMO. Beide Quellen hatten das bereits so ausgewiesen, und
+das Register bleibt damit unveraendert richtig.
 """
 
 from __future__ import annotations

@@ -78,12 +78,14 @@ def test_nur_das_25k_konto_hat_kein_tagesverlustlimit():
 
 
 def test_kein_300k_konto_im_register():
-    """Beide Quellen kennen als groesste Stufe 150k.
+    """Lucids groesste Stufe ist 150k - von Laurin am 30.08.2026 bestaetigt.
 
-    Lieber eine fehlende Stufe als eine erfundene: ein Profil mit geratenen
-    Grenzen wuerde im Protokoll aussehen wie ein gemessenes.
+    Die zwischenzeitlich angenommene 300k-Stufe war eine Verwechslung mit
+    FTMO. Der Test bleibt stehen, damit sie nicht aus alter Erinnerung wieder
+    eingetragen wird.
     """
     assert not any("300k" in name for name in bekannte_kontoprofile())
+    assert any("150k" in name for name in bekannte_kontoprofile())
 
 
 def test_unbekanntes_profil_nennt_die_auswahl():

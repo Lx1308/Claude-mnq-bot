@@ -157,3 +157,58 @@ def test_falsche_zeitzone_faellt_durch():
 
     bestanden, _ = kreuzvergleich(falsch, referenz)
     assert not bestanden
+
+
+# -- Kontraktrollen ---------------------------------------------------------
+
+def test_kontrakt_wird_aus_dem_dateinamen_gelesen():
+    """NinjaTrader benennt die Exportdatei nach dem Kontrakt.
+
+    Ihn von Hand nachtragen zu muessen waere eine Fehlerquelle - und ein
+    falsch zugeordneter Kontrakt schoebe die Kerzen in das Zeitfenster eines
+    anderen.
+    """
+    from werkzeuge.nt8_import import kontrakt_aus_name
+
+    assert kontrakt_aus_name("MNQ SEP19.Last.txt") == ("MNQ", 2019, 9)
+    assert kontrakt_aus_name("MNQ_DEC21_minute.txt") == ("MNQ", 2021, 12)
+    assert kontrakt_aus_name("mnq-jun26.txt") == ("MNQ", 2026, 6)
+    assert kontrakt_aus_name("irgendwas.csv") is None
+
+
+def test_rollfenster_schliessen_luecken_und_ueberlappungsfrei_aneinander_an():
+    """DER Punkt der ganzen Uebung.
+
+    Die Kerzen liegen unter (instrument, timeframe, ts_utc) als
+    Primaerschluessel, und der Import macht ein UPSERT. Ueberlappen sich zwei
+    Kontraktfenster, ueberschreiben sie einander - und welcher Kontrakt am
+    Ende in der Datenbank steht, haengt an der Reihenfolge der Importe.
+    """
+    from werkzeuge.nt8_import import rollfenster
+
+    quartale = [(2026, 3), (2026, 6), (2026, 9), (2026, 12)]
+    fenster = [rollfenster("MNQ", j, m, rolltage=8) for j, m in quartale]
+
+    for (_, ende), (start, _) in zip(fenster, fenster[1:]):
+        assert ende == start, "Fenster muessen luecken- und ueberlappungsfrei sein"
+
+
+def test_rolltage_verschieben_das_fenster():
+    from werkzeuge.nt8_import import rollfenster
+
+    frueh = rollfenster("MNQ", 2026, 9, rolltage=15)
+    spaet = rollfenster("MNQ", 2026, 9, rolltage=1)
+    assert frueh[1] < spaet[1]
+
+
+def test_fenster_endet_vor_dem_verfall():
+    """Am Verfallstag selbst handelt niemand mehr den auslaufenden Kontrakt."""
+    from datetime import date
+
+    from common.instruments import get_instrument
+    from werkzeuge.nt8_import import rollfenster
+
+    verfall = get_instrument("MNQ").expiry_rule(2026, 9)
+    _, bis = rollfenster("MNQ", 2026, 9, rolltage=8)
+    assert bis.date() < verfall
+    assert (verfall - bis.date()).days == 8
