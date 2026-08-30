@@ -111,8 +111,33 @@ class BridgeRequestHandler(BaseHTTPRequestHandler):
         else:
             self._respond(404, {"fehler": f"Unbekannter Pfad {self.path!r}"})
 
+    def _koerper_verwerfen(self) -> None:
+        """Den Anfragekoerper lesen, bevor eine Fehlerantwort rausgeht.
+
+        Wer antwortet und die Verbindung schliesst, waehrend der Client noch
+        sendet, bricht dessen Sendevorgang ab. Unter Windows meldet das ein
+        ``ConnectionAbortedError`` (WinError 10053) - beim CLIENT, nicht hier.
+        Der sieht dann einen Verbindungsabbruch statt der sauberen 404, die
+        ihm eigentlich sagen wuerde, was er falsch macht.
+
+        Aufgefallen als flackernder Test (``test_empfaenger_lehnt_falschen_
+        pfad_ab``, 30.08.2026): er fiel gelegentlich aus und lief beim
+        naechsten Versuch durch - der Klassiker fuer ein Zeitproblem beim
+        Verbindungsabbau.
+        """
+        try:
+            laenge = int(self.headers.get("Content-Length", "0"))
+        except ValueError:
+            return
+        if 0 < laenge <= MAX_BODY_BYTES:
+            try:
+                self.rfile.read(laenge)
+            except OSError:
+                pass
+
     def do_POST(self) -> None:  # noqa: N802
         if self.path.rstrip("/") != "/bars":
+            self._koerper_verwerfen()
             self._respond(404, {"fehler": f"Unbekannter Pfad {self.path!r}"})
             return
 

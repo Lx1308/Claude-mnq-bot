@@ -85,27 +85,26 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
       Entweder in Pine nachbauen (dann muss die Übereinstimmung bewiesen
       werden) oder dabei belassen und dokumentieren.
 
-- [ ] **`test_empfaenger_lehnt_falschen_pfad_ab` ist flaky.** Fiel am
-      30.08.2026 einmal mit `ConnectionAbortedError [WinError 10053]` aus und
-      lief beim nächsten Versuch durch. Ein echter Socket in einem Test; die
-      Ursache ist ein Zeitproblem beim Verbindungsabbau unter Windows.
+- [x] ~~`requirements.txt` stimmt nicht mehr.~~ Erledigt 30.08.2026.
+      *(Alter Text: fastapi, uvicorn und pywebview fehlten; anthropic und
+      websockets standen drin, ohne benutzt zu werden.)*
 
-- [ ] **`requirements.txt` stimmt nicht mehr.** `fastapi`, `uvicorn`,
-      `pywebview` und `starlette` fehlen, obwohl die App sie braucht — ein
-      frisches Aufsetzen scheitert. `anthropic` und `websockets` stehen drin,
-      werden aber nirgends benutzt (der Anthropic-Import ist repo-weit
-      verboten und getestet).
+- [x] ~~`ui/frontend/fix_app*.py`, `ui/terminal/`, `feature_store/`, leere
+      `ntbridge.sqlite3` im Stamm.~~ Entfernt 30.08.2026 (bis auf
+      `ui/terminal/`, siehe unten).
 
-- [ ] **`ui/frontend/fix_app*.py` und `ui/terminal/`** sind Reste aus der
-      Antigravity-Phase: acht Wegwerf-Skripte, die einmal eine Textersetzung
-      im Frontend gemacht haben, und ein zweites, ungenutztes React-Gerüst.
+- [x] ~~Flackernder Test `test_empfaenger_lehnt_falschen_pfad_ab`.~~ Behoben
+      30.08.2026 — und es war kein Testproblem: der Empfänger antwortete mit
+      404, **bevor** er den Anfragekörper gelesen hatte. Wer antwortet und die
+      Verbindung schließt, während der Client noch sendet, bricht dessen
+      Sendevorgang ab (`WinError 10053`). Ein NinjaTrader, der auf einen
+      falschen Pfad postet, sah damit einen Verbindungsabbruch statt der
+      sauberen 404, die ihm gesagt hätte, was er falsch macht.
 
-- [ ] **`feature_store/`** enthält nur noch ein `__pycache__` — das Modul
-      selbst ist weg. Entweder wiederherstellen oder den Ordner entfernen.
+- [ ] **`ui/terminal/`** ist ein zweites, ungenutztes React-Gerüst aus der
+      Antigravity-Phase. Kann weg, sobald sicher ist, dass nichts daraus
+      gebraucht wird.
 
-- [ ] **Leere `ntbridge.sqlite3` im Projektstamm** (0 Byte, 29.08.). Entstand,
-      weil etwas mit einem relativen Pfad aus dem falschen Arbeitsverzeichnis
-      geöffnet wurde. Die echte Datei liegt unter `data/`.
 
 - [ ] **Order-Änderungen (`/api/orders/modify_pending`)** liefern immer eine
       leere Liste. Für einen nachziehenden Stop müsste das gebaut werden — das
