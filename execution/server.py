@@ -11,6 +11,7 @@ import sys
 import uuid
 import sqlite3
 import logging
+from contextlib import asynccontextmanager
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -26,7 +27,27 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
-app = FastAPI()
+@asynccontextmanager
+async def lebenszyklus(_app: FastAPI):
+    """Startet den autonomen Bot mit dem Server und beendet ihn mit ihm.
+
+    ``lifespan`` statt der abgekuendigten ``@app.on_event``-Haken: die sind
+    seit FastAPI 0.109 veraltet und werfen eine DeprecationWarning.
+    """
+    if CONFIG.ausfuehrung.enabled:
+        BOT.start()
+    else:
+        logger.info(
+            "Autonomer Bot ist aus (ausfuehrung.enabled=false). "
+            "Das Order-Panel arbeitet unabhaengig davon."
+        )
+    try:
+        yield
+    finally:
+        BOT.stop()
+
+
+app = FastAPI(lifespan=lebenszyklus)
 
 app.add_middleware(
     CORSMiddleware,
@@ -63,7 +84,7 @@ def get_db(name: str):
 from common.config import Config                      # noqa: E402
 from common.instruments import get_instrument         # noqa: E402
 from common.kontoregeln import aus_konfiguration      # noqa: E402
-from execution import buchung                         # noqa: E402
+from execution import buchung, overlays               # noqa: E402
 from execution.risiko import Handelsfenster, RisikoPruefung   # noqa: E402
 from execution.store import ExecutionStore, Order, OrderStatus  # noqa: E402
 
@@ -100,22 +121,6 @@ BOT = HandelsBot(
     bar_datenbank=str(PROJECT_ROOT / "data" / "ntbridge.sqlite3"),
     ideen_datenbank=str(PROJECT_ROOT / "data" / "ideas.sqlite3"),
 )
-
-
-@app.on_event("startup")
-def _bot_starten() -> None:
-    if CONFIG.ausfuehrung.enabled:
-        BOT.start()
-    else:
-        logger.info(
-            "Autonomer Bot ist aus (ausfuehrung.enabled=false). "
-            "Das Order-Panel arbeitet unabhaengig davon."
-        )
-
-
-@app.on_event("shutdown")
-def _bot_beenden() -> None:
-    BOT.stop()
 
 
 @app.get("/api/bot")
@@ -566,54 +571,265 @@ def get_coverage():
             pass
     return []
 
+#: Wie viele Kerzen die Erkennung sieht. Mehr Kerzen kosten Rechenzeit, ohne
+#: dass ein Muster von vor drei Tagen den Chart noch interessiert.
+OVERLAY_KERZEN = 1500
+
+
+def _vorbereiteter_rahmen(symbol: str, timeframe: str, kerzen: int = OVERLAY_KERZEN):
+    """Kerzen laden und die Indikatoren anhaengen - ueber DIE eine Rechnung.
+
+    ``compute_indicators`` aus ``common/indicators.py``, also dieselbe
+    Funktion, die auch Backtest und Ideen-Protokollierung benutzen
+    (Invariante 1). Eine eigene ATR-Formel fuer die Oberflaeche waere der
+    Anfang davon, dass der Chart etwas anderes zeigt als das, was gemessen
+    wurde.
+    """
+    from common.indicators import compute_indicators
+    from ntbridge.store import BarStore
+
+    speicher = BarStore(PROJECT_ROOT / "data" / "ntbridge.sqlite3")
+    try:
+        df = speicher.load_frame(symbol, timeframe, limit=kerzen)
+    finally:
+        speicher.close()
+    if df.empty:
+        return df
+    return compute_indicators(df, CONFIG.indicators, CONFIG.market.session)
+
+
+def _tagesniveaus(df) -> dict[str, float]:
+    """Benannte Niveaus als {name: preis} - inklusive Asia und London."""
+    from common.levels import compute_levels
+
+    if df.empty:
+        return {}
+    try:
+        satz = compute_levels(
+            df,
+            get_instrument(CONFIG.market.product),
+            atr_value=float(df["atr"].iloc[-1]) if "atr" in df.columns else None,
+            session_cfg=CONFIG.market.session,
+        )
+    except ValueError:
+        return {}
+    return {level.name: float(level.price) for level in satz.levels}
+
+
 @app.get("/api/overlays")
-def get_overlays(symbol: str = "", timeframe: str = ""):
-    """types.ts: Overlays"""
+def get_overlays(symbol: str = "MNQ", timeframe: str = "5m"):
+    """FVG, Swings, Liquiditaetszonen, Sweeps, Strukturbrueche, Displacements.
+
+    Stand hier vorher als leere Liste - deshalb blieb der Chart nackt,
+    obwohl die Haken gesetzt waren und die Erkennungslogik seit dem
+    27.08.2026 im Projekt liegt.
+    """
+    symbol = symbol or "MNQ"
+    timeframe = timeframe or "5m"
+    df = _vorbereiteter_rahmen(symbol, timeframe)
+    if df.empty:
+        return overlays.baue_overlays(
+            df, get_instrument(CONFIG.market.product), CONFIG,
+            symbol=symbol, timeframe=timeframe,
+        )
+    return overlays.baue_overlays(
+        df,
+        get_instrument(CONFIG.market.product),
+        CONFIG,
+        symbol=symbol,
+        timeframe=timeframe,
+        level=_tagesniveaus(df),
+    )
+
+
+@app.get("/api/levels")
+def get_levels(symbol: str = "MNQ", timeframe: str = "1m"):
+    """Die benannten Tagesniveaus mit Abstand - auch in ATR-Vielfachen.
+
+    Nur die Punktzahl waere zwischen einem ruhigen und einem hektischen Tag
+    nicht vergleichbar; deshalb steht der ATR-Abstand ueberall daneben.
+    """
+    from common.levels import compute_levels
+
+    df = _vorbereiteter_rahmen(symbol or "MNQ", timeframe or "1m")
+    if df.empty:
+        raise HTTPException(
+            status_code=409, detail=f"Keine Kerzen fuer {symbol}/{timeframe}."
+        )
+    satz = compute_levels(
+        df,
+        get_instrument(CONFIG.market.product),
+        atr_value=float(df["atr"].iloc[-1]) if "atr" in df.columns else None,
+        session_cfg=CONFIG.market.session,
+    )
     return {
         "symbol": symbol or "MNQ",
-        "timeframe": timeframe or "5m",
-        "swings": [],
-        "fvgs": [],
-        "pools": [],
-        "sweeps": [],
-        "structure_events": [],
-        "displacements": [],
+        "kurs": satz.current_price,
+        "atr": satz.atr_value,
+        "levels": [
+            {
+                "name": level.name,
+                "preis": level.price,
+                "abstand_punkte": level.distance_points,
+                "abstand_atr": level.distance_atr,
+            }
+            for level in satz.levels
+        ],
+        "nicht_verfuegbar": getattr(satz, "unavailable", {}),
     }
+
 
 @app.get("/api/analysis")
-def get_analysis(symbol: str = ""):
-    """types.ts: ContextSnapshot"""
-    return {
-        "symbol": symbol or "MNQ",
-        "last_ts": 0,
-        "session": "",
-        "bias": {
-            "bias": "neutral",
-            "score": 0.0,
-            "per_timeframe": [],
-            "reasons": [],
-        },
-        "timeframes": {},
+def get_analysis(symbol: str = "MNQ"):
+    """Trend und Struktur ueber mehrere Zeitebenen.
+
+    Der 1H-Trend, den das Strategie-Panel anzeigt, kommt von hier - und zwar
+    aus ``common/structure.py::assess_trend``, derselben Bewertung wie im
+    ``/analyse``-Bericht. Vorher stand hier fest "neutral".
+    """
+    symbol = symbol or "MNQ"
+    rahmen = {
+        tf: _vorbereiteter_rahmen(symbol, tf, kerzen=600)
+        for tf in ("5m", "15m", "1h")
     }
+    ergebnis = overlays.baue_analyse(rahmen, CONFIG, symbol=symbol)
+    ergebnis["session"] = _session_name()
+    return ergebnis
+
+
+def _session_name() -> str:
+    from common.sessions import primary_session
+
+    return primary_session(datetime.now(timezone.utc))
 
 @app.get("/api/strategy")
-def get_strategy(symbol: str = "", limit: int = 30):
-    """types.ts: StrategyState"""
+def get_strategy(symbol: str = "MNQ", limit: int = 30):
+    """Erkannte Setups und jede Entscheidung - auch die gegen einen Trade.
+
+    Die Quellen sind dieselben, aus denen der Bot handelt: die Ideen aus
+    ``ideas.sqlite3`` und das Entscheidungsprotokoll der Ausfuehrung. Vorher
+    stand hier eine leere Huelle, weshalb das Panel dauerhaft "KEIN SETUP"
+    meldete, egal was der Markt tat.
+
+    ``recent_decisions`` enthaelt ausdruecklich auch die Ablehnungen mit
+    ihrem Grund. Ohne sie liesse sich nicht unterscheiden, ob gerade kein
+    Signal da war oder ob ein Filter es verhindert hat.
+    """
+    from ideas.setups import SETUP_BIBLIOTHEK
+
+    symbol = symbol or "MNQ"
+    ideen: list[dict] = []
+    conn = get_db("ideas.sqlite3")
+    if conn:
+        try:
+            cur = conn.execute(
+                "SELECT idea_id, erstellt_utc, setup, richtung, timeframe, entry, "
+                "stop, ziel, crv, atr_referenz, gefiltert, filter_gruende "
+                "FROM ideen WHERE instrument = ? ORDER BY erstellt_utc DESC LIMIT ?",
+                (symbol, int(limit)),
+            )
+            ideen = [dict(r) for r in cur.fetchall()]
+        except Exception as fehler:  # noqa: BLE001
+            logger.error("Ideen nicht lesbar: %s", fehler)
+        finally:
+            conn.close()
+
+    aktive_setups = [
+        name for name, parameter in CONFIG.ideas.setups.items() if parameter.aktiv
+    ]
+
+    def _signal(idee: dict) -> dict:
+        risiko = abs(float(idee["entry"]) - float(idee["stop"]))
+        instrument = get_instrument(CONFIG.market.product)
+        return {
+            "setup_id": int(idee["idea_id"]),
+            "symbol": symbol,
+            "strategy": idee["setup"],
+            "side": "LONG" if idee["richtung"] == "long" else "SHORT",
+            "entry": float(idee["entry"]),
+            "stop": float(idee["stop"]),
+            "target": float(idee["ziel"]),
+            "stop_ticks": risiko / instrument.tick_size if instrument.tick_size else 0.0,
+            "rr": float(idee["crv"] or 0.0),
+            "quantity": 0,
+            "risk_amount": risiko * instrument.point_value,
+            "reward_amount": abs(float(idee["ziel"]) - float(idee["entry"]))
+            * instrument.point_value,
+            "entry_ts": _ts_ns(idee["erstellt_utc"]),
+            "stop_anchor": "atr",
+            "target_source": "atr",
+        }
+
+    entscheidungen = []
+    ablehnungen: dict[str, int] = {}
+    for idee in ideen:
+        import json as _json
+
+        gruende = []
+        try:
+            gruende = _json.loads(idee.get("filter_gruende") or "[]")
+        except Exception:  # noqa: BLE001
+            gruende = []
+        gefiltert = bool(idee["gefiltert"])
+        for grund in gruende:
+            # Nach der Ursache zaehlen, nicht nach dem Messwert: die Gruende
+            # tragen ihre Zahl mit ("adx_zu_niedrig... (16.0 < 20.0)"), und
+            # ungekuerzt waere jeder Grund einmalig. Eine Haeufigkeitsliste, in
+            # der alles genau einmal vorkommt, sagt nichts.
+            art = grund.split(" (")[0]
+            ablehnungen[art] = ablehnungen.get(art, 0) + 1
+
+        entscheidungen.append({
+            "ts": _ts_ns(idee["erstellt_utc"]),
+            "symbol": symbol,
+            "timeframe": idee["timeframe"],
+            "setup_id": int(idee["idea_id"]),
+            "direction": "bullish" if idee["richtung"] == "long" else "bearish",
+            "decision": "NO_TRADE" if gefiltert else (
+                "LONG" if idee["richtung"] == "long" else "SHORT"
+            ),
+            "stage": "filtered" if gefiltert else "ready",
+            "htf_bias": "neutral",
+            "strategy": idee["setup"],
+            "checklist": {"filter": not gefiltert},
+            "missing": list(gruende),
+            "blocking_reason": ", ".join(gruende),
+            "reasons": [],
+            "signal": None if gefiltert else _signal(idee),
+        })
+
+    ungefiltert = [i for i in ideen if not i["gefiltert"]]
     return {
-        "symbol": symbol or "MNQ",
-        "enabled": True,
-        "setup_timeframe": "5m",
-        "confirmation_timeframe": "1m",
-        "stop_anchor": "local",
-        "min_rr": 2.0,
+        "symbol": symbol,
+        "enabled": CONFIG.ausfuehrung.enabled,
+        "setup_timeframe": CONFIG.ideas.timeframe,
+        "confirmation_timeframe": CONFIG.ideas.timeframe,
+        "stop_anchor": "atr",
+        "min_rr": CONFIG.ideas.crv_schwelle,
         "active_setups": [],
-        "recent_decisions": [],
-        "last_signal": None,
-        "decisions_total": 0,
-        "trades_total": 0,
-        "no_trades_total": 0,
-        "rejection_counts": {},
+        "recent_decisions": entscheidungen,
+        "last_signal": _signal(ungefiltert[0]) if ungefiltert else None,
+        "decisions_total": len(ideen),
+        "trades_total": len(ungefiltert),
+        "no_trades_total": len(ideen) - len(ungefiltert),
+        "rejection_counts": ablehnungen,
+        # Zusatzfelder ausserhalb des types.ts-Vertrags: welche Setup-Familien
+        # ueberhaupt scharf sind. Ohne die Angabe sieht ein leeres Panel
+        # genauso aus wie ein abgeschaltetes.
+        "aktive_setup_familien": aktive_setups,
+        "bekannte_setup_familien": sorted(SETUP_BIBLIOTHEK),
     }
+
+
+def _ts_ns(wert) -> int:
+    """ISO-Zeitstempel in Nanosekunden - die Einheit des Frontends."""
+    try:
+        zeitpunkt = datetime.fromisoformat(str(wert))
+        if zeitpunkt.tzinfo is None:
+            zeitpunkt = zeitpunkt.replace(tzinfo=timezone.utc)
+        return int(zeitpunkt.timestamp() * 1_000_000_000)
+    except (TypeError, ValueError):
+        return 0
 
 @app.get("/api/market")
 def get_market(symbol: str = ""):

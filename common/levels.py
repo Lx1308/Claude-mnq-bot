@@ -22,7 +22,7 @@ import numpy as np
 import pandas as pd
 
 from common.instruments import Instrument
-from common.sessions import GLOBEX_OPEN_CT, session_dates
+from common.sessions import GLOBEX_OPEN_CT, session_dates, SESSION_WINDOWS, SessionWindow
 from common.config import SessionConfig
 
 # Opening-Range-Fenster in Minuten
@@ -141,6 +141,50 @@ def overnight_mask(df: pd.DataFrame, instrument: Instrument) -> pd.Series:
     # Ueber Mitternacht: entweder nach der Globex-Eroeffnung am Vorabend
     # oder vor dem RTH-Start am Handelstag.
     return (times >= globex_open) | (times < instrument.rth_start)
+
+
+def session_mask(df: pd.DataFrame, fenster: "SessionWindow") -> pd.Series:
+    """Bars innerhalb eines benannten Handelsfensters (Asia/London/New York).
+
+    Ueber ``SessionWindow.contains`` und damit ueber echte
+    Zeitzonenkonvertierung. Eine hart verdrahtete ET-Spanne ("London =
+    03:00-11:30 ET") liegt in den Wochen daneben, in denen Europa und die USA
+    ihre Zeitumstellung an verschiedenen Terminen haben - genau davor warnt
+    der Kommentar ueber ``SESSION_WINDOWS`` in ``common/sessions.py``.
+    """
+    if df.empty:
+        return pd.Series([], dtype=bool, index=df.index)
+    return pd.Series(
+        [fenster.contains(stamp) for stamp in df.index], index=df.index
+    )
+
+
+def session_extremes(
+    df: pd.DataFrame, *, namen: tuple[str, ...] = ("asia", "london")
+) -> dict[str, float]:
+    """Hoch und Tief je Handelsfenster - fuer die Bars, die uebergeben werden.
+
+    Der Aufrufer schneidet auf den Handelstag zu; hier wird bewusst NICHT
+    noch einmal nach Sessions gruppiert. Zwei Stellen, die entscheiden,
+    welcher Tag gemeint ist, waeren zwei Stellen, an denen die 18:00-ET-Regel
+    auseinander laufen kann.
+
+    Fehlt ein Fenster im uebergebenen Ausschnitt, taucht es im Ergebnis gar
+    nicht auf - eine 0 oder ein NaN saehe aus wie ein gemessener Kurs.
+    """
+    ergebnis: dict[str, float] = {}
+    if df.empty:
+        return ergebnis
+
+    for fenster in SESSION_WINDOWS:
+        if fenster.name not in namen:
+            continue
+        treffer = df[session_mask(df, fenster).values]
+        if treffer.empty:
+            continue
+        ergebnis[f"{fenster.name}_high"] = float(treffer["high"].max())
+        ergebnis[f"{fenster.name}_low"] = float(treffer["low"].min())
+    return ergebnis
 
 
 def initial_balance_per_session(
@@ -303,6 +347,22 @@ def compute_levels(
         add("prev_day_high", previous_day_bars["high"].max())
         add("prev_day_low", previous_day_bars["low"].min())
         add("prev_day_close", previous_day_bars["close"].iloc[-1])
+
+    # --- Handelsfenster Asia / London -----------------------------------
+    #
+    # Ausdruecklich gewuenscht: "da war zum Beispiel das London High, da war
+    # das Asia High" (30.08.2026). Beide liegen im selben CME-Handelstag wie
+    # die laufende US-Sitzung, weil der Tag um 18:00 ET beginnt.
+    if today.empty:
+        unavailable["session_extremes"] = "keine Bars des laufenden Handelstages"
+    else:
+        extremwerte = session_extremes(today)
+        if not extremwerte:
+            unavailable["session_extremes"] = (
+                "weder Asia- noch London-Fenster im geladenen Ausschnitt"
+            )
+        for name, preis in extremwerte.items():
+            add(name, preis, note="Hoch/Tief des Handelsfensters am laufenden Tag")
 
     # --- Overnight / Globex ---------------------------------------------
     overnight = today[overnight_mask(today, instrument).values] if not today.empty else today
