@@ -87,6 +87,56 @@ RISIKO = RisikoPruefung(
 
 logger.info("Kontoregeln: %s", REGELN.zeile())
 
+# Der autonome Bot laeuft IM Serverprozess, auf demselben Speicher und
+# derselben Risikopruefung. Ein eigener Prozess haette wieder zwei
+# Risikozustaende, die einander nicht sehen - genau das Split-Brain, das im
+# Audit vom 28.08.2026 stand.
+from execution.bot import HandelsBot                   # noqa: E402
+
+BOT = HandelsBot(
+    CONFIG,
+    STORE,
+    RISIKO,
+    bar_datenbank=str(PROJECT_ROOT / "data" / "ntbridge.sqlite3"),
+    ideen_datenbank=str(PROJECT_ROOT / "data" / "ideas.sqlite3"),
+)
+
+
+@app.on_event("startup")
+def _bot_starten() -> None:
+    if CONFIG.ausfuehrung.enabled:
+        BOT.start()
+    else:
+        logger.info(
+            "Autonomer Bot ist aus (ausfuehrung.enabled=false). "
+            "Das Order-Panel arbeitet unabhaengig davon."
+        )
+
+
+@app.on_event("shutdown")
+def _bot_beenden() -> None:
+    BOT.stop()
+
+
+@app.get("/api/bot")
+def get_bot():
+    """Zustand des autonomen Bots - inklusive des letzten Durchgangs."""
+    return {
+        "aktiviert": CONFIG.ausfuehrung.enabled,
+        "laeuft": BOT.laeuft,
+        "takt_sekunden": CONFIG.ausfuehrung.takt_sekunden,
+        "handelsfenster": RISIKO.fenster.beschreibung(),
+        "fenster_offen": RISIKO.fenster.ist_offen(datetime.now(timezone.utc)),
+        "risikobudget_usd": BOT.risikobudget_usd(),
+        "letzter_lauf": BOT.letzter_lauf.to_dict() if BOT.letzter_lauf else None,
+    }
+
+
+@app.post("/api/bot/durchgang")
+def bot_durchgang():
+    """Einen Durchgang von Hand ausloesen - zum Pruefen, ohne zu warten."""
+    return BOT.durchgang().to_dict()
+
 
 # Das Frontend spricht LONG/SHORT, der autonome Bot sprach frueher BUY/SELL.
 # Beides wird hier auf die eine interne Schreibweise gebracht - und was sich

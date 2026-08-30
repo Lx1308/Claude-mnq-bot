@@ -424,6 +424,16 @@ class AusfuehrungConfig:
     #: Anbietergrenze ist das Maximum des Erlaubten, keine Empfehlung.
     max_kontrakte: int = 2
 
+    #: Was ein einzelner Trade kosten darf. ``None`` heisst: aus
+    #: ``risiko_je_trade_anteil`` ableiten.
+    risiko_je_trade_usd: float | None = None
+
+    #: Anteil der massgeblichen Bezugsgroesse je Trade. Bezug ist bei einem
+    #: Prop-Konto der GESAMTVERLUSTPUFFER, nicht die Kontogroesse: bei einem
+    #: 50k-Konto mit 2.000 USD Puffer waeren ein Prozent von 50.000 ein
+    #: Viertel des gesamten Spielraums.
+    risiko_je_trade_anteil: float = 0.01
+
     #: Handelsfenster in Boersenzeit. Vorgabe deckt London-Eroeffnung bis
     #: US-Schluss ab; ausserhalb ist der Nasdaq duenn.
     handel_von: dtime = dtime(3, 0)
@@ -643,6 +653,11 @@ class Config:
                 else float(aus["startkapital_usd"])
             ),
             max_kontrakte=int(aus.get("max_kontrakte", 2)),
+            risiko_je_trade_usd=(
+                None if aus.get("risiko_je_trade_usd") is None
+                else float(aus["risiko_je_trade_usd"])
+            ),
+            risiko_je_trade_anteil=float(aus.get("risiko_je_trade_anteil", 0.01)),
             handel_von=_parse_hhmm(str(aus.get("handel_von", "03:00")), "ausfuehrung.handel_von"),
             handel_bis=_parse_hhmm(str(aus.get("handel_bis", "16:00")), "ausfuehrung.handel_bis"),
             handel_zeitzone=str(aus.get("handel_zeitzone", "America/New_York")),
@@ -717,6 +732,29 @@ class Config:
             )
         if self.ausfuehrung.max_kontrakte <= 0:
             raise ConfigError("ausfuehrung.max_kontrakte muss > 0 sein.")
+        if not 0 < self.ausfuehrung.risiko_je_trade_anteil <= 0.25:
+            raise ConfigError(
+                "ausfuehrung.risiko_je_trade_anteil muss zwischen 0 und 0.25 liegen. "
+                "Ein Viertel des Puffers auf einem Trade ist bereits die Grenze zum "
+                "Unsinn; darueber ist es kein Risikomass mehr."
+            )
+        if (
+            self.ausfuehrung.risiko_je_trade_usd is not None
+            and self.ausfuehrung.risiko_je_trade_usd <= 0
+        ):
+            raise ConfigError("ausfuehrung.risiko_je_trade_usd muss > 0 sein.")
+        if (
+            self.ausfuehrung.enabled
+            and self.ausfuehrung.risiko_je_trade_usd is None
+            and KONTOREGELN[self.ausfuehrung.kontoprofil].max_verlust_usd is None
+            and not self.ausfuehrung.startkapital_usd
+        ):
+            raise ConfigError(
+                "ausfuehrung.enabled ist true auf dem Profil 'frei', aber weder "
+                "startkapital_usd noch risiko_je_trade_usd sind gesetzt. Das "
+                "Risikobudget waere 0 und der Bot wuerde jede Idee ablehnen - "
+                "das saehe aus wie ein Defekt, waere aber Absicht."
+            )
         if self.ausfuehrung.handel_von >= self.ausfuehrung.handel_bis:
             raise ConfigError(
                 f"ausfuehrung.handel_von ({self.ausfuehrung.handel_von:%H:%M}) muss vor "

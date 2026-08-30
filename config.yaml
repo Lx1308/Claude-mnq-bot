@@ -470,6 +470,10 @@ ausfuehrung:
   # striktere Wert. Bestaetige sie aus deinem Dashboard und trage sie unter
   # "kontoprofile" ein - dann verschwindet der Annahme-Vermerk aus den
   # Berichten.
+  # Vorgabe ist "frei" mit selbst gesetzten Grenzen (siehe kontoprofile
+  # unten): auf Sim101 wird zunaechst Evidenz gesammelt, nicht eine
+  # Challenge nachgespielt. Auf ein Lucid-Profil umstellen ist eine Zeile -
+  # lies aber vorher den Befund unter risiko_je_trade_usd.
   kontoprofil: frei
 
   # Einzelne Werte eines Profils ueberschreiben. Eine Aenderung OHNE "quelle"
@@ -480,7 +484,19 @@ ausfuehrung:
   #     max_verlust_usd: 1000.0
   #     quelle: "Lucid-Dashboard, abgelesen am TT.MM.2026"
   #     ist_annahme: false
-  kontoprofile: {}
+  kontoprofile:
+    frei:
+      # Eigenkapital hat keine Anbieterregeln - aber "keine Regeln" ist kein
+      # Zustand, in dem ein Bot laufen sollte. Diese Grenzen sind selbst
+      # gesetzt und bewusst so gewaehlt, dass sie bei einem Risikobudget von
+      # 150 USD je Trade nach 4 Verlusten den Tag und nach 12 den Betrieb
+      # beenden.
+      kontogroesse_usd: 25000.0
+      max_verlust_usd: 1800.0
+      drawdown_art: statisch
+      tagesverlust_usd: 600.0
+      quelle: "Selbst gesetzte Grenzen fuer den Sim-Datensammelbetrieb, 30.08.2026"
+      ist_annahme: false
 
   # Kontostand, auf dem die Verlustgrenzen rechnen. null = Kontogroesse des
   # Profils. Beim freien Konto muss hier ein Wert stehen, sonst rechnen die
@@ -491,6 +507,63 @@ ausfuehrung:
   # keine Empfehlung: 20 Micro-Kontrakte auf einem 25k-Konto sind formal
   # zulaessig und trotzdem unvernuenftig. Es gilt immer der kleinere Wert.
   max_kontrakte: 2
+
+  # Was ein einzelner Trade kosten darf. null = aus risiko_je_trade_anteil
+  # ableiten.
+  #
+  # NACHGEMESSEN AM 30.08.2026 - BITTE LESEN, BEVOR DU HIER DREHST
+  # Die 42 Signale der aktiven Setups auf sieben Tagen MNQ-5m riskieren je
+  # EINEM Micro-Kontrakt:
+  #     min 50 | 25%% 83 | Median 119 | 75%% 138 | max 154 USD
+  # Wie viele davon bei welchem Budget ueberhaupt handelbar sind:
+  #      50 USD ->  1/42 (2%%)      150 USD -> 38/42 (90%%)
+  #      70 USD ->  6/42 (14%%)     200 USD -> 42/42 (100%%)
+  #     100 USD -> 14/42 (33%%)
+  #
+  # Und als Anteil des Lucid-Gesamtverlustpuffers, Median-Signal:
+  #      25k -> 11,9%%      50k -> 6,0%%      100k -> 4,0%%      150k -> 2,7%%
+  #
+  # Das heisst im Klartext: die aktuellen 5m-Setups und ein Lucid-25k passen
+  # nicht zusammen. Ein einziger Micro-Kontrakt - die kleinste Einheit, die es
+  # gibt - riskiert dort ein Achtel des gesamten Spielraums. Mit einem
+  # 7-Prozent-Budget waeren 14 Prozent der Signale handelbar, und die Auswahl
+  # waere systematisch auf die ruhigsten verzerrt.
+  #
+  # 150 USD sind deshalb hier gesetzt: 90 Prozent der Signale sind handelbar,
+  # und gegen die selbst gesetzten Grenzen oben sind das 12 Verluste bis zum
+  # Stopp. Fuer ein echtes 25k-Prop-Konto waere dieselbe Zahl fahrlaessig.
+  risiko_je_trade_usd: 150.0
+
+  # Anteil der massgeblichen Bezugsgroesse je Trade.
+  #
+  # Bezug ist bei einem Prop-Konto der GESAMTVERLUSTPUFFER, nicht die
+  # Kontogroesse. Bei einem 50k-Konto mit 2.000 USD Puffer waeren ein Prozent
+  # von 50.000 (= 500 USD) ein Viertel des gesamten Spielraums - nach vier
+  # Verlusttrades waere das Konto weg. Ein Prozent des Puffers sind 20 USD,
+  # und das ist die Groessenordnung, die hier gemeint ist.
+  #
+  # Der Abstand zum Stop bestimmt daraus die Kontraktzahl, nicht umgekehrt:
+  # ein enger Stop erlaubt mehr Kontrakte bei gleichem Risiko. Reicht das
+  # Budget nicht fuer einen einzigen Kontrakt, wird NICHT aufgerundet - dann
+  # ist der Trade zu teuer, und das ist eine Antwort.
+  #
+  # WARUM 7 PROZENT UND NICHT 1
+  # Am 30.08.2026 auf den vorhandenen MNQ-Kerzen nachgemessen (1.987 5m-Kerzen):
+  # der Median-ATR liegt bei 23,1 Punkten. Ein Stop von 1,5 ATR sind damit
+  # 34,6 Punkte = 69,19 USD je EINEM Micro-Kontrakt.
+  #
+  # Auf einem Lucid-25k mit 1.000 USD Gesamtverlustpuffer riskiert ein
+  # einzelner MNQ-Kontrakt also bereits rund 7 Prozent des gesamten
+  # Spielraums - weniger ist mit einem Micro-Kontrakt nicht moeglich, es gibt
+  # keine kleinere Einheit. Bei 1 Prozent wuerde der Bot schlicht nie handeln
+  # und das saehe aus wie ein Defekt.
+  #
+  # Die Kehrseite gehoert dazu: rund 14 Verlusttrades in Folge beenden ein
+  # 25k-Konto. Das ist keine Eigenschaft dieser Einstellung, sondern des
+  # Verhaeltnisses von MNQ-Volatilitaet zu Lucids Puffer. Wer das nicht will,
+  # braucht einen engeren Stop, einen groesseren Kontotyp oder einen
+  # Timeframe mit kleinerem ATR - nicht eine kleinere Zahl an dieser Stelle.
+  risiko_je_trade_anteil: 0.07
 
   # Handelsfenster in Boersenzeit (ET). 03:00 deckt die London-Eroeffnung ab,
   # 16:00 den US-Schluss. Ausserhalb ist der Nasdaq duenn; dort produziert ein
