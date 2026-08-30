@@ -1,15 +1,22 @@
 # --- Kern ---
 mcp>=2.0.0                 # MCP-Server fuer Claude Desktop (stdio-Transport)
-anthropic>=0.40.0          # Claude API (nur Live-Bot, NICHT im MCP-Pfad)
-httpx>=0.27.0              # REST (Tradovate, Telegram)
-websockets>=12.0           # Tradovate Market-Data WebSocket
 PyYAML>=6.0                # config.yaml
 python-dotenv>=1.0.0       # .env laden
+httpx>=0.27.0              # REST (Wirtschaftskalender, FRED)
 
 # --- Analyse / Backtesting ---
 pandas>=2.1.0
 numpy>=1.26.0
 pandas_market_calendars>=5.0.0   # common/marktkalender.py: CME-Feiertage/Fruehschluesse
+
+# --- Ausfuehrung und Oberflaeche ---
+# Seit dem 30.08.2026 Projektbestandteil: execution/server.py stellt die
+# REST-API bereit, desktop_app.py verpackt die React-Oberflaeche in ein eigenes
+# Fenster. Diese drei fehlten hier, obwohl die App sie seit dem 29.08.2026
+# braucht - ein frisches Aufsetzen nach requirements.txt waere gescheitert.
+fastapi>=0.110.0
+uvicorn>=0.27.0
+pywebview>=5.0             # Desktop-Fenster (Edge WebView2 unter Windows)
 
 # --- Reporting (Backtest-Vergleich) ---
 tabulate>=0.9.0
@@ -17,3 +24,12 @@ matplotlib>=3.8.0
 
 # --- Tests ---
 pytest>=8.0.0
+
+# ENTFERNT am 30.08.2026:
+#   anthropic   - kein Modul im Projekt ruft die API auf. Der Import ist
+#                 repo-weit verboten und wird von
+#                 test_kein_modul_im_projekt_erreicht_die_anthropic_api
+#                 geprueft. Ein Paket in den Requirements, das nicht benutzt
+#                 werden DARF, ist eine Einladung.
+#   websockets  - war fuer den Tradovate-Datenstrom da. Tradovate ist mit dem
+#                 MNQ-Override vom 23.08.2026 entfallen.
