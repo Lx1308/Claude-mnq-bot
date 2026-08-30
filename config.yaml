@@ -454,7 +454,19 @@ ausfuehrung:
   # Steuert NUR den autonomen Bot. Das Order-Panel der Oberflaeche arbeitet
   # unabhaengig davon weiter - ein abgeschalteter Bot ist keine gesperrte
   # Handelsoberflaeche.
-  enabled: false
+  #
+  # Scharfgeschaltet am 30.08.2026 auf Laurins Entscheidung hin
+  # ("Autonom auf Sim101 handeln"). Was das bedeutet:
+  #   - Der Bot prueft im Takt von takt_sekunden auf neue, UNGEFILTERTE
+  #     Ideen aus der Ideen-Protokollierung.
+  #   - Er handelt nur im Fenster handel_von..handel_bis (03:00-16:00 ET).
+  #   - Er handelt nur auf einem Simulationskonto - das erzwingt das
+  #     NinjaScript-AddOn, nicht diese Zeile.
+  #   - Jede Entscheidung landet in data/execution.sqlite3, auch die
+  #     gegen einen Trade.
+  #
+  # Abschalten: hier auf false setzen und die App neu starten.
+  enabled: true
 
   # Welches Regelwerk gilt. Die Profile stehen in common/kontoregeln.py:
   #   frei              - Eigenkapital, keine Anbieterregeln
