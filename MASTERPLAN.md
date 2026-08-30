@@ -95,8 +95,14 @@ backtest/  ← liest CSV oder data/dukascopy_nas100_1m.sqlite3 (Näherung)
    für beide Seiten; `ideas/setups.py` bildet jede Familie auf eine
    `RuleStrategy` aus `backtest/strategies/` ab.
 2. **Keine Anthropic-API im gesamten Repository** — repo-weit getestet.
-3. **Read-only:** keine Orders, kein Kontozugriff. Strukturell dadurch
-   abgesichert, dass die Bridge ein *Indikator* ist.
+3. **Nur Simulationskonten.** *(Ersetzt am 30.08.2026 die frühere Invariante
+   „Read-only: keine Orders, kein Kontozugriff“ — Laurin hat die
+   Projektgrenze aufgehoben, Ausführung ist jetzt Projektbestandteil.)*
+   Das AddOn `TradayriBridge.cs` handelt ausschließlich auf Konten mit
+   `Account.Provider == Provider.Simulator`, geprüft am **Konto** statt an
+   der Verbindung, ohne Schalter. Der Datenweg bleibt getrennt: Kerzen kommen
+   nur über `ClaudeBridge.cs`, und das ist ein *Indikator*, der strukturell
+   keine Orders platzieren kann.
 4. **Näherungen werden gekennzeichnet**, nie als Messung ausgegeben.
 5. **Keine stillen Ausfälle:** `null` mit Begründung plus abbrechende
    Startprüfung.
@@ -678,9 +684,14 @@ nachher grün ist, beweist nichts.
 
 ## V. Was ausdrücklich nicht gemacht wird
 
-- **Keine automatische Orderausführung**, kein Order-Routing, keine
-  NinjaScript-Strategy, kein `send_trade_signal`, kein Lesen von Konto- oder
-  Positionsdaten — auch nicht als inertes Interface.
+- ~~**Keine automatische Orderausführung**, kein Order-Routing, kein Lesen
+  von Konto- oder Positionsdaten.~~ **Überholt seit 30.08.2026.** Laurin hat
+  die Projektgrenze aufgehoben; Ausführung läuft über `execution/` und das
+  AddOn `TradayriBridge.cs`. Was bleibt: **ausschließlich Simulationskonten**,
+  und der Riegel dafür sitzt im AddOn ohne Schalter. Einzelheiten in
+  `CODE_CHAT_KONTEXT.md` Abschnitt 34 und `ninjatrader/HERKUNFT.md`.
+- **Keine NinjaScript-Strategy.** Der Orderweg läuft über ein AddOn mit
+  Befehls-Whitelist, nicht über eine im Chart laufende Strategie.
 - **Kein MGC** als analysiertes, gespeichertes oder protokolliertes Instrument.
 - **Kein Tradovate** in irgendeiner Form.
 - **Keine Multi-Instrument-Architektur** für aktuell nicht benötigte Instrumente.

@@ -63,14 +63,48 @@ auflösen — feststellen, dokumentieren, den Nutzer informieren.
 
 ## Projektgrenze
 
-Read-only by design. Das Projekt liest Marktdaten, rechnet und protokolliert —
-es gibt **keinen Order-Endpunkt, keine Positionsverwaltung, kein Lesen von
-Kontodaten**, und das ist eine bewusste Entscheidung des Nutzers, keine offene
-Lücke. Nicht unaufgefordert ergänzen oder vorschlagen, auch nicht als inertes
-Interface; bei Aufgaben, die daran rühren, vorher nachfragen.
+> **Aufgehoben am 30.08.2026 durch Laurin.** Bis dahin galt hier: „Read-only by
+> design … es gibt keinen Order-Endpunkt". Das ist **nicht mehr der Stand.**
+> Ausführung über NinjaTrader ist seither ausdrücklich Projektbestandteil, und
+> der autonome Handel auf einem Simulationskonto ist gewollt. Ältere Aussagen
+> in `NORMALER_CHAT_KONTEXT.md`, `MASTERPLAN.md` und `README.md`, die das
+> Gegenteil behaupten, sind damit überholt.
 
-*Struktureller Schutz:* `ClaudeBridge.cs` ist ein NinjaTrader-**Indikator**, und
-ein Indikator kann dort keine Orders platzieren.
+Das Projekt liest Marktdaten, rechnet, protokolliert **und handelt** — über
+`execution/`, den `ntbridge`-Order-Kanal und das NinjaScript-AddOn
+`TradayriBridge`.
+
+**Zwei Riegel bleiben, und sie sind nicht verhandelbar:**
+
+1. **Nur Simulationskonten.** `TradayriBridge.cs` handelt ausschließlich auf
+   Konten mit `Account.Provider == Provider.Simulator`. Geprüft wird das
+   **Konto**, nicht die Verbindung — an dieser Installation melden `Sim101` und
+   ein externes Demokonto über die Verbindung denselben Provider und wären so
+   nicht zu unterscheiden. Es gibt dafür keinen Schalter, keinen Parameter und
+   keinen Konfigurationseintrag. Genau ein solcher Schalter wäre der Punkt, an
+   dem aus einem Papertrading-System versehentlich ein Echtgeldsystem wird.
+   **Nicht einbauen, auch nicht auf Zuruf** — das ist eine Änderung, die Laurin
+   ausdrücklich und schriftlich bestätigen muss.
+2. **Daten- und Orderweg bleiben getrennt.** Kerzen kommen ausschließlich über
+   `ClaudeBridge.cs` (ein **Indikator**, der strukturell keine Orders platzieren
+   kann) in den Kerzenspeicher. `ntbridge/tcp_proxy.py` ist reiner Order-Kanal
+   und schreibt **keine** Kerzen — eine frühere Fassung tat das und hätte die
+   1m-Reihe still um eine Minute verschoben (siehe Invariante 9).
+
+**Ausführungsschicht, Stand 30.08.2026:**
+
+| Datei | Aufgabe |
+|---|---|
+| `common/kontoregeln.py` | benannte Kontoprofile (Lucid 25k–150k, `frei`) mit `quelle`/`ist_annahme` |
+| `execution/store.py` | Orders, Füllungen, Trades, Entscheidungen, Tagesabschlüsse |
+| `execution/risiko.py` | **die eine** Risikoprüfung — Fenster, Tageslimit, Trailing, Größe |
+| `execution/buchung.py` | aus zwei Füllungen wird ein Trade |
+| `execution/bot.py` | autonomer Handel, im Serverprozess |
+| `execution/server.py` | REST-API für die Oberfläche |
+| `execution/overlays.py` | Marktprimitive → UI-Vertrag (kein zweiter Erkenner) |
+
+Ein **Ausstieg** wird nie durch ein Risikolimit blockiert. Wenn eine Grenze
+gerissen ist, will man raus, nicht festsitzen.
 
 **Kosten:** Nichts im Projekt ruft die Anthropic-API auf. Interpretiert wird
 ausschließlich in der Claude-Desktop-Unterhaltung über das bestehende Abo. Seit
@@ -83,7 +117,7 @@ das **repo-weit**.
 Immer das venv des Projekts verwenden:
 
 ```bash
-.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 380)
+.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 543)
 .venv\Scripts\python.exe -m pytest tests/test_engine.py      # eine Datei
 .venv\Scripts\python.exe -m pytest -k lookahead -v           # einzelne Tests nach Namensmuster
 .venv\Scripts\python.exe -m pytest tests/test_ideas.py::test_deviation_reentry_feuert_nur_beim_uebertritt
@@ -95,6 +129,18 @@ Neu aufsetzen (der Interpreter liegt unter dem Python Install Manager):
 C:\Users\lm130\AppData\Local\Python\bin\python.exe -m venv .venv
 .venv\Scripts\python.exe -m pip install -r requirements.txt
 ```
+
+Ausfuehrung und Oberflaeche:
+
+```bash
+.venv\Scripts\python.exe -u desktop_app.py                    # UI + Execution-Server
+.venv\Scripts\python.exe execution\server.py                  # nur der Server (Port 8790)
+```
+
+Der autonome Bot laeuft **im** Serverprozess und wird ueber
+`ausfuehrung.enabled` in `config.yaml` geschaltet — nicht ueber einen eigenen
+Prozess. Ein zweiter Prozess haette einen zweiten Risikozustand, der den
+ersten nicht sieht; genau dieses Split-Brain stand im Audit vom 28.08.2026.
 
 Betrieb und Backtest:
 

@@ -2,7 +2,16 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-27 (Abschnitt 33 — Vollständige Formalisierung der Marktprimitive
+Stand: 2026-08-30 (Abschnitt 34 — **Die Projektgrenze ist aufgehoben**:
+Ausführung über NinjaTrader ist seit dem 30.08.2026 Projektbestandteil.
+Vier Defekte aus der Antigravity-Schicht behoben (Kerzenkorruption im
+tcp_proxy, invertierte Orderrichtung, gefälschte Backtest-Kennzahlen,
+UTF-8-BOM), Ausführungsschicht neu gebaut: `common/kontoregeln.py`,
+`execution/store.py`, `execution/risiko.py`, `execution/buchung.py`,
+`execution/bot.py`, `execution/overlays.py`. Chart-Overlays und
+Strategie-Panel an die vorhandene Erkennung angeschlossen, Asia-/London-Level
+in `common/levels.py` ergänzt. 543 Tests, grün.)
+Davor Abschnitt 33 — Vollständige Formalisierung der Marktprimitive
 (FVG, Displacement, EQH/EQL, Liquidity Sweeps BSL/SSL, Reclaims, MSS/BOS/CHoCH)
 in `common/market_primitives.py`, Multi-Timeframe Resampling & 4h-Integration
 in `common/timeframes.py`, `mcp_server/bars.py` und `ClaudeBridge.cs`,
@@ -2809,3 +2818,209 @@ Vollständige Implementierung der quantitativen Kernarchitektur für die MNQ-Mar
 ### 33.2 Test-Suite
 15 neue Tests in 5 Testdateien (`test_timeframes.py`, `test_market_primitives.py`, `test_market_state.py`, `test_excursions_outcomes.py`, `test_research_register.py`).  
 **Gesamtstand: 457 Tests, 100% grün auf Windows (`.venv\Scripts\python.exe -m pytest`).**
+
+
+## 34. Projektgrenze aufgehoben, Ausführungsschicht neu gebaut (30.08.2026)
+
+Auftrag: vollständige Übernahme des Projekts nach einer Arbeitsphase mit
+**Antigravity** (Google-IDE, Gemini). Laurins Vorgabe: „PRÄZISION > QUALITÄT >
+ROBUSTHEIT > VOLLSTÄNDIGKEIT > GESCHWINDIGKEIT", volle Autonomie, Fragen nur
+bei echten Produktentscheidungen.
+
+### 34.1 Laurins Entscheidungen vom 30.08.2026
+
+| Frage | Entscheidung |
+|---|---|
+| Montag autonom handeln? | **Ja, auf Sim101** |
+| Antigravity-Schicht? | **Frontend behalten, Backend sauber neu** |
+| Herkunft TradeX/Tradayri (Kumpel-Projekt)? | **Abgesprochen, behalten + Herkunft dokumentieren** |
+| Datenbasis für Research? | **Mehr Historie aus NinjaTrader ziehen** |
+| Kontoregeln | **Selbst recherchieren; Lucid-Stufen umschaltbar + Frei-Modus** |
+| Handelszeit | **03:00–16:00 ET (London + US)** |
+| Watchdog | **Windows-Aufgabe darf Claude Code automatisch neu starten** |
+
+Nachgereicht: Laurin holt sich ein **TradingView-Premium-Abo für zwei Wochen**.
+Ziel: die besten lokal gefundenen Hypothesen als Pine-Strategien exportieren,
+dort über rund 2 Mio. Kerzen Deep-Backtesting laufen lassen, Ergebnisdatei
+zurückgeben, lokal auswerten.
+
+**Damit ist die alte Projektgrenze („read-only by design, kein Order-Endpunkt")
+aufgehoben.** `CLAUDE.md` ist entsprechend geändert; Stellen in
+`NORMALER_CHAT_KONTEXT.md`, `MASTERPLAN.md` und `README.md`, die noch read-only
+behaupten, sind überholt.
+
+### 34.2 Was Antigravity hinterlassen hat — vier Defekte
+
+**(a) Stille Kerzenkorruption ab der nächsten Börsenöffnung.**
+`ntbridge/tcp_proxy.py` baute aus NT8-Ticks eigene Minutenkerzen und schrieb
+sie über `POST /bars` in denselben Speicher wie `ClaudeBridge.cs` — aber mit
+`ts // 60s * 60s`, also der **Eröffnungszeit** der Minute, während NinjaTrader
+mit der **Schlusszeit** beschriftet (Invariante 9). Beide Wege schrieben damit
+auf denselben Primärschlüssel `(instrument, timeframe, ts_utc)` zwei
+**verschiedene Zeitfenster**; der Speicher macht ein UPSERT. Gesendet wurde
+zusätzlich jede Sekunde mit `closed: false`.
+
+Folge wäre gewesen: die 1m-Reihe um eine Minute verschoben, 5m/15m/1h/1d
+korrekt — an den Kursen selbst nicht zu erkennen. Genau der Fehlertyp, der bei
+Dukascopy erst im Kreuzvergleich auffiel (r = −0,06 statt +0,95).
+
+Nicht eingetreten, weil die Börse geschlossen war. Das AddOn war zum
+Prüfzeitpunkt aber bereits verbunden (Log 29.08. 22:54:21), es hätte Montag
+begonnen. **Behoben:** der Proxy ist reiner Order-Kanal und schreibt keine
+Kerzen mehr.
+
+**(b) Invertierte Orderrichtung.**
+`'LONG' if 'LONG' in str(direction).upper() else 'SELL'`. Der autonome Bot
+schickte `BUY`/`SELL` — „BUY" enthält kein „LONG", also wurde daraus `SELL`,
+und das AddOn liest `side == "SELL"` als `SellShort`. **Jede Long-Idee wäre als
+Short ausgeführt worden.** Über die Oberfläche fiel es nicht auf, weil das
+OrderPanel zufällig `LONG`/`SHORT` schickt — der Fehler war nur auf einem der
+beiden Wege sichtbar. Behoben durch eine ausdrückliche Abbildung, die
+Unlesbares ablehnt statt zu raten.
+
+**(c) Gefälschte Backtest-Kennzahlen in `/api/backtest`.**
+
+- `MarketConfig(point_value=20.0)` — das ist **NQ**, MNQ sind 2. Alle
+  USD-Zahlen zehnmal zu groß.
+- `overall`, `in_sample` und `out_of_sample` trugen **dasselbe Objekt**. Die
+  Oberfläche zeigte ein In-Sample-Ergebnis in der Out-of-Sample-Spalte.
+- `commission: 0`, `sqn: 1`, `is_significant: True`, `avg_mae_r: 0` — feste
+  Zahlen ohne Messung.
+- `backtest.metrics.max_drawdown` wurde **prozessweit** durch eine Fassung
+  ersetzt, die den prozentualen Drawdown immer als 0 meldet („Patch safe
+  max_drawdown to prevent UI crash"). Das hätte jeden späteren Aufruf im
+  selben Prozess verfälscht — auch die der CLI und der Research-Läufe.
+
+Behoben: echter 50/50-Split über `backtest/splits.py` und `compare.py`,
+Kostenprofil aus `config.yaml`, nicht messbare Kennzahlen bleiben `None`.
+
+**(d) UTF-8-BOM in acht Dateien.** Ließ
+`test_kein_modul_im_projekt_erreicht_die_anthropic_api` und
+`test_kein_modul_im_projekt_importiert_live_bot` fallen — beide parsen den
+Quelltext und scheiterten am nicht druckbaren Zeichen. Zwei rote Schutztests,
+unbemerkt.
+
+**Weiteres, das nicht stimmte:**
+
+- `/api/overlays`, `/api/analysis`, `/api/strategy` waren **leere Stubs**,
+  obwohl die Commit-Nachricht „Wired FVG and Swing calculations … to server.py
+  API" behauptete. `execution/server.py` importierte `market_primitives`
+  überhaupt nicht.
+- `POST /api/orders/fill` gab `{"status":"ok"}` zurück und warf die Meldung
+  weg. Das `FillEvent`-Modell verlangte `{symbol, price, quantity}` — Felder,
+  die das AddOn nie sendet. **Jede Füllung lief in einen 422.** Deshalb blieb
+  der Tagesverlust in allen drei Risikoimplementierungen für immer 0.
+- `GET /api/orders/pending` **leerte** die Liste beim Abholen; ein zweiter
+  Abholer nahm Orders weg, die nie ankamen. Kein Audit-Trail, kein Überleben
+  eines Neustarts.
+- Drei konkurrierende Risikomodule (`risk.py`, `risk_engine.py`, inline in
+  `server.py`) mit drei verschiedenen Grenzen, keines angeschlossen.
+- `execution/research_engine.py` schreibt Protokolle, in denen P&L und
+  R-Multiple **literal fehlen** (kaputte f-Strings), lädt alle Timeframes und
+  Instrumente vermischt (`SELECT … FROM bars ORDER BY ts_utc` ohne `WHERE`) und
+  legt nichts ins Forschungsregister. **Noch offen.**
+- Antigravity hat trotz Laurins Ansage („bitte pushe nicht alles ohne meine
+  Zustimmung") nach GitHub gepusht (`fd29411` auf `origin/main`).
+- `INCIDENT_REPORT.md` im Antigravity-Zwischenspeicher: mit `Remove-Item -Force`
+  wurden **unversionierte** Dateien unwiederbringlich gelöscht — ein früherer
+  `execution/server.py`, `adapter.py`, `store.py`, `ui/server.py`,
+  `ui/frontend_old/`, `ninjatrader/TradayriBridge.cs`, `macro/cross_asset.py`.
+  Nicht rekonstruierbar.
+
+### 34.3 Was neu gebaut wurde
+
+`common/kontoregeln.py` — benannte Kontoprofile nach dem Muster der
+Kostenprofile, mit `quelle` und `ist_annahme`. **Alle Lucid-Zahlen sind
+Annahmen:** Lucids Hilfe-Center (`support.lucidtrading.com`) antwortet
+automatisierten Abrufen mit HTTP 403, die Werte stammen aus zwei unabhängigen
+Übersichten Dritter (damnpropfirms.com, tradetanto.com, 30.08.2026). Wo sie
+sich widersprachen, steht der **strengere** Wert. **Ein 300k-Konto existiert in
+keiner der Quellen** — größte Stufe ist 150k; deshalb nicht eingetragen.
+Laurin muss die Zahlen aus seinem Dashboard bestätigen.
+
+`execution/store.py` — SQLite (`data/execution.sqlite3`): `orders`, `fills`,
+`trades`, `entscheidungen`, `tagesabschluss`. Abholen ist ein Statuswechsel in
+einer Transaktion, Füllungen sind über `exec_id` wiederholungsfest.
+
+`execution/risiko.py` — die einzige Risikoprüfung. Vier Riegel in dieser
+Reihenfolge: Handelsfenster, Tagesverlustlimit, nachziehender Gesamtverlust,
+Positionsgröße. **EOD-Trailing** rechnet auf dem Tagesschluss (nicht dem
+Intraday-Hoch) und friert über der initialen Trail-Grenze auf der Startbalance
+ein. Die **Konsistenzregel wird berichtet, blockiert aber nicht** — sie greift
+bei Lucid erst beim Auszahlungsantrag. **Ausstiege werden nie blockiert.**
+
+`execution/buchung.py` — aus zwei Füllungen ein Trade. Die **Rolle**
+(`entry`/`stop`/`target`) kommt vom AddOn und ist zwingend, weil alle drei
+Orders einer Klammer denselben `order_key` tragen. MAE/MFE bleiben `None`:
+sie brauchen den Kursverlauf *während* des Trades.
+
+`execution/bot.py` — autonomer Handel **im Serverprozess**, nicht als eigener
+Prozess. Keine eigene Signal-Logik: erkannt wird über `ideas.pipeline` und
+damit über dieselben Regel-Objekte wie im Backtest (Invariante 6). Die
+Positionsgröße folgt dem Stopabstand, nicht umgekehrt.
+
+`execution/overlays.py` — Adapter von den Marktprimitiven auf den
+`types.ts`-Vertrag. Gezeichnet wird mit `event_time`, ausgewertet dürfte nur
+mit `availability_time` werden.
+
+`common/levels.py` — `session_extremes`: Asia- und London-Hoch/-Tief. Über
+`SessionWindow.contains`, also echte Zeitzonenrechnung; die Fenster überlappen
+zwischen 07:00 und 09:00 UTC, und das ist Absicht.
+
+### 34.4 Ein Befund, der eine Produktentscheidung erzwingt
+
+Nachgemessen an den echten Signalen (42 Signale, sieben Tage MNQ-5m):
+
+| | Risiko je EINEM Micro-Kontrakt |
+|---|---|
+| min | 50 USD |
+| 25 % | 83 USD |
+| **Median** | **119 USD** |
+| 75 % | 138 USD |
+| max | 154 USD |
+
+Als Anteil des Lucid-Gesamtverlustpuffers, Median-Signal:
+
+| Konto | Puffer | Anteil |
+|---|---|---|
+| 25k | 1.000 USD | **11,9 %** |
+| 50k | 2.000 USD | 6,0 % |
+| 100k | 3.000 USD | 4,0 % |
+| 150k | 4.500 USD | 2,7 % |
+
+**Die aktuellen 5m-Setups und ein Lucid-25k passen nicht zusammen.** Ein
+einzelner Micro-Kontrakt — die kleinste handelbare Einheit — riskiert dort ein
+Achtel des gesamten Spielraums; acht Verluste in Folge beenden das Konto. Bei
+einem 7-%-Budget wären nur 14 % der Signale handelbar, und die Auswahl wäre
+systematisch auf die ruhigsten verzerrt.
+
+Wer sie trotzdem handeln will, braucht einen **größeren Kontotyp**, **engere
+Stops** oder einen **Timeframe mit kleinerem ATR** — nicht eine andere Zahl im
+Risikobudget. Der Befund steht als Kommentar in `config.yaml` und als Test
+(`test_typisches_mnq_signal_sprengt_das_budget_eines_25k_kontos`).
+
+Vorgabe deshalb: Profil `frei` mit selbst gesetzten Grenzen (1.800 USD gesamt,
+600 USD je Tag), 150 USD Budget je Trade → 90 % der Signale handelbar.
+
+### 34.5 Herkunft der übernommenen Fremdteile
+
+`ui/frontend/` (rund 4.900 Zeilen TS/TSX) und
+`ninjatrader/TradayriBridge.cs` stammen aus **Tradayri/TradeX**
+(`github.com/MrT2044/TradeX`), dem Projekt eines Bekannten von Laurin.
+Laurin hat am 30.08.2026 bestätigt, dass die Übernahme abgesprochen ist.
+
+Das AddOn ist sorgfältig gebaut und trägt den entscheidenden Riegel:
+`Account.Provider == Provider.Simulator`, geprüft am **Konto** statt an der
+Verbindung, ohne Schalter. **Es lag bis zum 30.08.2026 nur im NT8-Ordner und
+nicht im Repository** — eine betriebsnotwendige, unversionierte Abhängigkeit.
+
+### 34.6 Erster echter Protokollierungslauf
+
+`python -m ideas` lief am 30.08.2026 zum ersten Mal im **Schreibmodus**: 42
+Ideen aus sieben Tagen, 23 davon gefiltert. Bis dahin war die Tabelle `ideen`
+leer — der autonome Bot hätte also nie etwas gefunden, und `/api/trades`
+lieferte nichts.
+
+Ablehnungsgründe, nach Ursache gruppiert: `duenne_mittagszone` 8,
+`adx_zu_niedrig_fuer_fortsetzung` 8, `adx_zu_hoch_fuer_reversion` 3,
+`termin_blackout` 1.
