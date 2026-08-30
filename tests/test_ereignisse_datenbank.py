@@ -1,0 +1,338 @@
+"""Die Ereignisdatenbank: Schema, Schreibweg, Kontext, Cluster.
+
+Der wichtigste Test ist hier ``test_kontext_wird_am_verfuegbarkeitszeitpunkt
+_gelesen``: die Erkenner sind lookahead-sicher, aber wenn der Schreibweg den
+Kontext eine Kerze zu spaet liest, ist die ganze Datenbank wertlos - und
+nichts an den Zahlen verriete es.
+"""
+
+from __future__ import annotations
+
+import json
+import sqlite3
+
+import numpy as np
+import pandas as pd
+import pytest
+
+from common.config import Config
+from common.ereignisse.basis import Ereignis
+from common.ereignisse.datenbank import (
+    CLUSTER_FENSTER_BARS,
+    datensatz_block,
+    notiere_lauf,
+    oeffne,
+    schreibe_events,
+    vergib_cluster,
+    zaehle,
+)
+from common.indicators import compute_indicators
+
+
+@pytest.fixture(scope="module")
+def config():
+    from pathlib import Path
+
+    return Config.load(Path(__file__).resolve().parents[1] / "config.yaml")
+
+
+@pytest.fixture()
+def conn(tmp_path):
+    verbindung = oeffne(tmp_path / "eventdb.sqlite3")
+    yield verbindung
+    verbindung.close()
+
+
+def _rahmen(config, n: int = 600, start: str = "2022-06-01 14:00") -> pd.DataFrame:
+    rng = np.random.default_rng(5)
+    preise = 20000.0 + np.cumsum(rng.normal(0, 5, n))
+    index = pd.date_range(start, periods=n, freq="1min", tz="UTC")
+    df = pd.DataFrame(
+        {
+            "open": preise, "high": preise + 4, "low": preise - 4,
+            "close": preise, "volume": rng.integers(200, 2000, n).astype(float),
+        },
+        index=index,
+    )
+    return compute_indicators(df, config.indicators, config.market.session)
+
+
+def _ereignis(idx: int, *, richtung: int = 1, typ: str = "test_muster") -> Ereignis:
+    return Ereignis(
+        pattern_type=typ,
+        pattern_variant="A",
+        detect_timeframe="1m",
+        direction=richtung,
+        entstehung_idx=max(0, idx - 5),
+        bestaetigung_idx=idx,
+        verfuegbar_idx=idx,
+        merkmale={"level_1": 100.0, "level_2": 110.0, "eigenes_feld": "x"},
+    )
+
+
+# -- Schema -----------------------------------------------------------------
+
+def test_schema_legt_alle_vier_tabellen_an(conn):
+    namen = {
+        r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='table'"
+        )
+    }
+    assert {"events", "outcomes", "triggers", "stop_szenarien", "laeufe"} <= namen
+
+
+def test_event_spalten_stimmen_mit_dem_schema_ueberein(conn):
+    """Laufen die beiden auseinander, schreibt der Schreibweg still in die
+    falsche Spalte - eine zu wenig meldet SQLite, ein vertauschtes Paar
+    gleicher Typen nicht."""
+    from common.ereignisse.datenbank import EVENT_SPALTEN
+
+    im_schema = [
+        b[1] for b in conn.execute("PRAGMA table_info(events)")
+    ]
+    assert list(EVENT_SPALTEN) == im_schema
+
+
+def test_schema_ist_idempotent(tmp_path):
+    pfad = tmp_path / "db.sqlite3"
+    a = oeffne(pfad)
+    a.close()
+    b = oeffne(pfad)   # zweimal oeffnen darf nicht scheitern
+    b.close()
+
+
+# -- Datensatzblock ---------------------------------------------------------
+
+def test_blockgrenzen_sind_fest():
+    """Sie duerfen NICHT mit dem Datenbestand wandern - sonst ist ein
+    Ergebnis von heute nicht mit einem von naechster Woche vergleichbar."""
+    assert datensatz_block(pd.Timestamp("2019-06-01", tz="UTC")) == "train"
+    assert datensatz_block(pd.Timestamp("2023-12-31 12:00", tz="UTC")) == "train"
+    assert datensatz_block(pd.Timestamp("2024-01-01", tz="UTC")) == "validation"
+    assert datensatz_block(pd.Timestamp("2024-12-31 12:00", tz="UTC")) == "validation"
+    assert datensatz_block(pd.Timestamp("2025-01-01", tz="UTC")) == "oos"
+    assert datensatz_block(pd.Timestamp("2026-08-31", tz="UTC")) == "oos"
+
+
+def test_block_landet_in_der_zeile(conn, config):
+    df = _rahmen(config, start="2022-06-01 14:00")
+    schreibe_events(conn, [_ereignis(100)], df, lauf_id="L1")
+    (block,) = conn.execute("SELECT datensatz_block FROM events").fetchone()
+    assert block == "train"
+
+    df2 = _rahmen(config, start="2025-06-01 14:00")
+    schreibe_events(conn, [_ereignis(100)], df2, lauf_id="L2")
+    bloecke = {r[0] for r in conn.execute("SELECT datensatz_block FROM events")}
+    assert bloecke == {"train", "oos"}
+
+
+# -- Cluster ----------------------------------------------------------------
+
+def test_gleichzeitige_gleichgerichtete_ereignisse_teilen_ein_cluster():
+    """Um 15:35 koennen Doppelboden, Flagge und Sweep denselben Einstieg in
+    dieselbe Richtung ergeben - drei Zeilen, aber keine drei unabhaengigen
+    Beobachtungen (Plan 12.1)."""
+    ereignisse = [
+        _ereignis(100, typ="doppelboden"),
+        _ereignis(101, typ="flagge"),
+        _ereignis(102, typ="sweep"),
+    ]
+    zuordnung = vergib_cluster(ereignisse)
+    ids = {zuordnung[i][0] for i in range(3)}
+    assert len(ids) == 1, "drei gleichzeitige Signale, aber nicht ein Cluster"
+    assert all(zuordnung[i][1] == 3 for i in range(3))
+
+
+def test_verschiedene_richtungen_sind_verschiedene_cluster():
+    ereignisse = [_ereignis(100, richtung=1), _ereignis(100, richtung=-1)]
+    zuordnung = vergib_cluster(ereignisse)
+    assert zuordnung[0][0] != zuordnung[1][0]
+
+
+def test_weit_auseinander_ist_kein_cluster():
+    weit = CLUSTER_FENSTER_BARS + 5
+    ereignisse = [_ereignis(100), _ereignis(100 + weit)]
+    zuordnung = vergib_cluster(ereignisse)
+    assert zuordnung[0][0] != zuordnung[1][0]
+    assert zuordnung[0][1] == 1 and zuordnung[1][1] == 1
+
+
+def test_cluster_laeuft_nicht_als_kette_davon():
+    """Festes Fenster ab dem ersten Ereignis, KEINE transitive Kette.
+
+    Eine Kette (A-B, B-C, also A-B-C) klingt richtiger, laeuft auf 1m-Daten
+    mit sieben Erkennern aber davon - gemessen entstanden Cluster aus 58
+    Ereignissen ueber mehrere Minuten. Das waeren keine gleichzeitigen
+    Signale mehr, sondern eine ganze Bewegung.
+    """
+    schritt = CLUSTER_FENSTER_BARS
+    ereignisse = [_ereignis(100 + k * schritt) for k in range(10)]
+    zuordnung = vergib_cluster(ereignisse)
+
+    ids = {zuordnung[i][0] for i in range(10)}
+    assert len(ids) > 1, "die Kette hat alles zu einem Cluster verschmolzen"
+    # Kein Cluster darf laenger sein als das Fenster erlaubt.
+    for i in range(10):
+        assert zuordnung[i][1] <= CLUSTER_FENSTER_BARS + 1
+
+
+def test_cluster_groesse_ist_durch_das_fenster_begrenzt():
+    """Auf einer dichten Ereignisfolge - eine Kette wuerde hier alles
+    zusammenziehen."""
+    ereignisse = [_ereignis(100 + k) for k in range(60)]
+    zuordnung = vergib_cluster(ereignisse)
+    groessen = {zuordnung[i][1] for i in range(60)}
+    assert max(groessen) <= CLUSTER_FENSTER_BARS + 1, (
+        f"Cluster zu gross: {max(groessen)}"
+    )
+
+
+# -- Schreibweg und Kontext -------------------------------------------------
+
+def test_ereignis_landet_vollstaendig_in_der_tabelle(conn, config):
+    df = _rahmen(config)
+    n = schreibe_events(conn, [_ereignis(200)], df, lauf_id="L1")
+    assert n == 1
+
+    zeile = conn.execute("SELECT * FROM events").fetchone()
+    spalten = [b[0] for b in conn.execute("SELECT * FROM events").description]
+    daten = dict(zip(spalten, zeile))
+
+    assert daten["pattern_type"] == "test_muster"
+    assert daten["direction"] == 1
+    assert daten["verfuegbar_idx"] == 200
+    assert daten["verfuegbar_ts"] == df.index[200].isoformat()
+    assert daten["level_1"] == 100.0
+    assert daten["pattern_hoehe_pkt"] == 10.0
+    assert daten["preis"] == pytest.approx(float(df["close"].iloc[200]))
+    assert daten["atr"] == pytest.approx(float(df["atr"].iloc[200]))
+    assert daten["instrument"] == "MNQ"
+    # Musterspezifisches geht nicht verloren.
+    assert json.loads(daten["merkmale_json"])["eigenes_feld"] == "x"
+
+
+def test_kontext_wird_am_verfuegbarkeitszeitpunkt_gelesen(conn, config):
+    """Der wichtigste Test dieser Datei.
+
+    Die Erkenner sind lookahead-sicher. Liest der Schreibweg den Kontext eine
+    Kerze zu spaet, ist die ganze Datenbank wertlos - und nichts an den Zahlen
+    verriete es. Geprueft, indem die Reihe hinter dem Ereignis abgeschnitten
+    wird: der Kontext muss identisch bleiben.
+    """
+    df = _rahmen(config, n=600)
+    idx = 300
+    voll = oeffne(":memory:")
+    kurz = oeffne(":memory:")
+    try:
+        schreibe_events(conn=voll, ereignisse=[_ereignis(idx)],
+                        rahmen=df, lauf_id="L")
+        schreibe_events(conn=kurz, ereignisse=[_ereignis(idx)],
+                        rahmen=df.iloc[: idx + 1], lauf_id="L")
+        felder = (
+            "preis, atr, abstand_vwap_atr, abstand_pdh_atr, abstand_pdl_atr, "
+            "vola_regime, struktur_regime, session, wochentag, "
+            "minuten_seit_open, volumen_relativ"
+        )
+        a = voll.execute(f"SELECT {felder} FROM events").fetchone()
+        b = kurz.execute(f"SELECT {felder} FROM events").fetchone()
+        assert a == b, "Kontext haengt von Kerzen NACH dem Ereignis ab"
+    finally:
+        voll.close()
+        kurz.close()
+
+
+def test_fehlende_kontextspalte_bleibt_none_statt_geraten(conn, config):
+    """Invariante 11: eine fehlende Regime-Angabe ist eine ehrliche Luecke;
+    eine geratene waere eine Falschaussage mit Autoritaet."""
+    df = _rahmen(config)
+    assert "vola_regime" not in df.columns   # bewusst nicht angereichert
+    schreibe_events(conn, [_ereignis(200)], df, lauf_id="L1")
+    (vola,) = conn.execute("SELECT vola_regime FROM events").fetchone()
+    assert vola is None
+
+
+def test_ereignis_ausserhalb_des_rahmens_bricht_ab(conn, config):
+    df = _rahmen(config, n=100)
+    with pytest.raises(ValueError, match="ausserhalb"):
+        schreibe_events(conn, [_ereignis(500)], df, lauf_id="L1")
+
+
+def test_rollgrenze_wird_markiert_nicht_verworfen(conn, config):
+    """Plan Entscheidung 4: markieren, nicht generell ausschliessen."""
+    df = _rahmen(config, n=600)
+    naht = df.index[300]
+    schreibe_events(
+        conn, [_ereignis(300), _ereignis(50)], df,
+        lauf_id="L1", rollgrenzen=[naht], rollgrenze_bars=10,
+    )
+    zeilen = dict(
+        conn.execute("SELECT verfuegbar_idx, nahe_rollgrenze FROM events")
+    )
+    assert zeilen[300] == 1
+    assert zeilen[50] == 0
+    assert len(zeilen) == 2, "Ereignis an der Naht wurde verworfen"
+
+
+def test_wiederholtes_schreiben_verdoppelt_nicht(conn, config):
+    df = _rahmen(config)
+    schreibe_events(conn, [_ereignis(200)], df, lauf_id="L1")
+    schreibe_events(conn, [_ereignis(200)], df, lauf_id="L1")
+    (n,) = conn.execute("SELECT COUNT(*) FROM events").fetchone()
+    assert n == 1
+
+
+def test_verschiedene_laeufe_bleiben_nebeneinander(conn, config):
+    df = _rahmen(config)
+    schreibe_events(conn, [_ereignis(200)], df, lauf_id="L1")
+    schreibe_events(conn, [_ereignis(200)], df, lauf_id="L2")
+    (n,) = conn.execute("SELECT COUNT(*) FROM events").fetchone()
+    assert n == 2
+
+
+def test_lauf_wird_protokolliert(conn, config):
+    df = _rahmen(config)
+    notiere_lauf(
+        conn, lauf_id="L1", instrument="MNQ", rahmen=df,
+        erkenner=["fvg", "sweeps"], ereignisse=7, notiz="Test",
+    )
+    zeile = conn.execute("SELECT * FROM laeufe").fetchone()
+    assert zeile[0] == "L1"
+    assert zeile[3] == len(df)
+    assert "fvg" in zeile[6]
+
+
+def test_zaehle_gibt_den_ueberblick(conn, config):
+    df = _rahmen(config)
+    schreibe_events(
+        conn,
+        [_ereignis(100, typ="a"), _ereignis(200, typ="a"), _ereignis(300, typ="b")],
+        df, lauf_id="L1",
+    )
+    uebersicht = zaehle(conn)
+    assert set(uebersicht["pattern_type"]) == {"a", "b"}
+    assert int(uebersicht.loc[uebersicht["pattern_type"] == "a", "n"].iloc[0]) == 2
+
+
+def test_leere_liste_schreibt_nichts(conn, config):
+    assert schreibe_events(conn, [], _rahmen(config), lauf_id="L1") == 0
+
+
+def test_echte_erkenner_lassen_sich_schreiben(conn, config):
+    """Der Durchstich: echte Ereignisse aus einem echten Erkenner."""
+    from common.ereignisse.fvg import fvg_serie
+
+    df = _rahmen(config, n=2000)
+    ereignisse = fvg_serie(df)
+    assert ereignisse, "der Erkenner muss auf diesen Daten etwas finden"
+
+    n = schreibe_events(conn, ereignisse, df, lauf_id="ECHT")
+    assert n == len(ereignisse)
+
+    # Die Kernmerkmale des FVG muessen in den Spalten stehen.
+    zeile = conn.execute(
+        "SELECT level_1, level_2, pattern_hoehe_pkt, merkmale_json "
+        "FROM events LIMIT 1"
+    ).fetchone()
+    assert zeile[0] is not None and zeile[1] is not None
+    assert zeile[2] == pytest.approx(abs(zeile[1] - zeile[0]))
+    assert "spanne_ticks" in json.loads(zeile[3])
