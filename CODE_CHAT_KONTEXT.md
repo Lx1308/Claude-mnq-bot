@@ -3091,3 +3091,33 @@ tatsaechlichem Fuellkurs ist gemessene Ausfuehrungsqualitaet - ohne eine
 einzige heruntergeladene Tickdatei. Steht als Punkt in
 `docs/OFFENE_PUNKTE.md`.
 
+### 34.8 Rollfenster kommen aus dem Bestand, nicht aus einer Formel (30.08.2026)
+
+Der Import schnitt Kontrakte zunaechst auf ein gerechnetes Fenster zu: acht
+Tage vor Verfall wird gerollt. Gegen die tatsaechlichen Daten geprueft, lag
+diese Annahme daneben.
+
+**NinjaTraders eigene Rollkonvention, abgelesen an 30 MNQ-Kontrakten:**
+
+| Zeitraum | gerollt am |
+|---|---|
+| JUN19 bis DEC22 | Mittwoch/Donnerstag |
+| MAR23 bis SEP26 | Freitag/Montag |
+
+Die Acht-Tage-Formel haette ab MAR23 drei bis vier Kalendertage zu frueh
+geschnitten — bei 16 von 30 Kontrakten.
+
+**Deshalb liest `werkzeuge/nt8_import.py::rollplan_aus_nt8` die Fenster jetzt
+aus dem Bestand:** jeder Kontraktordner unter
+`Documents/NinjaTrader 8/db/minute/` enthaelt genau die Handelstage, an denen
+NinjaTrader ihn als Frontmonat gefuehrt hat. Kontrakt N endet dort, wo N+1
+beginnt — lueckenlos und ueberschneidungsfrei, ohne eine geratene Zahl.
+`rollfenster` bleibt als Rueckfallebene, wenn der Ordner fehlt; der Import
+sagt dann, mit welcher der beiden Quellen er gearbeitet hat.
+
+**Gegenprobe: null fehlende Handelstage.** Die scheinbaren Luecken von ein bis
+vier Kalendertagen an den Uebergaengen sind ausnahmslos Wochenenden. 30
+Kontrakte, 1.954 Handelstage, Mai 2019 bis heute.
+
+Kleine Dateien (unter 40 Byte) sind Platzhalter ohne Kerzen und wuerden den
+Beginn faelschlich vorziehen; sie werden uebergangen.

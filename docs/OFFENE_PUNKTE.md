@@ -57,9 +57,12 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 - [ ] **NT8-Historie tatsächlich importieren.** Das Werkzeug steht
       (`werkzeuge/nt8_import.py`), der Export fehlt. NinjaTrader hält
       MNQ-Minutendaten von 30 Kontrakten zurück bis 2019 vor.
-      Ablauf: NT8 → Tools → Historical Data → Export, dann
-      `nt8_import.py <datei>` (prüft), dann `--schreiben`.
-      Danach sind die Backtests auf Jahren statt auf zehn Tagen.
+      Ablauf und die Start-/Enddaten für alle 30 Kontrakte stehen in
+      `docs/NT8_EXPORT_ANLEITUNG.md`. **MNQ SEP26 muss zuerst importiert
+      werden** (Formatnachweis), danach die übrigen in beliebiger Reihenfolge.
+      Zu holen sind 1.954 Handelstage ab Mai 2019 — danach rechnen die
+      Backtests auf Jahren statt auf zehn Tagen, und die p-Werte werden
+      überhaupt erst aussagekräftig.
 
 - [ ] **Erst danach: Hypothesen ernsthaft rechnen.** Auf zehn Tagen sind alle
       Urteile „UNENTSCHIEDEN" (unter 30 Trades). Mit Jahreshistorie werden die

@@ -300,3 +300,51 @@ def test_kaputter_nachweis_wird_wie_keiner_behandelt(tmp_path, monkeypatch):
     monkeypatch.setattr(nt8_import, "NACHWEIS", pfad)
 
     assert nt8_import.lies_nachweis() == {}
+
+
+def test_rollplan_aus_dem_bestand_ist_lueckenlos_und_ueberschneidungsfrei(tmp_path):
+    """Der Bestand weiss genauer als jede Formel, wann gerollt wurde.
+
+    Am 30.08.2026 gegen die echten Daten geprueft: NinjaTrader rollte bis 2022
+    mittwochs, ab 2023 freitags. Die Acht-Tage-Formel haette ab MAR23 drei bis
+    vier Kalendertage zu frueh geschnitten.
+    """
+    from werkzeuge.nt8_import import rollplan_aus_nt8
+
+    # Zwei Kontrakte mit je zwei Handelstagen nachbauen.
+    for ordner, tage in (
+        ("MNQ 06-26", ("20260315", "20260316")),
+        ("MNQ 09-26", ("20260612", "20260613")),
+    ):
+        ziel = tmp_path / ordner
+        ziel.mkdir()
+        for tag in tage:
+            (ziel / f"{tag}.Last.ncd").write_bytes(b"x" * 100)
+
+    plan = rollplan_aus_nt8("MNQ", db_pfad=tmp_path)
+
+    assert set(plan) == {(2026, 6), (2026, 9)}
+    # Der aeltere endet genau dort, wo der neuere beginnt.
+    assert plan[(2026, 6)][1] == plan[(2026, 9)][0]
+    # Der laufende Kontrakt hat kein Ende.
+    assert plan[(2026, 9)][1].year > 2090
+
+
+def test_platzhalterdateien_ziehen_den_beginn_nicht_vor(tmp_path):
+    """Sehr kleine Dateien sind Tage ohne Kerzen - etwa ein Feiertag."""
+    from werkzeuge.nt8_import import rollplan_aus_nt8
+
+    ordner = tmp_path / "MNQ 09-26"
+    ordner.mkdir()
+    (ordner / "20260601.Last.ncd").write_bytes(b"x" * 20)    # Platzhalter
+    (ordner / "20260612.Last.ncd").write_bytes(b"x" * 5000)  # echte Kerzen
+
+    plan = rollplan_aus_nt8("MNQ", db_pfad=tmp_path)
+    assert plan[(2026, 9)][0].strftime("%Y-%m-%d") == "2026-06-12"
+
+
+def test_ohne_nt8_ordner_bleibt_der_plan_leer(tmp_path):
+    """Dann greift die gerechnete Rueckfallebene - und der Import sagt das."""
+    from werkzeuge.nt8_import import rollplan_aus_nt8
+
+    assert rollplan_aus_nt8("MNQ", db_pfad=tmp_path / "gibtsnicht") == {}

@@ -44,28 +44,52 @@ eine Mischung aus zwei Kontrakten mit verschiedenem Kursniveau.
 
 ## Die Daten je Kontrakt
 
-Startdatum großzügig gewählt (ein Monat vor dem Rollfenster), damit nichts
-fehlt. Was davon tatsächlich in die Datenbank geht, steht in der letzten
-Spalte — den Rest verwirft der Import.
+Laurin will alles ab Juni 2019 (30.08.2026). Das sind alle 30 Kontrakte, die
+NinjaTrader lokal vorhaelt — MNQ wurde im Mai 2019 eingefuehrt, frueher gibt
+es nichts.
 
-| Kontrakt | Startdatum | Enddatum | behalten wird |
+**Die Startdaten sind nicht gerechnet, sondern aus NinjaTraders eigenem
+Bestand abgelesen** (siehe `rollplan_aus_nt8`). Sie entsprechen genau dem Tag,
+ab dem NinjaTrader den jeweiligen Kontrakt als Frontmonat fuehrt.
+
+| Kontrakt | Startdatum | Enddatum | Handelstage |
 |---|---|---|---|
-| MNQ SEP26 | 01.06.2026 | 18.09.2026 | 11.06.–10.09.2026 |
-| MNQ JUN26 | 01.03.2026 | 19.06.2026 | 12.03.–11.06.2026 |
-| MNQ MAR26 | 01.12.2025 | 20.03.2026 | 11.12.–12.03.2026 |
-| MNQ DEC25 | 01.09.2025 | 19.12.2025 | 11.09.–11.12.2025 |
-| MNQ SEP25 | 01.06.2025 | 19.09.2025 | 12.06.–11.09.2025 |
-| MNQ JUN25 | 01.03.2025 | 20.06.2025 | 13.03.–12.06.2025 |
-| MNQ MAR25 | 01.12.2024 | 21.03.2025 | 12.12.–13.03.2025 |
-| MNQ DEC24 | 01.09.2024 | 20.12.2024 | 12.09.–12.12.2024 |
-| MNQ SEP24 | 01.06.2024 | 20.09.2024 | 13.06.–12.09.2024 |
-| MNQ JUN24 | 01.03.2024 | 21.06.2024 | 07.03.–13.06.2024 |
-| MNQ MAR24 | 01.12.2023 | 15.03.2024 | 07.12.–07.03.2024 |
-| MNQ DEC23 | 01.09.2023 | 15.12.2023 | 07.09.–07.12.2023 |
+| MNQ JUN19 | 06.05.2019 | 21.06.2019 | 28 |
+| MNQ SEP19 | 13.06.2019 | 20.09.2019 | 65 |
+| MNQ DEC19 | 12.09.2019 | 20.12.2019 | 66 |
+| MNQ MAR20 | 12.12.2019 | 20.03.2020 | 64 |
+| MNQ JUN20 | 11.03.2020 | 19.06.2020 | 67 |
+| MNQ SEP20 | 11.06.2020 | 18.09.2020 | 66 |
+| MNQ DEC20 | 10.09.2020 | 18.12.2020 | 69 |
+| MNQ MAR21 | 10.12.2020 | 19.03.2021 | 63 |
+| MNQ JUN21 | 11.03.2021 | 18.06.2021 | 67 |
+| MNQ SEP21 | 10.06.2021 | 17.09.2021 | 65 |
+| MNQ DEC21 | 09.09.2021 | 17.12.2021 | 66 |
+| MNQ MAR22 | 09.12.2021 | 18.03.2022 | 66 |
+| MNQ JUN22 | 10.03.2022 | 17.06.2022 | 67 |
+| MNQ SEP22 | 09.06.2022 | 16.09.2022 | 70 |
+| MNQ DEC22 | 08.09.2022 | 16.12.2022 | 71 |
+| MNQ MAR23 | 12.12.2022 | 17.03.2023 | 65 |
+| MNQ JUN23 | 12.03.2023 | 16.06.2023 | 67 |
+| MNQ SEP23 | 12.06.2023 | 15.09.2023 | 66 |
+| MNQ DEC23 | 11.09.2023 | 15.12.2023 | 68 |
+| MNQ MAR24 | 11.12.2023 | 15.03.2024 | 63 |
+| MNQ JUN24 | 10.03.2024 | 21.06.2024 | 72 |
+| MNQ SEP24 | 17.06.2024 | 20.09.2024 | 65 |
+| MNQ DEC24 | 16.09.2024 | 20.12.2024 | 69 |
+| MNQ MAR25 | 16.12.2024 | 21.03.2025 | 67 |
+| MNQ JUN25 | 16.03.2025 | 20.06.2025 | 71 |
+| MNQ SEP25 | 16.06.2025 | 19.09.2025 | 67 |
+| MNQ DEC25 | 15.09.2025 | 19.12.2025 | 66 |
+| MNQ MAR26 | 15.12.2025 | 20.03.2026 | 66 |
+| MNQ JUN26 | 15.03.2026 | 19.06.2026 | 66 |
+| MNQ SEP26 | 12.06.2026 | 18.09.2026 | 56 |
 
-Diese zwölf ergeben **drei Jahre lückenlos**. Wer weiter zurück will, rechnet
-die Daten mit derselben Regel weiter: Verfall ist der dritte Freitag des
-Kontraktmonats, gerollt wird acht Tage davor.
+**30 Kontrakte, 1954 Handelstage** — Juni 2019 bis heute, lueckenlos.
+
+Der Import schneidet ohnehin auf das Rollfenster zu — ein etwas
+grosszuegigerer Zeitraum im Export schadet also nicht. **Leer lassen darfst du
+das Startdatum trotzdem nie**, siehe oben.
 
 ## Reihenfolge: SEP26 zuerst
 

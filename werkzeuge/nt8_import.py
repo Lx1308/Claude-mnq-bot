@@ -52,7 +52,7 @@ from __future__ import annotations
 
 import argparse
 import sys
-from datetime import datetime
+from datetime import date, datetime
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
@@ -150,6 +150,77 @@ def rollfenster(
         eigener_verfall - timedelta(days=rolltage), datetime.min.time()
     ).replace(tzinfo=ZoneInfo("UTC"))
     return von, bis
+
+
+#: Wo NinjaTrader seine Minutendaten ablegt - ein Ordner je Kontrakt,
+#: darin eine Datei je Handelstag ("20260615.Last.ncd").
+NT8_MINUTEN = (
+    Path.home() / "Documents" / "NinjaTrader 8" / "db" / "minute"
+)
+
+
+def rollplan_aus_nt8(
+    wurzel: str = "MNQ", *, db_pfad: Path | None = None
+) -> dict[tuple[int, int], tuple[datetime, datetime]]:
+    """Rollfenster aus NinjaTraders eigenem Datenbestand ableiten.
+
+    WARUM DAS BESSER IST ALS EINE FESTE TAGESZAHL
+    ---------------------------------------------
+    ``rollfenster`` rechnet mit einem Abstand zum Verfall (Vorgabe acht Tage).
+    Das ist eine Annahme. Am 30.08.2026 gegen den tatsaechlichen Bestand
+    geprueft, und die Annahme lag daneben: NinjaTrader rollte bis 2022
+    mittwochs, ab 2023 freitags. Die Formel haette ab MAR23 drei bis vier
+    Kalendertage zu frueh geschnitten.
+
+    Der Bestand selbst weiss es genauer. Jeder Kontraktordner enthaelt genau
+    die Handelstage, an denen NinjaTrader ihn als Frontmonat gefuehrt hat.
+    Kontrakt N endet damit dort, wo N+1 beginnt - lueckenlos und
+    ueberschneidungsfrei, ohne dass irgendwo eine Zahl geraten wird.
+
+    Nachgemessen ueber 30 MNQ-Kontrakte von JUN19 bis SEP26: **null fehlende
+    Handelstage**. Die scheinbaren Luecken von ein bis vier Kalendertagen an
+    den Uebergaengen sind ausnahmslos Wochenenden.
+
+    Liefert ``{}``, wenn der Ordner nicht existiert - dann bleibt
+    ``rollfenster`` als Rueckfallebene, und der Aufrufer sagt das auch.
+    """
+    import re
+
+    ordnerpfad = db_pfad or NT8_MINUTEN
+    if not ordnerpfad.exists():
+        return {}
+
+    erste_tage: dict[tuple[int, int], date] = {}
+    for ordner in sorted(ordnerpfad.glob(f"{wurzel} *")):
+        treffer = re.match(rf"{wurzel} (\d{{2}})-(\d{{2}})$", ordner.name)
+        if not treffer:
+            continue
+        monat, jahr = int(treffer.group(1)), 2000 + int(treffer.group(2))
+        # Sehr kleine Dateien sind Platzhalter ohne Kerzen (etwa ein
+        # Feiertag); sie wuerden den Beginn faelschlich vorziehen.
+        tage = sorted(
+            d.name[:8] for d in ordner.glob("*.Last.ncd") if d.stat().st_size > 40
+        )
+        if tage:
+            erste_tage[(jahr, monat)] = date(
+                int(tage[0][:4]), int(tage[0][4:6]), int(tage[0][6:8])
+            )
+
+    schluessel = sorted(erste_tage)
+    plan: dict[tuple[int, int], tuple[datetime, datetime]] = {}
+    for i, kennung in enumerate(schluessel):
+        von = datetime.combine(erste_tage[kennung], datetime.min.time()).replace(
+            tzinfo=ZoneInfo("UTC")
+        )
+        if i + 1 < len(schluessel):
+            bis = datetime.combine(
+                erste_tage[schluessel[i + 1]], datetime.min.time()
+            ).replace(tzinfo=ZoneInfo("UTC"))
+        else:
+            # Der laufende Kontrakt hat kein Ende - er ist noch Frontmonat.
+            bis = datetime(2099, 1, 1, tzinfo=ZoneInfo("UTC"))
+        plan[kennung] = (von, bis)
+    return plan
 
 
 def lies_export(pfad: Path, zeitzone: str) -> pd.DataFrame:
@@ -425,6 +496,11 @@ def main(argv: list[str] | None = None) -> int:
              "gerollt wird (Vorgabe 8).",
     )
     parser.add_argument(
+        "--rolltage-erzwingen", action="store_true",
+        help="Das Rollfenster rechnen statt es aus NinjaTraders Bestand zu "
+             "lesen. Nur noetig, wenn der NT8-Ordner nicht erreichbar ist.",
+    )
+    parser.add_argument(
         "--alle-kerzen", action="store_true",
         help="Ohne Beschraenkung auf das Rollfenster importieren. NUR fuer "
              "einen einzelnen Kontrakt sinnvoll - bei mehreren ueberschreiben "
@@ -474,13 +550,24 @@ def main(argv: list[str] | None = None) -> int:
             return 2
 
         wurzel, jahr, monat = kennung
-        von, bis = rollfenster(wurzel, jahr, monat, rolltage=args.rolltage)
+
+        # Bevorzugt aus NinjaTraders eigenem Bestand: der weiss genauer als
+        # jede Formel, wann gerollt wurde. Nur wenn der Ordner fehlt, wird
+        # gerechnet - und das steht dann auch da.
+        plan = {} if args.rolltage_erzwingen else rollplan_aus_nt8(wurzel)
+        if kennung in plan:
+            von, bis = plan[kennung]
+            herkunft = "aus NinjaTraders Datenbestand"
+        else:
+            von, bis = rollfenster(wurzel, jahr, monat, rolltage=args.rolltage)
+            herkunft = f"gerechnet, {args.rolltage} Tage vor Verfall"
+
         vorher = len(neu)
         neu = neu[(neu.index >= von) & (neu.index < bis)]
+        bis_text = "offen" if bis.year > 2090 else f"{bis:%Y-%m-%d}"
         print(
             f"  Kontrakt {wurzel} {jahr}-{monat:02d}, Frontmonat von "
-            f"{von:%Y-%m-%d} bis {bis:%Y-%m-%d} "
-            f"({args.rolltage} Tage vor Verfall gerollt)"
+            f"{von:%Y-%m-%d} bis {bis_text} ({herkunft})"
         )
         print(
             f"  {vorher - len(neu)} Kerzen ausserhalb des Fensters verworfen, "
