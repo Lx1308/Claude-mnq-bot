@@ -164,7 +164,16 @@ def lies_export(pfad: Path, zeitzone: str) -> pd.DataFrame:
     und wird nicht geraten. Eine falsch angenommene Zeitzone verschoebe die
     ganze Reihe um Stunden - und die Kurse saehen weiter plausibel aus.
     """
-    zeilen = pfad.read_text(encoding="utf-8", errors="replace").splitlines()
+    # NinjaTrader legt den Export je nach Version als reine .txt oder
+    # gepackt als .gz ab. Beides hier annehmen, statt den Nutzer erst an einer
+    # unverstaendlichen Fehlermeldung scheitern zu lassen.
+    if pfad.suffix.lower() == ".gz":
+        import gzip
+
+        with gzip.open(pfad, "rt", encoding="utf-8", errors="replace") as datei:
+            zeilen = datei.read().splitlines()
+    else:
+        zeilen = pfad.read_text(encoding="utf-8", errors="replace").splitlines()
     saetze: list[tuple] = []
     fehlerhaft = 0
 

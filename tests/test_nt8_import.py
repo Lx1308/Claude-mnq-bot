@@ -212,3 +212,16 @@ def test_fenster_endet_vor_dem_verfall():
     _, bis = rollfenster("MNQ", 2026, 9, rolltage=8)
     assert bis.date() < verfall
     assert (verfall - bis.date()).days == 8
+
+
+def test_gepackter_export_wird_gelesen(tmp_path):
+    """NinjaTrader legt den Export je nach Version gepackt ab."""
+    import gzip
+
+    datei = tmp_path / "MNQ SEP19.txt.gz"
+    with gzip.open(datei, "wt", encoding="utf-8") as f:
+        f.write("20260902 140000;20000.25;20005.00;19998.50;20003.75;1234\n")
+
+    df = lies_export(datei, "UTC")
+    assert len(df) == 1
+    assert df["close"].iloc[0] == 20003.75
