@@ -9,6 +9,7 @@ lassen sich ohne Code-Aenderung vergleichen:
 
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import time as dtime
 from typing import Any, Callable
 
@@ -343,6 +344,46 @@ def power_hour_vwap(
         },
     )
 
+#: Wohin ein Stop chartlich gehoert - die Varianten, die verglichen werden.
+#:
+#: Laurins Frage vom 30.08.2026: nicht "50 oder 100 Dollar", sondern wo der
+#: Stop strukturell sitzen muss, damit er plausibel ist. Ein Stop unter dem
+#: letzten Tief hat eine Begruendung; 1,5 x ATR hat keine.
+#:
+#: Die Werte sind Spaltennamen fuer die LONG-Seite. Die Short-Entsprechung
+#: leitet ``stop_variante`` daraus ab - sonst muesste man dieselbe Idee
+#: zweimal pflegen und koennte sie einmal falsch pflegen.
+STOP_VARIANTEN: dict[str, str | None] = {
+    "atr": None,                                # Nulllinie: das Bisherige
+    "letztes_swing": "letztes_swing_tief",      # unter dem letzten Tief
+    "vorletztes_swing": "vorletztes_swing_tief",  # eine Struktur weiter zurueck
+    "vortag": "prev_session_low",               # unter dem Vortagestief
+    "musterttief": "w_zweites_tief",            # unter dem Tief des Musters selbst
+}
+
+#: Long-Spalte -> Short-Spalte. Ein Short-Stop gehoert ueber das
+#: entsprechende HOCH, nicht unter ein Tief.
+_SHORT_ENTSPRECHUNG = {
+    "letztes_swing_tief": "letztes_swing_hoch",
+    "vorletztes_swing_tief": "vorletztes_swing_hoch",
+    "prev_session_low": "prev_session_high",
+    "w_zweites_tief": "m_zweites_hoch",
+}
+
+
+def stop_spalten_fuer(variante: str) -> tuple[str | None, str | None]:
+    """(Long-Spalte, Short-Spalte) einer Stop-Variante."""
+    if variante not in STOP_VARIANTEN:
+        raise KeyError(
+            f"Unbekannte Stop-Variante {variante!r}. Verfuegbar: "
+            + ", ".join(sorted(STOP_VARIANTEN))
+        )
+    long_spalte = STOP_VARIANTEN[variante]
+    if long_spalte is None:
+        return None, None
+    return long_spalte, _SHORT_ENTSPRECHUNG[long_spalte]
+
+
 def doppelboden_bestaetigt(
     *,
     min_konfidenz: float = 0.0,
@@ -448,6 +489,36 @@ def doppelboden_nackenbruch(
             "take_profit_atr": take_profit_atr,
             "max_bars_in_trade": max_bars_in_trade,
             "trade_short": trade_short,
+        },
+    )
+
+
+def mit_stop_variante(
+    strategie: RuleStrategy,
+    variante: str,
+    *,
+    puffer_ticks: float = 2.0,
+) -> RuleStrategy:
+    """Dieselbe Strategie, nur mit anderem Stop.
+
+    Der ganze Punkt des Vergleichs: **ein einziger Unterschied**. Einstieg,
+    Ziel, Zeitstop und Handelsfenster bleiben identisch, damit der Unterschied
+    im Ergebnis dem Stop zugeschrieben werden kann und nicht irgendetwas
+    anderem.
+
+    ``atr`` ist die Nulllinie - das, was die Bibliothek bisher tat.
+    """
+    long_spalte, short_spalte = stop_spalten_fuer(variante)
+    return replace(
+        strategie,
+        name=f"{strategie.name}[stop={variante}]",
+        stop_loss_spalte=long_spalte,
+        stop_loss_spalte_short=short_spalte,
+        stop_loss_puffer_ticks=puffer_ticks,
+        params={
+            **strategie.params,
+            "stop_variante": variante,
+            "stop_puffer_ticks": puffer_ticks,
         },
     )
 
