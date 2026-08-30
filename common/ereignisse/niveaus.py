@@ -241,6 +241,12 @@ def _niveau_interaktion(
 
 
 #: (Spaltenname im Rahmen, Kurzname fuers Ereignis)
+#:
+#: Fehlt eine Spalte im Rahmen, wird sie stillschweigend uebersprungen - so
+#: laufen die Erkenner auch auf einem Rahmen, der nur ``compute_indicators``
+#: gesehen hat. Die Opening-Range-Spalten kommen aus
+#: ``ereignisse/opening_range.py`` und sind nur im vollstaendig vorbereiteten
+#: Rahmen da (``Backtester.prepare``).
 NIVEAU_QUELLEN: tuple[tuple[str, str], ...] = (
     ("prev_session_high", "pdh"),
     ("prev_session_low", "pdl"),
@@ -249,7 +255,45 @@ NIVEAU_QUELLEN: tuple[tuple[str, str], ...] = (
     ("ib_low", "ib_low"),
     ("overnight_high", "onh"),
     ("overnight_low", "onl"),
+    ("or5_high", "or5_high"),
+    ("or5_low", "or5_low"),
+    ("or15_high", "or15_high"),
+    ("or15_low", "or15_low"),
+    ("or30_high", "or30_high"),
+    ("or30_low", "or30_low"),
 )
+
+
+def niveau_serien(
+    df: pd.DataFrame,
+    *,
+    strength: int = STANDARD_STRENGTH,
+) -> list[tuple[str, np.ndarray]]:
+    """Alle verfuegbaren Niveaus als ``(name, serie)`` ueber die ganze Reihe.
+
+    **Die eine** Stelle, an der festgelegt ist, was in diesem Projekt ein
+    "Niveau" ist. ``niveaus.py`` und ``sweeps.py`` fragen beide hier - zwei
+    Listen wuerden auseinanderlaufen, und dann untersuchte der Sweep-Erkenner
+    andere Marken als der Test-Erkenner.
+
+    Jede Serie steht zum Bezugszeitpunkt fest: Vortagesmarken am
+    gestrigen Sessionende, IB nach der ersten Stunde, Swings ``strength``
+    Kerzen nach ihrem Extremum. Wo noch nichts bekannt ist, steht ``NaN``.
+    """
+    serien: list[tuple[str, np.ndarray]] = []
+    for spalte, name in NIVEAU_QUELLEN:
+        if spalte not in df.columns:
+            continue
+        werte = df[spalte].to_numpy(dtype=float)
+        if not np.isfinite(werte).any():
+            continue
+        serien.append((name, werte))
+
+    serie = swing_serie(df, strength=strength)
+    for kind, name in (("hoch", "swing_hoch"), ("tief", "swing_tief")):
+        preis, _ = serie.letzte_swings(kind)
+        serien.append((name, preis))
+    return serien
 
 
 def niveau_ereignisse(
@@ -276,28 +320,10 @@ def niveau_ereignisse(
     atr = df["atr"].to_numpy(dtype=float)
 
     ereignisse: list[Ereignis] = []
-
-    for spalte, name in NIVEAU_QUELLEN:
-        if spalte not in df.columns:
-            continue
-        niveau = df[spalte].to_numpy(dtype=float)
-        if not np.isfinite(niveau).any():
-            continue
+    for name, niveau in niveau_serien(df, strength=strength):
         ereignisse.extend(
             _niveau_interaktion(
                 highs, lows, closes, atr, niveau,
-                niveau_name=name, detect_timeframe=detect_timeframe,
-                toleranz_atr=toleranz_atr, bruch_atr=bruch_atr,
-            )
-        )
-
-    # Zuletzt bestaetigte Swings als Niveau.
-    serie = swing_serie(df, strength=strength)
-    for kind, name in (("hoch", "swing_hoch"), ("tief", "swing_tief")):
-        preis, _ = serie.letzte_swings(kind)
-        ereignisse.extend(
-            _niveau_interaktion(
-                highs, lows, closes, atr, preis,
                 niveau_name=name, detect_timeframe=detect_timeframe,
                 toleranz_atr=toleranz_atr, bruch_atr=bruch_atr,
             )
@@ -314,4 +340,5 @@ __all__ = [
     "RETEST_FENSTER",
     "TOLERANZ_ATR",
     "niveau_ereignisse",
+    "niveau_serien",
 ]

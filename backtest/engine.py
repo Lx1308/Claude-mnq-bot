@@ -33,6 +33,7 @@ import pandas as pd
 from backtest.kosten import Kostenprofil
 from backtest.strategies.base import BarContext, RuleStrategy
 from common.config import IndicatorConfig, MarketConfig, SessionConfig
+from common.ereignisse.opening_range import opening_range_spalten
 from common.indicators import compute_indicators
 from common.instruments import get_instrument
 from common.levels import initial_balance_per_session
@@ -250,6 +251,13 @@ class Backtester:
         ib = initial_balance_per_session(enriched, instrument, self._market.session)
         for spalte in ib.columns:
             enriched[spalte] = ib[spalte]
+
+        # Opening Range (5/15/30 Minuten) - dieselbe Bauart wie die Initial
+        # Balance, nur kuerzere Fenster. Sie sind Niveauquellen fuer die
+        # Ereignis-Erkenner, kein eigenes Muster.
+        opening = opening_range_spalten(enriched, instrument, self._market.session)
+        for spalte in opening.columns:
+            enriched[spalte] = opening[spalte]
 
         # Chartmuster als Serie (Doppelboden/Doppeltop). Aus
         # common/muster_serie.py, das dieselben Schwellen benutzt wie der
