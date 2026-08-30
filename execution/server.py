@@ -39,51 +39,6 @@ app.add_middleware(
 logger = logging.getLogger("execution.server")
 
 # ---------------------------------------------------------------------------
-# Risk (inline, kein Package-Import noetig)
-# ---------------------------------------------------------------------------
-class RiskState:
-    def __init__(self):
-        self.max_daily_loss = 1500.0
-        self.current_daily_loss = 0.0
-        self.max_contracts = 2
-
-    def check_order(self, symbol: str, side: str, qty: int, price: float) -> bool:
-        if self.current_daily_loss <= -self.max_daily_loss:
-            logger.warning("RISK REJECT: Daily loss limit reached.")
-            return False
-        if qty > self.max_contracts:
-            logger.warning(f"RISK REJECT: Max contracts ({self.max_contracts}) exceeded.")
-            return False
-        return True
-
-risk = RiskState()
-
-# ---------------------------------------------------------------------------
-# Order-Queue (polling-basiert fuer NinjaTrader)
-# ---------------------------------------------------------------------------
-pending_orders = []
-pending_modifies = []
-
-class OrderRequest(BaseModel):
-    symbol: str
-    side: str
-    qty: int
-    price: float
-    stop_price: Optional[float] = None
-    stop_loss: Optional[float] = None
-    take_profit: Optional[float] = None
-    kind: Optional[str] = "MARKET"
-
-class StopUpdate(BaseModel):
-    symbol: str
-    new_stop: float
-
-class FillEvent(BaseModel):
-    symbol: str
-    price: float
-    quantity: int
-
-# ---------------------------------------------------------------------------
 # Database helpers
 # ---------------------------------------------------------------------------
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -96,6 +51,125 @@ def get_db(name: str):
     conn = sqlite3.connect(str(path))
     conn.row_factory = sqlite3.Row
     return conn
+
+
+# ---------------------------------------------------------------------------
+# Ausfuehrung: Konfiguration, Speicher, Risikopruefung
+#
+# Bewusst beim Start und nicht beim ersten Aufruf: eine kaputte Konfiguration
+# soll den Server nicht anlaufen lassen, statt beim ersten Orderklick
+# aufzufallen. Dieselbe Haltung wie bei Config.validate() im uebrigen Projekt.
+# ---------------------------------------------------------------------------
+from common.config import Config                      # noqa: E402
+from common.instruments import get_instrument         # noqa: E402
+from common.kontoregeln import aus_konfiguration      # noqa: E402
+from execution import buchung                         # noqa: E402
+from execution.risiko import Handelsfenster, RisikoPruefung   # noqa: E402
+from execution.store import ExecutionStore, Order, OrderStatus  # noqa: E402
+
+CONFIG = Config.load(PROJECT_ROOT / "config.yaml")
+STORE = ExecutionStore(PROJECT_ROOT / "data" / "execution.sqlite3")
+
+_AUS = CONFIG.ausfuehrung
+REGELN = aus_konfiguration(_AUS.kontoprofil, _AUS.kontoprofile.get(_AUS.kontoprofil))
+RISIKO = RisikoPruefung(
+    REGELN,
+    STORE,
+    fenster=Handelsfenster(
+        start=_AUS.handel_von,
+        ende=_AUS.handel_bis,
+        zeitzone=_AUS.handel_zeitzone,
+        nur_wochentags=_AUS.nur_wochentags,
+    ),
+    eigenes_kontraktlimit=_AUS.max_kontrakte,
+    startkapital_usd=_AUS.startkapital_usd,
+)
+
+logger.info("Kontoregeln: %s", REGELN.zeile())
+
+
+# Das Frontend spricht LONG/SHORT, der autonome Bot sprach frueher BUY/SELL.
+# Beides wird hier auf die eine interne Schreibweise gebracht - und was sich
+# nicht eindeutig zuordnen laesst, wird abgelehnt statt geraten. Eine geratene
+# Richtung ist ein Trade in die falsche Seite des Marktes; genau das ist im
+# tcp_proxy passiert, wo "BUY" stillschweigend zu "SELL" wurde.
+_RICHTUNG = {
+    "LONG": "long", "BUY": "long", "BUYTOCOVER": "long",
+    "SHORT": "short", "SELL": "short", "SELLSHORT": "short",
+}
+
+
+def _richtung(wert: str) -> str:
+    schluessel = str(wert or "").strip().upper()
+    if schluessel not in _RICHTUNG:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Unlesbare Richtung {wert!r}. Erlaubt: "
+                   f"{', '.join(sorted(_RICHTUNG))}",
+        )
+    return _RICHTUNG[schluessel]
+
+
+class OrderRequest(BaseModel):
+    """Feldnamen wie im Frontend (ui/frontend/src/panels/OrderPanel.tsx)."""
+
+    symbol: str = "MNQ"
+    side: str
+    qty: int = 1
+    price: Optional[float] = None
+    stop_price: Optional[float] = None
+    stop_loss: Optional[float] = None
+    take_profit: Optional[float] = None
+    kind: Optional[str] = "MARKET"
+    #: Freitext aus dem Order-Panel bzw. Hypothese des Bots.
+    grund: Optional[str] = None
+    idee_id: Optional[str] = None
+    hypothese: Optional[str] = None
+
+
+class FillEvent(BaseModel):
+    """Genau das, was TradayriBridge.cs bei ``type: execution`` sendet.
+
+    Die vorherige Fassung erwartete ``{symbol, price, quantity}`` - Felder,
+    die das AddOn nie schickt. Jede Fuellung lief damit in einen
+    422-Validierungsfehler und wurde verworfen; der Server erfuhr nie, dass
+    ein Trade zustande gekommen war.
+    """
+
+    order_key: str
+    exec_id: str
+    role: str = ""
+    ts: Optional[int] = None            # Epoch-Nanosekunden
+    quantity: int = 1
+    price: float
+    commission: float = 0.0
+
+
+class OrderUpdateEvent(BaseModel):
+    """``type: order_update`` aus dem AddOn - der Lebenslauf einer Order."""
+
+    order_key: str
+    order_id: Optional[str] = None
+    role: str = ""
+    state: str = ""
+    filled_quantity: int = 0
+    avg_fill_price: float = 0.0
+    error: str = ""
+
+
+#: Wie NinjaTrader-Zustaende auf unsere abgebildet werden. Was hier nicht
+#: steht, laesst den Status unveraendert - ein unbekannter Zustand darf eine
+#: Order nicht stillschweigend als erledigt markieren.
+_NT_ZUSTAND = {
+    "accepted": OrderStatus.ANGENOMMEN,
+    "working": OrderStatus.ANGENOMMEN,
+    "submitted": OrderStatus.GESENDET,
+    "partfilled": OrderStatus.TEILGEFUELLT,
+    "filled": OrderStatus.GEFUELLT,
+    "cancelled": OrderStatus.STORNIERT,
+    "canceled": OrderStatus.STORNIERT,
+    "rejected": OrderStatus.ABGELEHNT,
+}
 
 # ---------------------------------------------------------------------------
 @app.post("/api/research/run")
@@ -116,40 +190,187 @@ async def run_research(body: dict):
 # API Endpoints - Orders
 # ---------------------------------------------------------------------------
 @app.post("/api/order/submit")
-def submit_order(order: OrderRequest):
-    if not risk.check_order(order.symbol, order.side, order.qty, order.price):
-        raise HTTPException(status_code=400, detail="Risk limit exceeded")
-    
+def submit_order(anfrage: OrderRequest):
+    """Order annehmen, pruefen, persistent ablegen.
+
+    Abgelehnte Orders werden ebenso protokolliert wie angenommene. Ohne die
+    Ablehnungen liesse sich spaeter nicht beantworten, ob ein Limit zu scharf
+    stand oder ob schlicht kein Signal kam - dieselbe Ueberlegung wie bei den
+    gefilterten Ideen in Etappe C.
+    """
+    richtung = _richtung(anfrage.side)
+    art = (anfrage.kind or "MARKET").upper()
+
+    urteil = RISIKO.pruefe(menge=anfrage.qty)
+    if not urteil.erlaubt:
+        STORE.protokolliere_entscheidung(
+            instrument=anfrage.symbol, ergebnis="abgelehnt", grund=urteil.grund,
+            idee_id=anfrage.idee_id, hypothese=anfrage.hypothese,
+            marktzustand=urteil.kennzahlen,
+        )
+        logger.warning("Order abgelehnt: %s", urteil.grund)
+        raise HTTPException(status_code=409, detail=urteil.grund)
+
+    try:
+        order = Order(
+            instrument=anfrage.symbol,
+            richtung=richtung,
+            art=art,
+            menge=urteil.menge,
+            quelle=anfrage.hypothese and "bot" or "ui",
+            konto=CONFIG.ausfuehrung.konto,
+            limit_preis=anfrage.price if art == "LIMIT" else None,
+            stop_preis=anfrage.stop_price if art == "STOP" else None,
+            stop_loss=anfrage.stop_loss or None,
+            take_profit=anfrage.take_profit or None,
+            idee_id=anfrage.idee_id,
+            hypothese=anfrage.hypothese,
+            begruendung={
+                "grund": anfrage.grund,
+                "angefragte_menge": anfrage.qty,
+                "risikourteil": urteil.grund,
+                "kontoprofil": RISIKO.regeln.name,
+                "regeln_sind_annahme": RISIKO.regeln.ist_annahme,
+            },
+        )
+    except ValueError as fehler:
+        raise HTTPException(status_code=400, detail=str(fehler)) from fehler
+
     order_id = str(uuid.uuid4())
-    pending_orders.append({
+    STORE.lege_order_an(order, order_id)
+    STORE.protokolliere_entscheidung(
+        instrument=order.instrument, ergebnis="order", grund=urteil.grund,
+        order_id=order_id, idee_id=order.idee_id, hypothese=order.hypothese,
+        marktzustand=urteil.kennzahlen,
+    )
+    logger.info(
+        "Order %s angelegt: %s %s %d %s", order_id, order.art, order.richtung,
+        order.menge, order.instrument,
+    )
+    return {
+        "status": "success",
+        "message": urteil.grund,
         "order_id": order_id,
-        "direction": order.side.upper(),
-        "symbol": order.symbol,
-        "quantity": order.qty,
-        "limit_price": order.price,
-        "stop_price": order.stop_price or 0.0,
-        "stop_loss_price": order.stop_loss or 0.0,
-        "take_profit_price": order.take_profit or 0.0,
-        "kind": order.kind,
-        "order_type": (order.kind or "MARKET").upper()
-    })
-    return {"status": "success", "message": "Order placed", "order_id": order_id}
+        "menge": order.menge,
+        "gekuerzt": order.menge != anfrage.qty,
+    }
+
 
 @app.get("/api/orders/pending")
 def get_pending_orders():
-    res = list(pending_orders)
-    pending_orders.clear()
-    return res
+    """Wird von der Bridge abgeholt und dabei auf 'gesendet' gesetzt.
+
+    Das Format bleibt das, was ``ntbridge/tcp_proxy.py`` liest.
+    """
+    return [
+        {
+            "order_id": o["order_id"],
+            "direction": o["richtung"],
+            "symbol": o["instrument"],
+            "quantity": o["menge"],
+            "order_type": o["art"],
+            "limit_price": o["limit_preis"] or 0.0,
+            "stop_price": o["stop_preis"] or 0.0,
+            "stop_loss_price": o["stop_loss"] or 0.0,
+            "take_profit_price": o["take_profit"] or 0.0,
+            "account_name": o["konto"],
+        }
+        for o in STORE.zu_senden()
+    ]
+
 
 @app.get("/api/orders/modify_pending")
 def get_pending_modifies():
-    res = list(pending_modifies)
-    pending_modifies.clear()
-    return res
+    # Stopanpassungen sind noch nicht gebaut. Eine leere Liste ist hier die
+    # ehrliche Antwort - vorher stand hier eine Liste, die beim Lesen geleert
+    # wurde und deshalb genauso leer war, nur unabsichtlich.
+    return []
+
+
+@app.get("/api/orders")
+def get_orders(limit: int = 100):
+    return STORE.orders(limit=limit)
+
 
 @app.post("/api/orders/fill")
 def handle_fill(fill: FillEvent):
-    return {"status": "ok"}
+    """Eine Fuellung aus NinjaTrader verbuchen.
+
+    Hier lief vorher ``return {"status": "ok"}`` - der Server nahm die Meldung
+    entgegen und warf sie weg. Damit blieb jedes Risikolimit fuer immer bei
+    einem Tagesverlust von 0 stehen.
+    """
+    ts_utc = buchung.ts_aus_nanosekunden(fill.ts)
+    neu = STORE.erfasse_fill(
+        exec_id=fill.exec_id,
+        order_id=fill.order_key,
+        rolle=(fill.role or "").lower(),
+        ts_utc=ts_utc,
+        menge=fill.quantity,
+        preis=fill.price,
+        kommission=fill.commission,
+    )
+    if not neu:
+        # Nach einem Verbindungsabriss schickt NinjaTrader Ereignisse erneut.
+        return {"status": "bekannt", "exec_id": fill.exec_id}
+
+    instrument = get_instrument(CONFIG.market.product)
+    trade = buchung.verbuche(STORE, fill.order_key, instrument.point_value)
+    if trade is not None:
+        STORE.schreibe_trade(trade)
+        STORE.setze_status(fill.order_key, OrderStatus.GEFUELLT)
+        logger.info(
+            "Trade gebucht: %s %s, %.2f USD (%s)",
+            trade["richtung"], trade["instrument"], trade["pnl_usd"],
+            trade["grund_ausstieg"],
+        )
+        return {"status": "trade", "trade_id": trade["trade_id"],
+                "pnl_usd": trade["pnl_usd"]}
+
+    return {"status": "erfasst", "exec_id": fill.exec_id}
+
+
+@app.post("/api/orders/update")
+def handle_order_update(ereignis: OrderUpdateEvent):
+    """Zustandsmeldung aus NinjaTrader ('accepted', 'rejected', ...).
+
+    Der Lebenslauf ist der einzige Weg, eine Ablehnung ueberhaupt zu
+    bemerken - eine Order, die die Boerse nicht annimmt, meldet sich sonst
+    nirgends. Genau danach hat Laurin am 29.08.2026 gefragt ("kriege ich die
+    Fehlermeldung direkt in der App oder in NinjaTrader?").
+    """
+    status = _NT_ZUSTAND.get(str(ereignis.state or "").lower())
+    if status is None:
+        return {"status": "unbeachtet", "nt_zustand": ereignis.state}
+
+    STORE.setze_status(
+        ereignis.order_key, status,
+        nt_zustand=ereignis.state,
+        fehler=ereignis.error or None,
+    )
+    if ereignis.error:
+        logger.warning(
+            "NinjaTrader meldet Fehler zu Order %s: %s",
+            ereignis.order_key, ereignis.error,
+        )
+    return {"status": "uebernommen", "neuer_status": status}
+
+
+@app.get("/api/risiko")
+def get_risiko():
+    """Was das Risikomodul gerade sieht - fuer Oberflaeche und Protokoll."""
+    kennzahlen = RISIKO.kennzahlen()
+    # Ueber RISIKO.regeln und nicht ueber das Modul-Global REGELN: sonst gaebe
+    # es zwei Quellen fuer dieselbe Angabe, und die koennen auseinander laufen.
+    kennzahlen["regeln"] = RISIKO.regeln.to_dict()
+    kennzahlen["regeln_zeile"] = RISIKO.regeln.zeile()
+    return kennzahlen
+
+
+@app.get("/api/entscheidungen")
+def get_entscheidungen(limit: int = 100):
+    """Jede Entscheidung, auch die gegen einen Trade."""
+    return STORE.entscheidungen(limit=limit)
 
 # ---------------------------------------------------------------------------
 # API Endpoints - Bars (aus ntbridge.sqlite3)
@@ -716,7 +937,14 @@ async def session_stop():
 
 @app.get("/api/session/trades")
 async def session_trades(limit: int = 50):
-    return []
+    """Tatsaechlich ausgefuehrte Trades - vollstaendig rekonstruierbar.
+
+    Jeder Datensatz traegt Ein- und Ausstieg, Grund des Ausstiegs, Menge,
+    Kommission, P&L und - sofern ein Stop bekannt war - das R-Vielfache.
+    MAE/MFE bleiben leer, bis sie aus den Kerzen nachgerechnet sind; eine
+    Schaetzung waere hier eine Zahl, die aussieht wie eine Messung.
+    """
+    return STORE.trades(limit=limit)
 
 @app.get("/api/sessions")
 async def session_runs(limit: int = 10):

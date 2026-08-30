@@ -48,6 +48,7 @@ NT8_PORT = 39473
 
 ORDERS_URL = "http://127.0.0.1:8790/api/orders/pending"
 FILLS_URL = "http://127.0.0.1:8790/api/orders/fill"
+UPDATES_URL = "http://127.0.0.1:8790/api/orders/update"
 MODIFIES_URL = "http://127.0.0.1:8790/api/orders/modify_pending"
 
 # Wie das AddOn die Richtung liest: side == "SELL" -> SellShort, sonst Buy.
@@ -184,8 +185,15 @@ def main() -> None:
                             log.error("Nachricht unlesbar: %s", exc)
                             continue
 
-                        if nachricht.get("type") == "execution":
+                        art_nachricht = nachricht.get("type")
+                        if art_nachricht == "execution":
                             _melde(FILLS_URL, nachricht)
+                        elif art_nachricht == "order_update":
+                            # Der Lebenslauf ist der einzige Weg, eine
+                            # Ablehnung ueberhaupt zu bemerken: eine Order,
+                            # die die Boerse nicht annimmt, meldet sich sonst
+                            # nirgends.
+                            _melde(UPDATES_URL, nachricht)
                         # "tick" und "bar" werden bewusst verworfen - siehe
                         # Modul-Docstring.
         except ConnectionRefusedError:
