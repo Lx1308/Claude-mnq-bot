@@ -259,6 +259,7 @@ export const de = {
     dataFeed: 'Datenquelle',
     session: 'Session',
     bars: 'Bars',
+    lastBar: 'Letzte Kerze',
     modes: {
       analysis_only: 'Nur Analyse',
       paper_manual: 'Paper, manuell',

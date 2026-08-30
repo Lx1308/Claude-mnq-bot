@@ -114,6 +114,15 @@ export function StatusBar({
 
         <Item label={de.status.bars}>{barCount ? barCount.toLocaleString('de-DE') : '-'}</Item>
 
+        {/* Datenfrische. Ohne sie ist ein stillstehender Chart nicht von einem
+            ruhigen Markt zu unterscheiden - genau die Frage, an der Laurin am
+            31.08.2026 haengenblieb ("wieso zeigt der Chart keine Livedaten?").
+            Das Alter wird gezeigt, nicht bewertet: die Zahl selbst sagt, ob
+            der Strom laeuft. */}
+        <Item label={de.status.lastBar}>
+          <DatenAlter market={market} />
+        </Item>
+
         {instrument && (
           <Item label="Tick">
             {instrument.tick_size} = {instrument.tick_value.toFixed(2)} {instrument.currency}
@@ -129,6 +138,49 @@ export function StatusBar({
       )}
     </header>
   );
+}
+
+/** Wie alt die juengste gespeicherte Kerze ist.
+ *
+ *  Drei Zustaende, und der mittlere ist der wichtige:
+ *
+ *  * frisch      - Kerzen kommen an
+ *  * veraltet    - der letzte Stand ist alt. **Das ist keine Stoerung**,
+ *                  solange die Boerse zu ist; bei offener Boerse schon.
+ *  * keine Daten - fuer dieses Instrument liegt nichts vor
+ */
+function DatenAlter({ market }: { market: MarketStatus | null }) {
+  if (!market || market.datenalter_sekunden == null) {
+    return <span className="pill pill--info">-</span>;
+  }
+  const alter = market.datenalter_sekunden;
+  const frisch = market.daten_frisch === true;
+  // Bei geschlossener Boerse ist ein alter Bestand normal und wird nicht
+  // angemahnt. Eine Warnung, die immer nachts leuchtet, wird ignoriert.
+  const stoerung = !frisch && market.is_open;
+  return (
+    <span
+      className={frisch ? 'pill pill--ok' : stoerung ? 'pill pill--warn' : 'pill pill--off'}
+      title={
+        stoerung
+          ? 'Die Boerse ist offen, aber es kommen keine Kerzen an. Laeuft ' +
+            '"python -m ntbridge", und ist in NinjaTrader ein Chart mit dem ' +
+            'ClaudeBridge-Indikator offen?'
+          : 'Alter der juengsten gespeicherten Kerze'
+      }
+    >
+      {formatiereAlter(alter)}
+    </span>
+  );
+}
+
+function formatiereAlter(sekunden: number): string {
+  if (sekunden < 90) return `vor ${Math.max(0, Math.round(sekunden))} s`;
+  const minuten = Math.round(sekunden / 60);
+  if (minuten < 90) return `vor ${minuten} min`;
+  const stunden = Math.round(minuten / 60);
+  if (stunden < 48) return `vor ${stunden} h`;
+  return `vor ${Math.round(stunden / 24)} Tagen`;
 }
 
 function Item({ label, children }: { label: string; children: React.ReactNode }) {

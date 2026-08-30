@@ -32,7 +32,11 @@ from typing import Optional
 #: koennen nicht bei jeder Anfrage neu aggregiert werden (~20 s), also einmal
 #: rechnen und danach am rechten Rand fortschreiben. Fuenf Minuten Verzug auf
 #: der Tageskerze sind im Chart unsichtbar.
-_AGGREGAT_INTERVALL_S = 300
+#: Wie oft die groben Timeframes aus den hereinkommenden 1m-Kerzen nachgezogen
+#: werden. Eine Minute statt fuenf: der inkrementelle Lauf liest nur zwei Tage
+#: 1m zurueck (~3.000 Zeilen je Timeframe) und kostet Millisekunden. Bei fuenf
+#: Minuten hing die laufende 1h-/1d-Kerze im Chart sichtbar hinterher.
+_AGGREGAT_INTERVALL_S = 60
 
 
 async def _aggregat_schleife():
@@ -1009,51 +1013,157 @@ def _ts_ns(wert) -> int:
     except (TypeError, ValueError):
         return 0
 
+def _letzte_kerze_ns(symbol: str, timeframe: str = "1m") -> int:
+    """Zeitstempel der juengsten gespeicherten Kerze, in Nanosekunden.
+
+    ``0``, wenn es keine gibt. Ueber den Index ``idx_bars_lookup`` gemessen
+    0,2 ms auf 2,5 Mio Zeilen - billig genug fuer jede Abfrage des
+    Marktzustands.
+    """
+    pfad = PROJECT_ROOT / "data" / "ntbridge.sqlite3"
+    if not pfad.exists():
+        return 0
+    conn = sqlite3.connect(str(pfad))
+    try:
+        row = conn.execute(
+            "SELECT MAX(ts_utc) FROM bars WHERE instrument = ? AND timeframe = ?",
+            (symbol.upper(), timeframe),
+        ).fetchone()
+    except Exception:  # noqa: BLE001
+        return 0
+    finally:
+        conn.close()
+    return _iso_zu_ns(row[0] if row else None)
+
+
+#: Ab welchem Alter der juengsten Kerze die Anzeige den Datenstrom als
+#: unterbrochen meldet. Drei Minuten: eine 1m-Kerze braucht bis zu einer
+#: Minute, die Bridge schickt sie kurz danach, und ein einzelner Aussetzer
+#: soll noch keine Warnung ausloesen.
+DATEN_FRISCH_GRENZE_S = 180
+
+
 @app.get("/api/market")
 def get_market(symbol: str = ""):
-    """types.ts: MarketStatus"""
+    """types.ts: MarketStatus - Marktzustand UND Datenfrische.
+
+    ``is_open`` stand hier fest auf ``True``. Eine Kopfzeile, die sonntags
+    "MARKT OFFEN" meldet, ist keine Auskunft, sondern eine Behauptung mit
+    Autoritaet - dieselbe Sorte Fehler wie eine Schaetzung, die aussieht wie
+    eine Messung (Invariante 11). Jetzt aus ``common/sessions.py``, derselben
+    Quelle, die auch Backtest und Ideen-Protokollierung benutzen.
+
+    ``letzte_kerze_ts``/``datenalter_sekunden`` beantworten die Frage, die
+    Laurin am 31.08.2026 gestellt hat ("wieso zeigt der Chart keine
+    Livedaten?"): ob ueberhaupt Kerzen hereinkommen, sieht man sonst nur,
+    indem man den Chart mit der Uhr vergleicht.
+    """
+    from common.sessions import globex_state, is_rth, primary_session
+
     now = datetime.now(timezone.utc)
+    sym = (symbol or CONFIG.market.product or "MNQ").upper()
+    zustand = globex_state(now)
+    letzte_ns = _letzte_kerze_ns(sym)
+    alter_s = (
+        int(now.timestamp() - letzte_ns / 1_000_000_000) if letzte_ns else None
+    )
+
+    try:
+        instrument = get_instrument(CONFIG.market.product)
+        rth = is_rth(now, instrument)
+    except Exception:  # noqa: BLE001 - lieber "nicht RTH" als ein 500er
+        rth = False
+
     return {
-        "symbol": symbol or "MNQ",
+        "symbol": sym,
         "server_ts": int(now.timestamp()),
-        "session": "ETH",
-        "is_open": True,
-        "is_rth": False,
+        "session": primary_session(now),
+        "is_open": zustand == "open",
+        "is_rth": rth,
         "timezone": "America/New_York",
+        # Datenfrische - ausserhalb des alten types.ts-Vertrags, additiv.
+        "letzte_kerze_ts": letzte_ns,
+        "datenalter_sekunden": alter_s,
+        "daten_frisch": bool(
+            alter_s is not None and alter_s <= DATEN_FRISCH_GRENZE_S
+        ),
     }
 
 @app.get("/api/session")
 def get_session():
-    """types.ts: SessionStatus"""
+    """types.ts: SessionStatus - der tatsaechliche Betriebszustand.
+
+    Stand hier bis zum 31.08.2026 als fest verdrahteter Platzhalter mit
+    ``running: False``. Die Oberflaeche haengt die "ECHTZEIT"-Anzeige daran -
+    sie meldete also nie Betrieb, auch wenn der autonome Bot lief.
+
+    Drei Aussagen, bewusst getrennt:
+
+    * ``running``   - der autonome Bot arbeitet (``ausfuehrung.enabled``)
+    * ``connected`` - es kommen Kerzen an (juengste Kerze frisch)
+    * ``active``    - beides. Nur dann zeigt der Chart "ECHTZEIT".
+
+    Ein laufender Bot ohne Datenstrom ist **kein** Echtzeitbetrieb, und die
+    Anzeige darf das nicht behaupten.
+    """
+    sym = (CONFIG.market.product or "MNQ").upper()
+    letzte_ns = _letzte_kerze_ns(sym)
+    jetzt = datetime.now(timezone.utc)
+    alter_s = (
+        (jetzt.timestamp() - letzte_ns / 1_000_000_000) if letzte_ns else None
+    )
+    daten_frisch = bool(alter_s is not None and alter_s <= DATEN_FRISCH_GRENZE_S)
+    bot_laeuft = bool(CONFIG.ausfuehrung.enabled and BOT.laeuft)
+
+    warnungen: list[str] = []
+    if bot_laeuft and not daten_frisch:
+        warnungen.append(
+            "Der Bot laeuft, aber es kommen keine Kerzen an. Laeuft "
+            "'python -m ntbridge' und ist in NinjaTrader ein Chart mit dem "
+            "ClaudeBridge-Indikator offen?"
+        )
+
     return {
         "broker": {
-            "enabled": False,
-            "provider": "",
-            "connected": False,
-            "account": "",
+            "enabled": bool(CONFIG.ausfuehrung.enabled),
+            "provider": "NinjaTrader",
+            "connected": daten_frisch,
+            "account": CONFIG.ausfuehrung.konto,
             "is_paper": True,
-            "paper_evidence": "",
+            # Erzwungen im AddOn (Account.Provider == Provider.Simulator),
+            # nicht hier - diese Zeile beschreibt es nur.
+            "paper_evidence": "TradayriBridge.cs handelt nur auf Simulationskonten",
             "blocked_reason": "",
-            "open_orders": 0,
-            "tradeable_symbols": [],
-            "ready": False,
+            "open_orders": len(
+                STORE.orders(
+                    status=(
+                        OrderStatus.ANGELEGT,
+                        OrderStatus.GESENDET,
+                        OrderStatus.ANGENOMMEN,
+                        OrderStatus.TEILGEFUELLT,
+                    )
+                )
+            ),
+            "tradeable_symbols": [sym],
+            "ready": bot_laeuft and daten_frisch,
         },
-        "active": False,
-        "feed": "",
-        "symbols": ["MNQ"],
+        "active": bot_laeuft and daten_frisch,
+        "feed": "NinjaTrader (ntbridge)" if daten_frisch else "",
+        "symbols": [sym],
         "session_id": 0,
-        "warnings": [],
+        "warnings": warnungen,
         "stopped_by": "",
         "error": "",
         "last_prices": {},
-        "running": False,
-        "connected": False,
+        "running": bot_laeuft,
+        "connected": daten_frisch,
         "halted_reason": "",
-        "accepts_entries": False,
-        "mode": "",
+        "accepts_entries": bot_laeuft
+        and RISIKO.fenster.ist_offen(jetzt),
+        "mode": "execution",
         "started_ts": 0,
-        "last_bar_ts": 0,
-        "last_message_ts": 0,
+        "last_bar_ts": letzte_ns,
+        "last_message_ts": letzte_ns,
         "bars_seen": 0,
         "signals": 0,
         "trades_closed": 0,

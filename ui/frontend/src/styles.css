@@ -183,6 +183,12 @@ pre {
   background: rgba(91, 143, 214, 0.16);
   color: var(--accent);
 }
+/* Etwas stimmt nicht, ist aber kein Fehler der Anwendung - z.B. offene
+   Boerse ohne hereinkommende Kerzen. */
+.pill--warn {
+  background: rgba(224, 165, 60, 0.18);
+  color: var(--warn);
+}
 
 /* ------------------------------------------------------------------ Felder */
 .field {

@@ -602,14 +602,24 @@ export default function App() {
     };
   }, [watchActive, symbol, timeframe]);
 
-  // --- Echtzeit: der Chart folgt der laufenden Sitzung ---------------------
-  // Laeuft eine Sitzung fuer dieses Symbol, liefert `/api/bars` deren Bars -
-  // die Auswahl trifft der Server (`TradexService.chart_context`). Hier muss
-  // nur regelmaessig nachgefragt werden. Der Zustandsstrom (SSE) meldet
-  // Zaehler, keine Kursreihen; die waeren fuer einen Dauerstrom zu gross und
-  // wuerden bei jeder Bar das ganze Chart neu schicken.
+  // --- Der Chart folgt dem Datenbestand ------------------------------------
+  // Bis zum 31.08.2026 lief diese Schleife NUR bei `liveActive` - also wenn
+  // eine Handelssitzung lief. Der Server meldete dafuer aber einen
+  // Platzhaltezustand (`running: false`), und `/api/session` ist ohnehin die
+  // falsche Bedingung: ein Chart soll den neuesten Stand der Kerzendatenbank
+  // zeigen, ob dabei gehandelt wird oder nicht. Laurins Frage vom 31.08.2026
+  // ("wieso zeigt der Chart keine Livedaten?") hatte genau hier ihre Ursache.
+  //
+  // Nachgefuehrt wird, solange der Markt offen ist. Bei geschlossener Boerse
+  // kommt ohnehin nichts nach - dann waere die Abfrage nur Last, und die
+  // Kopfzeile sagt sowieso, wie alt der Bestand ist.
+  //
+  // Nur ANHAENGEN, nie den ganzen Chart ersetzen: `setBars` mit dem vollen
+  // Ergebnis wuerde bei 1d die gesamte Historie neu schicken und die
+  // Scrollposition zuruecksetzen.
+  const marktOffen = market?.is_open ?? false;
   useEffect(() => {
-    if (!liveActive || !symbol) return;
+    if (!symbol || !marktOffen) return;
     let cancelled = false;
     const holen = async () => {
       try {
@@ -626,13 +636,12 @@ export default function App() {
            ohnehin schon in der Betriebsanzeige. */
       }
     };
-    void holen();
     const timer = window.setInterval(() => void holen(), LIVE_REFRESH_MS);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [liveActive, symbol, timeframe]);
+  }, [symbol, timeframe, marktOffen]);
 
   /** Historie aus NinjaTrader nachladen und danach ganz normal analysieren.
    *
