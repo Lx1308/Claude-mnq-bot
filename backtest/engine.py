@@ -36,6 +36,7 @@ from common.config import IndicatorConfig, MarketConfig, SessionConfig
 from common.indicators import compute_indicators
 from common.instruments import get_instrument
 from common.levels import initial_balance_per_session
+from common.muster_serie import doppelmuster_spalten
 from common.sessions import session_dates
 
 log = logging.getLogger(__name__)
@@ -232,6 +233,17 @@ class Backtester:
         ib = initial_balance_per_session(enriched, instrument, self._market.session)
         for spalte in ib.columns:
             enriched[spalte] = ib[spalte]
+
+        # Chartmuster als Serie (Doppelboden/Doppeltop). Aus
+        # common/muster_serie.py, das dieselben Schwellen benutzt wie der
+        # punktuelle Erkenner in common/patterns.py - ein Test haelt fest,
+        # dass beide zum selben Urteil kommen.
+        #
+        # Die Spalten stehen auf dem Verfuegbarkeitszeitpunkt, nicht auf dem
+        # Extrem: ein Swing-Tief ist an seiner eigenen Kerze nicht erkennbar.
+        muster = doppelmuster_spalten(enriched, atr=enriched.get("atr"))
+        for spalte in muster.columns:
+            enriched[spalte] = muster[spalte]
         return enriched
 
     # -- Hauptschleife -----------------------------------------------------

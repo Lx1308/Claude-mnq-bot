@@ -61,9 +61,18 @@ def test_die_haengenden_strategien_sind_genau_die_erwarteten(config):
         except NichtUebersetzbar:
             nicht_moeglich.add(name)
 
-    assert nicht_moeglich == {"flag_breakout", "ib_breakout"}, (
+    assert nicht_moeglich == {
+        "flag_breakout",
+        "ib_breakout",
+        "doppelboden_bestaetigt",
+        "doppelboden_nackenbruch",
+    }, (
         "flag_breakout haengt an flag_breakout_up/-down, ib_breakout an "
-        "ib_high/ib_low - beides Spalten, die es auf TradingView nicht gibt."
+        "ib_high/ib_low - beides Spalten, die es auf TradingView nicht gibt. "
+        "Die beiden Doppelboden-Varianten haengen an der Musterserie aus "
+        "common/muster_serie.py: sie in Pine nachzubauen hiesse, die "
+        "Swing-Punkt-Analyse ein zweites Mal zu schreiben - und dann "
+        "vergleicht man zwei verschiedene Muster, ohne es zu merken."
     )
 
 

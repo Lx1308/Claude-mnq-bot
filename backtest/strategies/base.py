@@ -623,6 +623,45 @@ class SessionTimeWindow(Rule):
         return f"Uhrzeit {self._start:%H:%M}-{self._end:%H:%M} ({self._tz_name})"
 
 
+class IstGesetzt(Rule):
+    """Eine Ereignisspalte ist auf dieser Kerze wahr.
+
+    Fuer Musterspalten aus ``common/muster_serie.py`` (``w_erkannt``,
+    ``w_nackenbruch``, ...). Die sind bereits **Flanken**: sie stehen auf
+    genau einer Kerze, naemlich der, auf der das Ereignis bekannt wurde.
+    Deshalb braucht es hier keine Kreuzungslogik - eine Zustandsabfrage auf
+    einer Flankenspalte ist selbst eine Flanke.
+
+    Wichtig: Die Spalten der Musterserie stehen auf dem
+    **Verfuegbarkeitszeitpunkt**, nicht auf dem Extrem selbst. Eine Regel auf
+    ``w_erkannt`` handelt also nicht "am zweiten Tief" - das waere Lookahead,
+    weil ein Swing-Tief an seiner eigenen Kerze noch nicht bestaetigt ist.
+    """
+
+    def __init__(self, column: str) -> None:
+        self._column = column
+
+    def evaluate(self, ctx: BarContext) -> bool:
+        wert = ctx.value(self._column)
+        return _valid(wert) and wert > 0.5
+
+    def benoetigte_spalten(self) -> set[str]:
+        return {self._column}
+
+    def nach_pine(self, spalten):
+        # Musterspalten entstehen aus einer Swing-Punkt-Analyse ueber die
+        # ganze Reihe. Sie in Pine nachzubauen hiesse, die Erkennung ein
+        # zweites Mal zu schreiben - und dann vergleicht man zwei
+        # verschiedene Muster, ohne es zu merken.
+        raise NichtUebersetzbar(
+            f"{self._column} kommt aus der Musterserie und hat keine "
+            "Pine-Entsprechung."
+        )
+
+    def describe(self) -> str:
+        return f"{self._column} ist gesetzt"
+
+
 class MinBarsInTrade(Rule):
     """Verhindert Ausstiege in den ersten N Kerzen nach dem Einstieg."""
 

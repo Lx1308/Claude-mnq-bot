@@ -19,6 +19,7 @@ from backtest.strategies.base import (
     CrossesBelow,
     DeviationReentry,
     FlagBreakout,
+    IstGesetzt,
     RuleStrategy,
     SessionTimeWindow,
 )
@@ -342,6 +343,115 @@ def power_hour_vwap(
         },
     )
 
+def doppelboden_bestaetigt(
+    *,
+    min_konfidenz: float = 0.0,
+    stop_loss_atr: float | None = 1.5,
+    take_profit_atr: float | None = 3.0,
+    max_bars_in_trade: int | None = 60,
+    trade_short: bool = True,
+    session_start: str = "09:30",
+    session_end: str = "15:45",
+    timezone: str = "America/New_York",
+) -> RuleStrategy:
+    """Das "W": Einstieg, sobald das zweite Tief bestaetigt ist.
+
+    **Der frueheste ehrlich handelbare Zeitpunkt.** Nicht "am zweiten Tief" -
+    ein Swing-Tief ist an seiner eigenen Kerze nicht erkennbar, es wird erst
+    ``strength`` Kerzen spaeter bestaetigt (siehe
+    ``common/muster_serie.py``). Ein Backtest, der am Tief selbst einsteigt,
+    handelt mit Wissen aus der Zukunft.
+
+    Das ist die fruehe, guenstige, unbestaetigte Variante. Die Gegenprobe ist
+    :func:`doppelboden_nackenbruch` - dort wird auf die Bestaetigung durch
+    den Nackenlinienbruch gewartet, zu einem schlechteren Kurs. Welche der
+    beiden traegt, ist eine Messfrage.
+
+    Das Doppeltop ist die Short-Entsprechung, gleiche Logik gespiegelt.
+    """
+    window = SessionTimeWindow(
+        _parse_time(session_start), _parse_time(session_end), timezone
+    )
+
+    long_entry = IstGesetzt("w_erkannt") & window
+    short_entry = IstGesetzt("m_erkannt") & window
+    if min_konfidenz > 0:
+        long_entry = long_entry & ColumnAbove("w_konfidenz", min_konfidenz)
+        short_entry = short_entry & ColumnAbove("m_konfidenz", min_konfidenz)
+
+    return RuleStrategy(
+        name="doppelboden_bestaetigt",
+        long_entry=long_entry,
+        # Ausstieg ueber die Risikoparameter (Stop/Ziel/Zeit). Eine eigene
+        # Ausstiegsregel waere eine zweite Hypothese im selben Test - Ein-
+        # und Ausstieg werden getrennt untersucht (MASTERPLAN G).
+        long_exit=None,
+        short_entry=short_entry if trade_short else None,
+        short_exit=None,
+        stop_loss_atr=stop_loss_atr,
+        take_profit_atr=take_profit_atr,
+        max_bars_in_trade=max_bars_in_trade,
+        params={
+            "min_konfidenz": min_konfidenz,
+            "stop_loss_atr": stop_loss_atr,
+            "take_profit_atr": take_profit_atr,
+            "max_bars_in_trade": max_bars_in_trade,
+            "trade_short": trade_short,
+        },
+    )
+
+
+def doppelboden_nackenbruch(
+    *,
+    min_konfidenz: float = 0.0,
+    stop_loss_atr: float | None = 1.5,
+    take_profit_atr: float | None = 3.0,
+    max_bars_in_trade: int | None = 60,
+    trade_short: bool = True,
+    session_start: str = "09:30",
+    session_end: str = "15:45",
+    timezone: str = "America/New_York",
+) -> RuleStrategy:
+    """Das "W", aber erst beim Bruch der Nackenlinie.
+
+    Die klassische Lehrbuchvariante - ``detect_double_top_bottom`` sagt es
+    selbst: "Bestaetigt gilt das Muster erst mit Schlusskurs jenseits der
+    Nackenlinie."
+
+    Spaeter als :func:`doppelboden_bestaetigt` und damit zu einem
+    schlechteren Kurs, dafuer mit Bestaetigung. Die beiden gegeneinander zu
+    rechnen ist der eigentliche Punkt: dieselbe Mustererkennung, ein
+    einziger Unterschied im Einstieg.
+    """
+    window = SessionTimeWindow(
+        _parse_time(session_start), _parse_time(session_end), timezone
+    )
+
+    long_entry = IstGesetzt("w_nackenbruch") & window
+    short_entry = IstGesetzt("m_nackenbruch") & window
+    if min_konfidenz > 0:
+        long_entry = long_entry & ColumnAbove("w_konfidenz", min_konfidenz)
+        short_entry = short_entry & ColumnAbove("m_konfidenz", min_konfidenz)
+
+    return RuleStrategy(
+        name="doppelboden_nackenbruch",
+        long_entry=long_entry,
+        long_exit=None,
+        short_entry=short_entry if trade_short else None,
+        short_exit=None,
+        stop_loss_atr=stop_loss_atr,
+        take_profit_atr=take_profit_atr,
+        max_bars_in_trade=max_bars_in_trade,
+        params={
+            "min_konfidenz": min_konfidenz,
+            "stop_loss_atr": stop_loss_atr,
+            "take_profit_atr": take_profit_atr,
+            "max_bars_in_trade": max_bars_in_trade,
+            "trade_short": trade_short,
+        },
+    )
+
+
 STRATEGY_LIBRARY: dict[str, Callable[..., RuleStrategy]] = {
     'power_hour_vwap': power_hour_vwap,
     "prev_day_breakout": prev_day_breakout,
@@ -350,6 +460,8 @@ STRATEGY_LIBRARY: dict[str, Callable[..., RuleStrategy]] = {
     "vwap_trend": vwap_trend,
     "ib_breakout": ib_breakout,
     "vwap_reversion": vwap_reversion,
+    "doppelboden_bestaetigt": doppelboden_bestaetigt,
+    "doppelboden_nackenbruch": doppelboden_nackenbruch,
 }
 
 
