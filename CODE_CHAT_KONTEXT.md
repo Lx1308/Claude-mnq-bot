@@ -3024,3 +3024,70 @@ lieferte nichts.
 Ablehnungsgründe, nach Ursache gruppiert: `duenne_mittagszone` 8,
 `adx_zu_niedrig_fuer_fortsetzung` 8, `adx_zu_hoch_fuer_reversion` 3,
 `termin_blackout` 1.
+
+### 34.7 Tickdaten geprueft und vorerst verworfen (30.08.2026)
+
+Laurins Frage: "sind tick daten nicht noch besser?"
+
+**Ausgangslage:** `Documents/NinjaTrader 8/db/tick/` ist **leer** (0 Byte).
+Es gibt lokal keine Tickdaten; sie muessten erst vom Datenanbieter geladen
+werden. Die Minutendaten belegen 24 MB fuer rund sieben Jahre.
+
+**Was Tickdaten loesen wuerden:** Die Engine nimmt bei gleichzeitigem Treffer
+von Stop und Ziel innerhalb einer Kerze den **Stop** an, weil aus OHLC nicht
+rekonstruierbar ist, was zuerst kam (Invariante 4). Das ist bewusst
+pessimistisch. Mit Ticks waere die Reihenfolge bekannt.
+
+**Wie oft das ueberhaupt vorkommt - nachgemessen an 637.117 5m-Kerzen
+(Dukascopy, zehn Jahre):**
+
+| | |
+|---|---|
+| Median-Kerzenspanne | **0,88 ATR** |
+| 95. Perzentil | 1,86 ATR |
+| Maximum | 10,44 ATR |
+
+Eine Kerze kann beide Niveaus nur beruehren, wenn ihre Spanne mindestens so
+gross ist wie deren Abstand. Anteil der Kerzen, auf die das zutrifft:
+
+| Stop | Ziel | Abstand | Obergrenze |
+|---:|---:|---:|---:|
+| 1,0 | 2,0 | 3,0 ATR | 0,746 % |
+| **1,5** | **2,0** | **3,5 ATR** | **0,384 %** |
+| 1,5 | 3,0 | 4,5 ATR | 0,110 % |
+| 2,0 | 3,0 | 5,0 ATR | 0,062 % |
+| 2,0 | 4,0 | 6,0 ATR | 0,022 % |
+
+Das sind **Obergrenzen** - der Kurs muss zusaetzlich an der richtigen Stelle
+stehen, die tatsaechliche Haeufigkeit liegt darunter. Bei den ueblichen
+Projektwerten (1,5/2,0 ATR) sind es unter 0,4 % der Kerzen. Zur Gegenprobe auf
+echten MNQ-Kerzen (2.146 Stueck, 90 Trades ueber alle sieben Strategien):
+**null Faelle.**
+
+*(Die Dukascopy-Reihe ist ein Index-CFD und kein MNQ-Futures. Fuer diese Frage
+ist das gleichgueltig: gemessen wird die Geometrie der Kerzen, nicht das
+Instrument.)*
+
+**Entscheidung: vorerst keine Tickdaten.** Der Aufwand - Gigabytes, Stunden
+Download je Kontrakt, eine andere Speicher- und Rechenarchitektur (pandas
+traegt keine Milliarden Zeilen) - steht in keinem Verhaeltnis zu einer
+Mehrdeutigkeit unter 0,4 %.
+
+**Wofuer Ticks trotzdem gebraucht wuerden - falls die Frage wiederkommt:**
+
+1. **Limit-Fills.** Der Backtest nimmt an, dass eine Limit-Order gefuellt
+   wird, sobald der Kurs das Niveau beruehrt. Tatsaechlich braucht es
+   Gegenpartei. Das betrifft den Bot unmittelbar, weil er Limit- und
+   Stop-Orders schickt - und es ist der gewichtigere Punkt als die
+   Stop/Ziel-Frage.
+2. **Slippage.** Steht heute als Annahme im Kostenprofil.
+3. **Volume Profile.** Traegt heute `naeherung: true`.
+4. Sub-Minuten-Setups, falls die je gebaut werden.
+
+**Der billigere Weg zu 1 und 2:** Der Bot handelt ab jetzt auf Sim101, und
+NinjaTrader meldet die **tatsaechlichen** Fuellkurse zurueck (Tabelle `fills`
+in `data/execution.sqlite3`). Der Abstand zwischen angenommenem und
+tatsaechlichem Fuellkurs ist gemessene Ausfuehrungsqualitaet - ohne eine
+einzige heruntergeladene Tickdatei. Steht als Punkt in
+`docs/OFFENE_PUNKTE.md`.
+

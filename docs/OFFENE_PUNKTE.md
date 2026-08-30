@@ -73,6 +73,14 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
       gehören in `common/indicators.py` bzw. `common/levels.py`, damit sie
       Backtest **und** Ideen-Protokollierung gleichermaßen sehen.
 
+- [ ] **Ausfuehrungsqualitaet aus den echten Fuellungen messen.** NinjaTrader
+      meldet den tatsaechlichen Fuellkurs zurueck (Tabelle `fills`). Der
+      Abstand zum angenommenen Kurs ist gemessene Slippage — und beantwortet
+      die Frage nach Limit-Fills und Slippage ohne eine einzige Tickdatei.
+      Sobald genug Live-Trades da sind: auswerten und das Kostenprofil
+      `private_ninjatrader` von `ist_annahme` auf belegt umstellen.
+      Hintergrund: `CODE_CHAT_KONTEXT.md` 34.7.
+
 - [ ] **MAE/MFE der Live-Trades nachrechnen.** `execution/store.py` lässt sie
       leer, weil sie den Kursverlauf während des Trades brauchen.
       `backtest/excursions.py` kann das — ein Nachlauf, der die Kerzen des
