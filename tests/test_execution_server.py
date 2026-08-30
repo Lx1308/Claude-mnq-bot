@@ -293,3 +293,33 @@ def test_risiko_endpunkt_weist_die_regeln_als_annahme_aus(client):
     assert antwort["kontoprofil"] == "lucid_pro_50k"
     assert antwort["regeln_sind_annahme"] is True
     assert "ANNAHME" in antwort["regeln_zeile"]
+
+
+# -- Chart-Kerzen: Zeitstempel-Einheit ------------------------------------
+
+def test_bars_kommen_in_echten_nanosekunden():
+    """pandas 3 parst ISO8601 als datetime64[us]. ``DatetimeIndex.asi8`` gab
+    dann Mikrosekunden - das Frontend teilt durch 1e9 und landet im Januar
+    1970 (der schwarze Chart, den Laurin am 31.08.2026 meldete).
+    """
+    import pandas as pd
+
+    index = pd.to_datetime(
+        pd.Series(["2026-08-30T13:00:00+00:00", "2026-08-30T13:01:00+00:00"]),
+        utc=True,
+        format="ISO8601",
+    )
+    rahmen = pd.DataFrame(
+        {"open": [1.0, 2.0], "high": [1.0, 2.0], "low": [1.0, 2.0],
+         "close": [1.0, 2.0], "volume": [10.0, 20.0]},
+        index=pd.DatetimeIndex(index),
+    )
+
+    bars = server._rahmen_zu_bars(rahmen)
+
+    assert [b["ts"] for b in bars] == [1788094800_000_000_000, 1788094860_000_000_000]
+    # Die Sekunden, die das Frontend daraus macht, muessen 2026 ergeben.
+    zurueck = pd.Timestamp(bars[0]["ts"] // 1_000_000_000, unit="s", tz="UTC")
+    assert zurueck.year == 2026
+    # streng aufsteigend und je Minute verschieden (sonst wirft die Chart-Lib)
+    assert bars[1]["ts"] - bars[0]["ts"] == 60_000_000_000

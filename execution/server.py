@@ -473,7 +473,10 @@ def _rahmen_zu_bars(df) -> list[dict]:
     """
     if df is None or df.empty:
         return []
-    ts_ns = df.index.asi8  # Nanosekunden seit Epoch, UTC
+    # ``as_unit("ns")`` erzwingt echte Nanosekunden: pandas 3 parst ISO8601 als
+    # datetime64[us], dann liefert ``asi8`` Mikrosekunden - der Chart teilt
+    # aber durch 1e9 und landet im Januar 1970 (toChartTime in TradeChart.tsx).
+    ts_ns = df.index.as_unit("ns").asi8  # Nanosekunden seit Epoch, UTC
     o = df["open"].to_numpy(dtype="float64")
     h = df["high"].to_numpy(dtype="float64")
     lo = df["low"].to_numpy(dtype="float64")
