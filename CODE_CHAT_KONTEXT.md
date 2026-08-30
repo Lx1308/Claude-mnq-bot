@@ -14,7 +14,10 @@ in `common/levels.py` ergänzt. Abschnitt 34.9: die NT8-Historie ist
 importiert — 2,57 Mio MNQ-Minutenkerzen von 2019 bis August 2026, vier
 Import-Bugs unterwegs behoben. Abschnitt 35: TRADAYRI-Startchart repariert
 (schwarzes Rechteck war die leere Chart-Flaeche), volle Historie als
-Tageskerzen, Kerzenaggregation `werkzeuge/aggregiere_kerzen.py`. Tests grün.)
+Tageskerzen, Kerzenaggregation `werkzeuge/aggregiere_kerzen.py`.
+Abschnitt 36: Forschung auf echten Daten — `NtBridgeDataProvider` schaltet
+die NT8-Historie fuer die Engine frei (MASTERPLAN X.1, P0), Chartmuster als
+Serie, Engine ~20x schneller, erste Messung des „W". Tests grün.)
 Davor Abschnitt 33 — Vollständige Formalisierung der Marktprimitive
 (FVG, Displacement, EQH/EQL, Liquidity Sweeps BSL/SSL, Reclaims, MSS/BOS/CHoCH)
 in `common/market_primitives.py`, Multi-Timeframe Resampling & 4h-Integration
@@ -3262,3 +3265,148 @@ Verbindung ohne Row-Factory, und `_lies_bars` im Server mit
 1m-Reihe je Ziel-Timeframe neu; einmal lesen wuerde reichen. Und der
 `chart.timeframe.v2`-Schluesselwechsel ist eine Migration, die spaeter wieder
 raus kann.
+
+## 36. Forschung auf echten Daten: Provider, Musterserie, erste W-Messung (30.08.2026)
+
+Laurins Auftrag fuer diese Etappe: der Bot soll handeln wie ein sehr
+erfahrener Trader — der weiss aus Erfahrung, dass ein W „in acht von zehn
+Faellen funktioniert", und steigt am zweiten Tief ein. Muster, Strukturen und
+alle Faktoren sollen einfliessen, so dass am Ende **fuer jede sinnvolle
+Marktsituation** eine Hypothese mit dem hoechsten Erwartungswert bereitsteht.
+
+### 36.1 Die Zielarchitektur, die daraus folgt
+
+Nicht **eine** Universalregel, sondern ein **Ensemble aus Regime-Spezialisten**
+(von Laurin am 30.08.2026 so praezisiert):
+
+1. **Robustheit ueber Regimes ist die Eintrittshuerde, nicht das Endziel.**
+   Eine Hypothese muss ueber die Regimes hinweg tragen, um als *echt* zu
+   gelten — das ist der Beleg, dass der Effekt existiert und kein
+   Regime-Artefakt ist.
+2. **Danach Spezialisierung:** je Regime die Hypothese mit dem hoechsten
+   Erwartungswert *in diesem Regime*.
+3. **„Kein Rauschen":** ein Regime bekommt nur dann einen Spezialisten, wenn
+   es genug Daten und einen belegbaren Effekt hat. Sonst bleibt der robuste
+   Allrounder stehen — oder es wird dort nicht gehandelt.
+
+Schritt 2 ist per Konstruktion overfitting-anfaellig („bester Erwartungswert
+in diesem Regime" ist genau die Formulierung, mit der man Rauschen anfittet).
+**Absicherung, als Regel im Code, nicht als Faustregel in der Doku:** ein
+Spezialist loest den Allrounder nur ab, wenn er ihn in seinem Regime auch auf
+Validation-Daten schlaegt, mit Mindest-Tradezahl, gegen das globale
+Hypothesenbudget gerechnet.
+
+Ebenfalls von Laurin entschieden (30.08.2026):
+
+* **Globales Hypothesenbudget im Register.** Die Bonferroni-Schwelle wird
+  gegen die Gesamtzahl je gepruefter Hypothesen gerechnet, nicht gegen den
+  einzelnen Lauf. `Discoverylauf.bonferroni_schwelle` zaehlt bisher nur
+  laufintern — bei einem Dauerlauf ist das eine Fassade. **Noch nicht
+  gebaut.**
+* **OOS-Kontingent.** Der OOS-Block bekommt eine harte Obergrenze an
+  Confirmations und ist danach verbraucht; der Bot fasst ihn nicht
+  selbstaendig an. **Noch nicht gebaut.**
+* **Datenumfang:** erst die MNQ-Preisdaten ausschoepfen (2,57 Mio Kerzen,
+  intraday-aufloesend), Cross-Asset ueber FRED danach als Ausbaustufe.
+
+### 36.2 Der Blocker: die Engine kam an die Daten nicht heran
+
+`backtest/data/__init__.py::create_provider` kannte ausschliesslich `"csv"`,
+und in `data/` liegt als einzige CSV der **synthetische** `DEMO_1m.csv`. Jeder
+Forschungslauf dieses Projekts rechnete deshalb entweder darauf oder auf der
+Dukascopy-Naeherung — Index-CFD statt MNQ-Futures, laut Invariante 11 „rein
+informativ". Das ist MASTERPLAN X.1, dort seit dem 23.08.2026 als P0 gefuehrt.
+
+**`backtest/data/ntbridge_provider.py`** schliesst das. Er liest die 1m-Reihe
+und aggregiert Groeberes ueber `common.timeframes.resample_ohlcv`. Bewusst
+**nicht** aus den gespeicherten 1h/4h/1d-Zeilen: die sind eine Anzeigehilfe,
+nachgezogen von einer Schleife im Serverprozess, und ein Forschungsergebnis
+darf nicht davon abhaengen, ob die Oberflaeche lief.
+
+**Rollsprung als stiller Fehler:** die Reihe ist aus 30 Quartalskontrakten
+zusammengesetzt; an den 29 Nahtstellen springt der Preis um −0,55 % bis
++1,46 %. Fuer den Backtest sieht das aus wie eine Uebernachtluecke, ist aber
+keine — eine Gap-Strategie saehe dort 29 Scheinsignale. Der Provider weist die
+Nahtstellen ueber `.rollgrenzen` aus (bevorzugt aus NinjaTraders
+Kontraktbestand, ersatzweise aus dem Preissprung, und sagt im Log welche
+Quelle). Die Kurse werden **nicht** rueckangepasst: das machte Niveau-Aussagen
+(Vortageshoch, VWAP-Abstand in Punkten) unvergleichbar.
+
+### 36.3 Chartmuster als Serie
+
+`common/patterns.py::detect_double_top_bottom` ist **punktuell** — es sieht
+ans Ende eines Rahmens. Fuer die Frage „traegt ein W, und in wie vielen
+Faellen" braucht es fuer jede Kerze ein Urteil.
+
+**`common/muster_serie.py`** liefert das. Swing-Punkte werden **einmal** ueber
+die ganze Reihe gesucht statt je Kerze neu: aus O(n × lookback) wird O(n),
+gemessen 7 s auf 519.000 Kerzen. Keine zweite Musterdefinition — die Schwellen
+sind aus `detect_double_top_bottom` uebernommen, und ein Test prueft ueber die
+ganze Reihe, dass beide zum selben Urteil kommen.
+
+**Der Lookahead, der dabei verhindert wird:** ein Swing-Tief ist an seiner
+eigenen Kerze nicht erkennbar (`find_swing_points` sagt es selbst). Das zweite
+Tief bei Kerze *i* ist fruehestens bei *i + strength* bekannt. Wer „am zweiten
+Tief" einsteigt, handelt mit Wissen aus der Zukunft — und das Ergebnis sieht
+hervorragend aus, ohne dass an den Kursen etwas verdaechtig waere. Das Modul
+fuehrt `event_index` (wo das Muster LIEGT, fuer die Anzeige) und
+`verfuegbar_index` (ab wann bekannt) getrennt, wie
+`common/market_primitives.py`; alle Spalten stehen auf der Verfuegbarkeit.
+
+Zwei Strategien mit **einem einzigen Unterschied**:
+`doppelboden_bestaetigt` (frueh, unbestaetigt) gegen
+`doppelboden_nackenbruch` (spaet, bestaetigt, Lehrbuchvariante).
+
+### 36.4 Engine 20x schneller — und der Preis dafuer
+
+Die Hauptschleife baute je Kerze **zwei pandas-Series** ueber `data.iloc[i]`,
+bei inzwischen ueber vierzig Spalten. Auf 363.000 Kerzen waren das ~5 Minuten
+je Strategie und Block; mit den zwoelf neuen Musterspalten wurde es schlimmer.
+
+Neu: nur die Spalten, die `strategy.benoetigte_spalten()` nennt, werden als
+numpy-Arrays vorgehalten; je Kerze entsteht ein kleines Dict.
+`BarContext.value` greift ueber `.get()` zu, ein Dict genuegt dafuer.
+**Gemessen: ~5 min → ~15 s je In-Sample-Lauf.**
+
+**Das neue Risiko und seine Absicherung:** vorher bekam eine Regel *alle*
+Spalten; eine Regel mit unvollstaendigem `benoetigte_spalten()` funktionierte
+zufaellig mit. Jetzt liest sie NaN, feuert nie und liefert null Trades ohne
+Fehlermeldung — der `ib_breakout`-Fehlertyp. `tests/test_spaltenvertrag.py`
+schliesst die Luecke: fuer **jede** Strategie der Bibliothek muss der Lauf auf
+dem beschnittenen Rahmen dieselben Trades liefern wie auf dem vollen. Alle
+neun bestehen.
+
+### 36.5 Erste Messung des W — Zahlen in `docs/W_MESSUNG_2026-08-30.md`
+
+Erster Backtest dieses Projekts auf **echten MNQ-Futuresdaten**. 519.084
+5m-Kerzen, 2019–2026, nichts optimiert (OOS damit nicht verbraucht).
+
+| Strategie | Block | Trades | Treffer | PF | Ø/Trade |
+|---|---|---:|---:|---:|---:|
+| `doppelboden_bestaetigt` | IS | 2.252 | 34,8 % | 0,93 | −2,60 USD |
+| `doppelboden_bestaetigt` | OOS | 990 | 37,4 % | 1,05 | **+3,29 USD** |
+| `doppelboden_nackenbruch` | IS | 1.911 | 35,9 % | 0,97 | −1,08 USD |
+| `doppelboden_nackenbruch` | OOS | 813 | — | — | −3,50 USD |
+| `vwap_trend` | IS | 2.602 | 21,9 % | 0,86 | −4,09 USD |
+| `vwap_trend` | OOS | 1.010 | 22,3 % | 0,95 | −2,38 USD |
+
+**Die Trefferquote des W liegt bei ~35 %, nicht bei 8/10.** Das widerlegt die
+Idee nicht — Trefferquote allein ist wertlos (MASTERPLAN J) —, aber es
+widerlegt die *erinnerte Zahl*. „8 von 10" ist ohne Stop und Ziel nicht
+einmal definiert.
+
+**Die beste Zahl der Tabelle ist auch die verdaechtigste.** Ein
+Vorzeichenwechsel zwischen IS und OOS ist kein Fund, sondern eine Warnung; und
+die Rangfolge der beiden Einstiege dreht sich zwischen den Bloecken ebenfalls.
+Ob das Regime oder Zufall ist, laesst sich ohne Regime-Engine und ohne
+t-/p-Werte nicht entscheiden. **Keine der beiden Hypothesen ist im Register
+eingetragen** — bis das nachgeholt ist, zaehlen sie nicht gegen das
+Hypothesenbudget.
+
+### 36.6 Naechste Schritte
+
+1. Regime-Engine (MASTERPLAN I) — drei Achsen, Grenzen aus der Verteilung.
+2. Globales Hypothesenbudget + OOS-Kontingent im Register (36.1).
+3. Discovery-Lauf auf echten Daten, alles ins Register.
+4. Die vier offenen Hypothesen aus der Antigravity-Phase.
+5. Erst danach der autonome Kreislauf.

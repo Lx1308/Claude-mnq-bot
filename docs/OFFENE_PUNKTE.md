@@ -43,6 +43,14 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 - [x] **P1** Watchdog mit Sperre, Tageslimit, Notaus und Parallelitätsprüfung
 - [x] **P0** Dokumentation: Projektgrenze aufgehoben, in `CLAUDE.md`,
       `MASTERPLAN.md` und `CODE_CHAT_KONTEXT.md` nachgezogen
+- [x] **P0** Die Engine kam an die echte Historie nicht heran
+      (`create_provider` kannte nur `csv`, MASTERPLAN X.1). Behoben:
+      `NtBridgeDataProvider`. Erster Backtest auf echten MNQ-Daten gelaufen.
+- [x] **P1** Chartmuster als Serie (`common/muster_serie.py`) — das „W" ist
+      messbar, mit Verfügbarkeitszeitpunkt statt Lookahead. Zwei Strategien,
+      erste Messung in `docs/W_MESSUNG_2026-08-30.md`.
+- [x] **P1** Engine ~20× schneller (nur deklarierte Spalten je Kerze),
+      abgesichert durch `tests/test_spaltenvertrag.py`.
 
 ---
 
@@ -64,6 +72,25 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
       größte ist 150k — das war eine Verwechslung mit FTMO.)*
 
 ## P1 — Forschungsgrundlage
+
+- [ ] **Regime-Engine bauen** (MASTERPLAN I). Drei Achsen — Volatilität,
+      Trend/Range, Liquidität —, Grenzen **aus der Verteilung** abgeleitet.
+      Ohne sie ist der Vorzeichenwechsel des Doppelbodens zwischen In-Sample
+      und Out-of-Sample nicht deutbar, und Laurins Zielbild („für jede
+      sinnvolle Marktsituation ein Spezialist") nicht baubar.
+
+- [ ] **Globales Hypothesenbudget im Register.**
+      `Discoverylauf.bonferroni_schwelle` zählt nur laufintern. Ein
+      Dauerlauf prüft über viele Läufe hinweg tausende Hypothesen, und jeder
+      einzelne Lauf sieht für sich sauber aus. Ohne laufübergreifenden
+      Zähler ist die Korrektur eine Fassade. **Von Laurin am 30.08.2026 so
+      entschieden.**
+
+- [ ] **OOS-Kontingent.** Harte Obergrenze an Confirmations; danach ist der
+      Block verbraucht. Der Bot fasst ihn nicht selbständig an.
+
+- [ ] **Doppelboden-Hypothesen ins Register eintragen.** Bis dahin zählen sie
+      nicht gegen das Budget und gelten als nicht geprüft.
 
 - [ ] **Hypothesen ernsthaft rechnen — jetzt möglich.** Bis 30.08.2026 waren
       auf zehn Tagen alle Urteile „UNENTSCHIEDEN" (unter 30 Trades). Seit dem
@@ -96,6 +123,11 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
       Trade-Zeitraums holt und die Felder füllt.
 
 ## P2 — Aufräumen und Härten
+
+- [ ] **Kennzahl „Max. Drawdown in % vom Hoch" ist kaputt.** Bei einem
+      Zwischenhoch nahe null liefert sie Werte wie „6317,6 % vom Hoch". Die
+      absolute USD-Zahl stimmt; der Prozentwert braucht einen Bezug auf das
+      Startkapital statt auf das Equity-Hoch.
 
 - [ ] **`aggregiere_kerzen --voll` liest die 1m-Reihe je Ziel-Timeframe neu.**
       Bei drei Timeframes sind das drei volle Lesevorgänge über ~2,5 Mio

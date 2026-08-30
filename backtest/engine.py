@@ -281,6 +281,25 @@ class Backtester:
         sessions = data["session_date"].to_numpy()
         timestamps = data.index
 
+        # Nur die Spalten als Arrays vorhalten, die diese Strategie
+        # tatsaechlich liest.
+        #
+        # WARUM: die Schleife baute je Kerze zwei pandas-Series ueber
+        # data.iloc[i]. Bei einem vorbereiteten Rahmen mit ueber vierzig
+        # Spalten ist das der Engpass des ganzen Laufs - und er waechst mit
+        # jeder Spalte, die irgendwo dazukommt, auch wenn die Strategie sie
+        # gar nicht braucht. Ueber sieben Jahre 5m-Daten (519.000 Kerzen)
+        # macht das Minuten aus.
+        #
+        # BarContext.value greift ueber .get() zu; ein Dict genuegt dafuer.
+        gebraucht = sorted(strategy.benoetigte_spalten() & set(data.columns))
+        spaltenwerte = {
+            name: data[name].to_numpy() for name in gebraucht
+        }
+
+        def zeile(index: int) -> dict[str, Any]:
+            return {name: werte[index] for name, werte in spaltenwerte.items()}
+
         trades: list[Trade] = []
         equity_values = np.zeros(len(data), dtype=float)
 
@@ -320,8 +339,6 @@ class Backtester:
             target_price = None
 
         for i in range(len(data)):
-            row = data.iloc[i]
-            previous_row = data.iloc[i - 1] if i > 0 else None
             is_last_bar = i == len(data) - 1
             last_bar_of_session = (
                 is_last_bar or sessions[i] != sessions[i + 1]
@@ -377,8 +394,8 @@ class Backtester:
             # --- 4. Signale auf Schlusskurs auswerten ---------------------
             if not is_last_bar and not last_bar_of_session:
                 ctx = BarContext(
-                    row=row,
-                    previous=previous_row,
+                    row=zeile(i),
+                    previous=zeile(i - 1) if i > 0 else None,
                     timestamp=timestamps[i],
                     position=position,
                     bars_in_trade=(i - entry_index) if position != FLAT else 0,

@@ -32,10 +32,15 @@ class BarContext:
 
     Bewusst nur die aktuelle und die vorherige Zeile - damit ist es
     strukturell unmoeglich, versehentlich in die Zukunft zu schauen.
+
+    ``row`` ist alles, was ``.get(name)`` beantwortet: eine ``pd.Series``
+    oder ein einfaches Dict. Die Engine reicht ein Dict der Spalten durch,
+    die die jeweilige Strategie braucht - eine Series je Kerze ueber
+    vierzig Spalten zu bauen war der Engpass des ganzen Laufs.
     """
 
-    row: pd.Series
-    previous: pd.Series | None
+    row: "Mapping[str, Any] | pd.Series"
+    previous: "Mapping[str, Any] | pd.Series | None"
     timestamp: pd.Timestamp
     position: int  # +1 long, -1 short, 0 flach
     bars_in_trade: int = 0
