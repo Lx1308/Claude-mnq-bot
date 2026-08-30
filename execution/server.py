@@ -27,6 +27,34 @@ from typing import Optional
 # ---------------------------------------------------------------------------
 # App
 # ---------------------------------------------------------------------------
+#: Wie oft die groben Timeframes (4h, 1d) aus den neuen 1m-Kerzen nachgezogen
+#: werden. Der Startchart zeigt Tageskerzen ueber die ganze Historie; die
+#: koennen nicht bei jeder Anfrage neu aggregiert werden (~20 s), also einmal
+#: rechnen und danach am rechten Rand fortschreiben. Fuenf Minuten Verzug auf
+#: der Tageskerze sind im Chart unsichtbar.
+_AGGREGAT_INTERVALL_S = 300
+
+
+async def _aggregat_schleife():
+    """Zieht 4h/1d im Hintergrund aus den hereinkommenden 1m-Kerzen nach."""
+    import asyncio
+
+    from werkzeuge.aggregiere_kerzen import aggregiere
+
+    while True:
+        try:
+            await asyncio.to_thread(
+                aggregiere,
+                PROJECT_ROOT / "data" / "ntbridge.sqlite3",
+                symbol=CONFIG.market.product,
+                voll=False,
+                config=CONFIG,
+            )
+        except Exception as exc:  # noqa: BLE001 - eine Anzeigehilfe, kein Kernpfad
+            logger.warning("Aggregatlauf fehlgeschlagen: %s", exc)
+        await asyncio.sleep(_AGGREGAT_INTERVALL_S)
+
+
 @asynccontextmanager
 async def lebenszyklus(_app: FastAPI):
     """Startet den autonomen Bot mit dem Server und beendet ihn mit ihm.
@@ -34,6 +62,8 @@ async def lebenszyklus(_app: FastAPI):
     ``lifespan`` statt der abgekuendigten ``@app.on_event``-Haken: die sind
     seit FastAPI 0.109 veraltet und werfen eine DeprecationWarning.
     """
+    import asyncio
+
     if CONFIG.ausfuehrung.enabled:
         BOT.start()
     else:
@@ -41,9 +71,11 @@ async def lebenszyklus(_app: FastAPI):
             "Autonomer Bot ist aus (ausfuehrung.enabled=false). "
             "Das Order-Panel arbeitet unabhaengig davon."
         )
+    aggregat_task = asyncio.create_task(_aggregat_schleife())
     try:
         yield
     finally:
+        aggregat_task.cancel()
         BOT.stop()
 
 
@@ -433,40 +465,56 @@ def get_entscheidungen(limit: int = 100):
 # Das Frontend erwartet BarsResponse: {symbol, timeframe, bars: Bar[], forming, live}
 # Bar = {ts (nanoseconds!), open, high, low, close, volume, roll_boundary}
 # ---------------------------------------------------------------------------
+def _rahmen_zu_bars(df) -> list[dict]:
+    """OHLCV-DataFrame -> Liste im types.ts-Bar-Format (ts in Nanosekunden).
+
+    Ueber die Spalten-Arrays, nicht ueber ``iterrows`` - das ist bei ein paar
+    tausend Kerzen der Unterschied zwischen Millisekunden und Sekunden.
+    """
+    if df is None or df.empty:
+        return []
+    ts_ns = df.index.asi8  # Nanosekunden seit Epoch, UTC
+    o = df["open"].to_numpy(dtype="float64")
+    h = df["high"].to_numpy(dtype="float64")
+    lo = df["low"].to_numpy(dtype="float64")
+    c = df["close"].to_numpy(dtype="float64")
+    v = df["volume"].fillna(0.0).to_numpy(dtype="float64")
+    return [
+        {
+            "ts": int(ts_ns[i]),
+            "open": float(o[i]),
+            "high": float(h[i]),
+            "low": float(lo[i]),
+            "close": float(c[i]),
+            "volume": float(v[i]),
+            "roll_boundary": False,
+        }
+        for i in range(len(ts_ns))
+    ]
+
+
 @app.get("/api/bars")
-def get_bars(symbol: str = "MNQ", timeframe: str = "1m", limit: int = 300):
-    bars = []
-    conn = get_db("ntbridge.sqlite3")
-    if conn:
-        try:
-            cur = conn.cursor()
-            cur.execute(
-                "SELECT ts_utc, open, high, low, close, volume "
-                "FROM bars "
-                "WHERE instrument = ? AND timeframe = ? "
-                "ORDER BY ts_utc DESC LIMIT ?",
-                (symbol, timeframe, limit)
-            )
-            for r in reversed(cur.fetchall()):
-                try:
-                    dt = datetime.fromisoformat(r["ts_utc"])
-                    # Frontend erwartet Nanosekunden-Timestamps
-                    ts_ns = int(dt.timestamp() * 1_000_000_000)
-                except Exception:
-                    ts_ns = 0
-                bars.append({
-                    "ts": ts_ns,
-                    "open": r["open"],
-                    "high": r["high"],
-                    "low": r["low"],
-                    "close": r["close"],
-                    "volume": r["volume"] or 0,
-                    "roll_boundary": False,
-                })
-        except Exception as e:
-            logger.error(f"Bars Fehler: {e}")
-        finally:
-            conn.close()
+def get_bars(
+    symbol: str = "MNQ",
+    timeframe: str = "1m",
+    limit: int = 1500,
+    before: int | None = None,
+):
+    """Kerzen fuer den Chart.
+
+    ``limit=0`` liefert die gesamte Historie im gewaehlten Timeframe - so
+    zeigt der Startchart 2019 bis heute als Tageskerzen. ``before`` (ns)
+    blaettert nach hinten: die neuesten ``limit`` Kerzen vor diesem
+    Zeitpunkt, fuer das Nachladen beim Zurueckscrollen.
+    """
+    symbol = symbol or "MNQ"
+    timeframe = timeframe or "1m"
+    try:
+        df = lade_anzeige_kerzen(symbol, timeframe, limit=limit, before_ns=before)
+        bars = _rahmen_zu_bars(df)
+    except Exception as e:  # noqa: BLE001 - eine leere Antwort ist besser als ein 500
+        logger.error("Bars Fehler (%s/%s): %s", symbol, timeframe, e)
+        bars = []
 
     return {
         "symbol": symbol,
@@ -547,33 +595,162 @@ def get_instruments():
         "live_capable": True,
     }]
 
+def _iso_zu_ns(wert: str | None) -> int:
+    if not wert:
+        return 0
+    try:
+        return int(pd.Timestamp(wert, tz="UTC").value)
+    except Exception:  # noqa: BLE001
+        return 0
+
+
 @app.get("/api/coverage")
 def get_coverage():
-    """types.ts: Coverage[]"""
-    # Pruefe ob tatsaechlich Daten vorhanden
+    """types.ts: Coverage[] - was tatsaechlich in der Kerzendatenbank liegt.
+
+    ``first_ts``/``last_ts`` in Nanosekunden (wie ueberall im Frontend-
+    Vertrag); vorher standen hier fest ``0``, weshalb die Oberflaeche den
+    abgedeckten Zeitraum nicht anzeigen konnte.
+    """
     conn = get_db("ntbridge.sqlite3")
-    if conn:
-        try:
-            r = conn.execute(
-                "SELECT COUNT(*) as cnt, MIN(ts_utc) as first_ts, MAX(ts_utc) as last_ts "
-                "FROM bars WHERE instrument = 'MNQ' AND timeframe = '1m'"
-            ).fetchone()
-            conn.close()
-            if r and r["cnt"] > 0:
-                return [{
-                    "symbol": "MNQ",
-                    "timeframe": "1m",
-                    "first_ts": 0,
-                    "last_ts": 0,
-                    "bar_count": r["cnt"],
-                }]
-        except Exception:
-            pass
-    return []
+    if conn is None:
+        return []
+    try:
+        rows = conn.execute(
+            "SELECT instrument, timeframe, COUNT(*) AS cnt, "
+            "MIN(ts_utc) AS first_ts, MAX(ts_utc) AS last_ts "
+            "FROM bars GROUP BY instrument, timeframe"
+        ).fetchall()
+    except Exception:  # noqa: BLE001
+        return []
+    finally:
+        conn.close()
+
+    return [
+        {
+            "symbol": r["instrument"],
+            "timeframe": r["timeframe"],
+            "first_ts": _iso_zu_ns(r["first_ts"]),
+            "last_ts": _iso_zu_ns(r["last_ts"]),
+            "bar_count": r["cnt"],
+        }
+        for r in rows
+        if r["cnt"] > 0
+    ]
 
 #: Wie viele Kerzen die Erkennung sieht. Mehr Kerzen kosten Rechenzeit, ohne
 #: dass ein Muster von vor drei Tagen den Chart noch interessiert.
 OVERLAY_KERZEN = 1500
+
+
+# ---------------------------------------------------------------------------
+# Anzeige-Kerzen.
+#
+# Seit dem NT8-Import (30.08.2026) liegen ~2,5 Mio MNQ-Minutenkerzen ab 2019
+# in der Datenbank - aber nur als 1m. Die groeberen Timeframes werden mit
+# werkzeuge/aggregiere_kerzen.py aus 1m vorberechnet und als eigene
+# timeframe-Zeilen gespeichert (source="resampled_1m"), damit der Chart 2019
+# bis heute in Millisekunden liefern kann statt 2,5 Mio Kerzen je Anfrage neu
+# zu aggregieren (~20 s gemessen). Der Serverprozess zieht die juengsten
+# Buckets im Hintergrund nach (siehe _aggregat_schleife).
+#
+# resample_ohlcv aus common/timeframes.py - dieselbe Regel wie im Backtest.
+# KEINE zweite Rechenlogik.
+# ---------------------------------------------------------------------------
+from common.timeframes import (  # noqa: E402
+    TimeframeSpec,
+    normalize_timeframe,
+    resample_ohlcv,
+)
+
+
+def _lies_bars(
+    symbol: str,
+    timeframe: str,
+    *,
+    limit: int | None,
+    before_iso: str | None = None,
+) -> pd.DataFrame:
+    """Kerzen eines gespeicherten Timeframes, aufsteigend, UTC-Index.
+
+    Eigene Verbindung ohne ``row_factory`` und mit festem Zeitstempelformat:
+    ueber ``sqlite3.Row`` und Formaterkennung war schon das Lesen von 45.000
+    1h-Kerzen mehrere Sekunden.
+    """
+    columns = ["ts_utc", "open", "high", "low", "close", "volume"]
+    leer = pd.DataFrame(
+        columns=columns[1:], index=pd.DatetimeIndex([], tz="UTC")
+    )
+    pfad = PROJECT_ROOT / "data" / "ntbridge.sqlite3"
+    if not pfad.exists():
+        return leer
+    query = (
+        "SELECT ts_utc, open, high, low, close, volume FROM bars "
+        "WHERE instrument = ? AND timeframe = ?"
+    )
+    params: list = [symbol.upper(), timeframe]
+    if before_iso is not None:
+        query += " AND ts_utc < ?"
+        params.append(before_iso)
+    query += " ORDER BY ts_utc DESC"
+    if limit:
+        query += " LIMIT ?"
+        params.append(int(limit))
+
+    conn = sqlite3.connect(str(pfad))
+    try:
+        rows = conn.execute(query, params).fetchall()
+    finally:
+        conn.close()
+    if not rows:
+        return leer
+    rows.reverse()
+    df = pd.DataFrame(rows, columns=columns)
+    df.index = pd.to_datetime(df.pop("ts_utc"), utc=True, format="ISO8601")
+    return df
+
+
+def lade_anzeige_kerzen(
+    symbol: str,
+    timeframe: str,
+    *,
+    limit: int,
+    before_ns: int | None = None,
+) -> pd.DataFrame:
+    """OHLCV fuer die Chart-Anzeige.
+
+    ``limit`` = 0 heisst "so weit die Historie reicht" (fuer den groben
+    Startchart ueber 2019 bis heute). ``before_ns`` blaettert nach hinten: die
+    neuesten ``limit`` Kerzen VOR diesem Zeitpunkt.
+
+    1m und die vorberechneten groeberen Timeframes kommen direkt aus der
+    Datenbank. Fehlt ein grober Timeframe noch (Aggregatlauf nicht
+    durchgelaufen), wird das begrenzte Fenster als Rueckfallebene direkt aus
+    1m aggregiert.
+    """
+    symbol = (symbol or "MNQ").upper()
+    tf = normalize_timeframe(timeframe or "1m")
+    lim = None if (not limit or limit <= 0) else int(limit)
+    before_iso = (
+        pd.Timestamp(before_ns, unit="ns", tz="UTC").isoformat()
+        if before_ns is not None
+        else None
+    )
+
+    df = _lies_bars(symbol, tf, limit=lim, before_iso=before_iso)
+    if not df.empty or tf == "1m":
+        return df
+
+    # Rueckfallebene: grober Timeframe noch nicht vorberechnet. Nur ein
+    # begrenztes Fenster aus 1m aggregieren - die volle Historie waere hier
+    # zu langsam.
+    minuten = TimeframeSpec.from_label(tf).minutes
+    roh_limit = (lim or 3_000) * minuten * 2 + 5_000
+    roh = _lies_bars(symbol, "1m", limit=roh_limit, before_iso=before_iso)
+    if roh.empty:
+        return roh
+    grob = resample_ohlcv(roh, tf, CONFIG.market.session)
+    return grob.iloc[-lim:] if lim and len(grob) > lim else grob
 
 
 def _vorbereiteter_rahmen(symbol: str, timeframe: str, kerzen: int = OVERLAY_KERZEN):
@@ -586,13 +763,11 @@ def _vorbereiteter_rahmen(symbol: str, timeframe: str, kerzen: int = OVERLAY_KER
     wurde.
     """
     from common.indicators import compute_indicators
-    from ntbridge.store import BarStore
 
-    speicher = BarStore(PROJECT_ROOT / "data" / "ntbridge.sqlite3")
-    try:
-        df = speicher.load_frame(symbol, timeframe, limit=kerzen)
-    finally:
-        speicher.close()
+    # Ueber lade_anzeige_kerzen, damit die Erkennung auch auf Timeframes
+    # laeuft, die nicht roh gespeichert sind: seit dem NT8-Import liegt nur
+    # 1m vollstaendig vor, 5m/15m/1h werden daraus aggregiert.
+    df = lade_anzeige_kerzen(symbol, timeframe, limit=kerzen)
     if df.empty:
         return df
     return compute_indicators(df, CONFIG.indicators, CONFIG.market.session)

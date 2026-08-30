@@ -32,6 +32,12 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
       (Zeitzone UTC, toter `rollplan_aus_nt8`, numerische Dateinamen,
       zu strenge Kreuzvergleich-/Anschlussprüfung). Details:
       `CODE_CHAT_KONTEXT.md` 34.9
+- [x] **P0** TRADAYRI zeigte beim Start nur ein „schwarzes Rechteck" — das war
+      die leere Chart-Fläche (keine Instrument-Vorauswahl, Chart nur ~1.500
+      Kerzen). Behoben: MNQ wird beim Start geladen, Chart zeigt die volle
+      Historie 2019–heute als Tageskerzen. Neu `werkzeuge/aggregiere_kerzen.py`
+      (1h/4h/1d aus 1m vorberechnet), `execution/server.py` zieht sie im
+      Hintergrund nach. Details: `CODE_CHAT_KONTEXT.md` 35
 - [x] **P1** Pine-Export und TradingView-Ergebnisimport
 - [x] **P1** Research-Engine neu (Split, Kosten, Register, ehrliches Protokoll)
 - [x] **P1** Watchdog mit Sperre, Tageslimit, Notaus und Parallelitätsprüfung
@@ -90,6 +96,17 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
       Trade-Zeitraums holt und die Felder füllt.
 
 ## P2 — Aufräumen und Härten
+
+- [ ] **`aggregiere_kerzen --voll` liest die 1m-Reihe je Ziel-Timeframe neu.**
+      Bei drei Timeframes sind das drei volle Lesevorgänge über ~2,5 Mio
+      Zeilen (~20 s jeder). Einmal lesen und im Speicher an alle drei
+      Resample-Läufe geben würde reichen. (Inkrementell ist es egal — da wird
+      nur der junge Rand gelesen.)
+
+- [ ] **`chart.timeframe.v2` in `App.tsx`** ist ein Migrations-Schlüssel, der
+      die gespeicherte Timeframe-Vorliebe einmalig auf `1d` zurücksetzt. Kann
+      wieder auf `chart.timeframe` zurück, sobald sicher ist, dass jeder die
+      neue Version einmal gestartet hat.
 
 - [ ] **`nt8_import` Kreuzvergleich beim Re-Import des Frontkontrakts.**
       Liegt der Frontkontrakt schon in `ntbridge.sqlite3` und wird er

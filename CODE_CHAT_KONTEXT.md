@@ -12,7 +12,9 @@ UTF-8-BOM), Ausführungsschicht neu gebaut: `common/kontoregeln.py`,
 Strategie-Panel an die vorhandene Erkennung angeschlossen, Asia-/London-Level
 in `common/levels.py` ergänzt. Abschnitt 34.9: die NT8-Historie ist
 importiert — 2,57 Mio MNQ-Minutenkerzen von 2019 bis August 2026, vier
-Import-Bugs unterwegs behoben. Tests grün.)
+Import-Bugs unterwegs behoben. Abschnitt 35: TRADAYRI-Startchart repariert
+(schwarzes Rechteck war die leere Chart-Flaeche), volle Historie als
+Tageskerzen, Kerzenaggregation `werkzeuge/aggregiere_kerzen.py`. Tests grün.)
 Davor Abschnitt 33 — Vollständige Formalisierung der Marktprimitive
 (FVG, Displacement, EQH/EQL, Liquidity Sweeps BSL/SSL, Reclaims, MSS/BOS/CHoCH)
 in `common/market_primitives.py`, Multi-Timeframe Resampling & 4h-Integration
@@ -3192,3 +3194,71 @@ ueberhaupt erst aussagekraeftig, und die Mehrfachtestkorrektur wird noetig.
 
 Sicherung vor dem Import: `ntbridge.sqlite3` wurde vorher in den
 Scratchpad kopiert (nicht im Repo).
+
+## 35. TRADAYRI-Start: schwarzer Chart, volle Historie, Kerzenaggregation (30.08.2026)
+
+**Der Fund.** Laurin meldete, beim Doppelklick auf `start_TRADAYRI.bat` zeige
+die App nur einen „riesigen schwarzen Bildschirm". Nachgesehen: **kein
+Absturz.** `desktop_app.py` oeffnet ein pywebview-Fenster (WinForms/WebView2,
+`[pywebview] Using WinForms / Chromium`), die React-Oberflaeche rendert
+vollstaendig. Das schwarze Rechteck in der Mitte ist die **leere
+Chart-Flaeche**:
+
+1. Eine fruehere Sitzung hatte die Instrument-Vorauswahl beim Start bewusst
+   entfernt (`App.tsx`, „KEINE Vorauswahl … fuenfzehn Sekunden Rechenzeit").
+   Ohne gewaehltes Instrument laedt der Chart nichts.
+2. Selbst dann zeigte `/api/bars` nur ~1.500 Kerzen (`limit`-Vorgabe), und
+   `HISTORY_BARS = 30_000` (~3 Wochen) war als „der Chart ist nicht fuer
+   lange Zeitraeume da" dokumentiert.
+3. Seit dem NT8-Import (Abschnitt 34.9) liegt nur **1m** vollstaendig vor.
+   `5m/15m/1h` hatten nur die paar tausend Wochen-Kerzen der Bridge; `1d`
+   255. Ein Chart „2019 bis heute" war damit nur auf 1m ueberhaupt moeglich —
+   und 2,5 Mio Kerzen roh in den Browser gehen nicht.
+
+**Laurins Entscheidung (30.08.2026):** die eingebettete Web-Oberflaeche
+bleibt (kein nativer Umbau), und der Chart soll beim Start **grob** die volle
+Historie zeigen, Detail beim Reinzoomen.
+
+**Was gebaut wurde:**
+
+- **`werkzeuge/aggregiere_kerzen.py`** leitet `1h/4h/1d` aus 1m ab
+  (`common/timeframes.resample_ohlcv` — dieselbe Regel wie im Backtest,
+  Invariante 1) und speichert sie als eigene `timeframe`-Zeilen mit
+  `source='resampled_1m'` (Invariante 11: eine Ableitung, kein zweiter
+  Messwert). `--voll` rechnet von vorn, ohne Schalter nur die juengsten
+  Buckets. Ergebnis: 1h 45.538, 4h 11.836, 1d 2.187 Kerzen, 2019 bis heute.
+  Warum nur diese drei: 2,5 Mio 1m je Anfrage aggregieren dauert ~20 s; die
+  feinen Ebenen (`5m/15m`) zeigt die Oberflaeche nur als begrenztes Fenster
+  und aggregiert der Server bei Bedarf direkt aus 1m (schnell genug).
+  5 Tests (`tests/test_aggregiere_kerzen.py`).
+- **`execution/server.py`**: `_aggregat_schleife` (asyncio-Task im
+  `lifespan`) zieht `1h/4h/1d` alle 5 Minuten aus den hereinkommenden
+  1m-Kerzen nach. `lade_anzeige_kerzen(symbol, tf, limit, before_ns)` ist der
+  neue gemeinsame Kerzenlader fuer `/api/bars` **und** `_vorbereiteter_rahmen`
+  (Overlays/Analyse): `limit=0` = volle Historie, `before` = Fenster nach
+  hinten (Nachladen beim Zurueckscrollen). `/api/coverage` liefert jetzt echte
+  `first_ts`/`last_ts` (standen fest auf `0`).
+- **`ui/frontend`**: MNQ wird beim Start automatisch gewaehlt (das
+  handelbare Instrument), Vorgabe-Timeframe `1d` (Schluessel `chart.timeframe.v2`
+  — setzt die gespeicherte Vorliebe einmalig zurueck). Der 15-Sekunden-
+  Warmlauf beim Instrumentwechsel ist weg: Chart, Overlays und Analyse holen
+  sich ihre Daten je fuer sich, der Warmlauf ist nur noch fuer die Wiedergabe
+  da und laeuft im Hintergrund. `TradeChart` laedt beim Scrollen an den linken
+  Rand aeltere Kerzen nach (`onNeedOlder`), bei den feinen Timeframes; der
+  Zeitausschnitt bleibt dabei stehen. `1h/4h/1d` = volle Historie, `5m/15m` =
+  4.000er-Fenster.
+
+**Stale Bridge-Reihen entfernt:** die wochenweisen `5m/15m/1h`-Kerzen der
+Bridge (`source='ninjatrader'`, ~3.200 Zeilen) sind geloescht — 1m ist
+kanonisch, `1h/4h/1d` vorberechnet, `5m/15m` kommen bei Bedarf frisch aus 1m.
+
+**Warum SQLite-Lesen hier langsam ist:** ein `SELECT` von 2,5 Mio Zeilen mit
+`sqlite3.Row`-Factory dauert ~120 s, mit Tupeln ~20 s, `pd.to_datetime` ohne
+`format=` noch mal ~18 s. Deshalb liest `aggregiere_kerzen` mit eigener
+Verbindung ohne Row-Factory, und `_lies_bars` im Server mit
+`format="ISO8601"`. Merken fuer alles, was viele Kerzen liest.
+
+**Offen (P2, `docs/OFFENE_PUNKTE.md`):** `aggregiere_kerzen --voll` liest die
+1m-Reihe je Ziel-Timeframe neu; einmal lesen wuerde reichen. Und der
+`chart.timeframe.v2`-Schluesselwechsel ist eine Migration, die spaeter wieder
+raus kann.

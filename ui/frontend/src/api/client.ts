@@ -109,10 +109,17 @@ export const api = {
       }),
     }),
 
-  bars: (symbol: string, timeframe: string, limit = 1500) =>
-    request<BarsResponse>(
-      `/bars?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=${limit}`,
-    ),
+  /** Kerzen fuer den Chart.
+   *
+   *  `limit = 0` liefert die gesamte Historie im gewaehlten Timeframe (fuer
+   *  den groben Startchart 2019 bis heute). `before` (ns) blaettert nach
+   *  hinten: die neuesten `limit` Kerzen vor diesem Zeitpunkt - fuer das
+   *  Nachladen aelterer Kerzen beim Zurueckscrollen. */
+  bars: (symbol: string, timeframe: string, limit = 1500, before?: number) => {
+    let pfad = `/bars?symbol=${encodeURIComponent(symbol)}&timeframe=${timeframe}&limit=${limit}`;
+    if (before != null) pfad += `&before=${before}`;
+    return request<BarsResponse>(pfad);
+  },
 
   analysis: (symbol: string) =>
     request<ContextSnapshot>(`/analysis?symbol=${encodeURIComponent(symbol)}`),
