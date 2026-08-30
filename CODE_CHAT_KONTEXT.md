@@ -2,6 +2,16 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
+Stand: 2026-08-31 (Abschnitt 37 — **Ereignisdatenbank Etappe 1**: serielle,
+O(n)-Erkenner in `common/ereignisse/` — Swings, Struktur (BOS/CHoCH), Niveau-
+Interaktion, Fair Value Gap, Displacement, je mit Lookahead- und
+Gleichheitstest. `common/muster_serie.py` von O(n²) auf O(n) gebracht — das
+war der Grund, warum `Backtester.prepare` ueber die volle Historie nicht
+durchlief (jetzt ~85 s). TRADAYRI: der schwarze Chart lag an einem
+Zeitstempel-Einheitenfehler — pandas 3 parst ISO8601 zu Mikrosekunden, das
+Frontend erwartet Nanosekunden. Behoben in `execution/server.py`.
+Forschungsplan um fuenf Schema-Punkte aus einer externen Pruefung ergaenzt.)
+
 Stand: 2026-08-30 (Abschnitt 34 — **Die Projektgrenze ist aufgehoben**:
 Ausführung über NinjaTrader ist seit dem 30.08.2026 Projektbestandteil.
 Vier Defekte aus der Antigravity-Schicht behoben (Kerzenkorruption im
@@ -3497,3 +3507,114 @@ liefert „im Wesentlichen die laufende Woche" — fuer 2019–2026 gibt es dort
 Verfallstage, Monatsende) — und vor allem die Spuren der Ereignisse **im
 Kursverlauf selbst** (Volatilitaets- und Volumenanomalien), die in
 Minutenaufloesung schon vorliegen.
+
+---
+
+## 37. Ereignisdatenbank Etappe 1: serielle Erkenner, muster_serie-Fix, TRADAYRI-Zeitstempel (31.08.2026)
+
+Auftrag: Laurins umfassende empirische Untersuchung der 2,57 Mio
+MNQ-Minutenkerzen (`docs/FORSCHUNGSPLAN_EVENTDATENBANK.md`). **Keine
+Strategie** — eine reproduzierbare Wissensbasis: welche Situationen treten
+auf, wie oft, wie entwickeln sie sich. Diese Sitzung baut Etappe 1 (punktuelle
+Erkenner → Serien) weiter.
+
+### 37.1 `common/ereignisse/` — die serientauglichen Erkenner
+
+Alle liefern `list[Ereignis]` (aus `basis.py`) mit den vier getrennten
+Zeitpunkten. `Ereignis.__post_init__` bricht bei
+`entstehung ≤ bestaetigung ≤ verfuegbar`-Verletzung ab. Jeder Erkenner hat
+einen Lookahead-Test (Reihe abschneiden, neu rechnen, frueh verfuegbare
+Ereignisse identisch) und — wo es eine punktuelle Vorlage gibt — einen
+Gleichheitstest gegen sie.
+
+| Modul | Ereignisse | Vorlage | Laufzeit volle Historie |
+|---|---|---|---|
+| `swings.py` | `SwingSerie` (kein Ereignis, Basis) | `structure.find_swing_points` | ~0,7 s |
+| `struktur.py` | `bos_bullish/bearish`, `choch_*` + `struktur_spalten` (HH/HL/LH/LL, Trend) | `market_primitives.detect_structure_breaks` | ~16 s → 181k |
+| `niveaus.py` | `niveau_test` (n-ter Test), `ausbruch`, `fehlausbruch`, `ausbruch_retest` an PDH/PDL/PDC/IB + Swings | neu (Plan 4) | ~86 s → **829k** |
+| `fvg.py` | `fair_value_gap` (bullish/bearish) + Mitigation im Fenster + `fvg_spalten` | `market_primitives.detect_fair_value_gaps` | ~40 s |
+| `displacement.py` | `displacement` — **Adapter**, keine eigene Logik | `market_primitives.detect_displacements` (schon O(n)) | ~3 s |
+
+**`niveaus.py`, ein Entwurfsfehler unterwegs:** die erste Fassung zaehlte
+jeden Abpraller von einem Niveau als „Ausbruch" — vier saubere Tests eines
+Levels erzeugten vier Falschereignisse. Jetzt ist ein Ausbruch der **Wechsel
+der etablierten Seite**: der Kurs muss vorher klar auf einer Seite gestanden
+haben (`abs(close − L) > max(tol, puffer)`) und durch das Niveau schliessen.
+
+**`niveaus.py`, Beobachtung fuer Etappe 3:** die swing-basierten Niveaus
+machen ~800k der 829k Ereignisse aus (jeder der ~250k bestaetigten Swings wird
+ein aktives Niveau). Das ist vermutlich zu fein — beim Fuellen der
+`events`-Tabelle ist zu entscheiden, ob nur „bedeutende" Swings oder nur die
+juengsten N als Niveau gelten. Der Erkenner selbst ist korrekt.
+
+**`fvg.py`, bewusste Abweichung von der Vorlage:** der punktuelle Erkenner
+verfolgt die Mitigation bis ans Reihenende (fuer die Anzeige „ist dieses FVG
+noch offen"). Die Serie tut es in `mitigation_fenster` Kerzen (Vorgabe 240 =
+4 h, laengster Nicht-Session-Horizont im Plan). Test haelt fest, dass beide
+**innerhalb des Fensters** dasselbe Mitigation-Urteil faellen.
+
+**Noch nicht gebaut** (Plan Abschnitt 4, fuer die naechste Etappe): Liquidity
+Sweep (Sweep + Reclaim), Order Block, Equal Highs/Lows als Serie, Triple
+Top/Bottom, Bewegungsmuster (Impuls+Konsolidierung, Reversal nach Extrem,
+Kompression→Expansion), Opening Range. Diese sind definitionsempfindlicher —
+Laurin plante dafuer die Opus-5-Sitzung.
+
+### 37.2 `common/muster_serie.py`: O(n²) → O(n)
+
+`finde_doppelmuster` suchte je Paar gleichartiger Swings den Berg/Talpunkt
+dazwischen mit einer Komplettschleife ueber **alle** Gegen-Swings. Bei ~250k
+Swings auf 2,5 Mio Kerzen ≈ 77 min allein fuer diese Stufe von
+`Backtester.prepare` — der Grund, warum ein Forschungslauf ueber die volle
+Historie nie durchlief (in Abschnitt 36.4 unbemerkt geblieben, weil dort nur
+auf Ausschnitten gemessen wurde).
+
+Jetzt ueber `np.searchsorted` auf die aufsteigenden Gegen-Swing-Indizes: je
+Paar nur das kurze Fenster dazwischen. `argmax`/`argmin` waehlen bei
+Gleichstand wie Pythons `max`/`min` den ersten Treffer — **die
+Musterdefinition aendert sich nicht**, ein neuer Test vergleicht Fund fuer
+Fund gegen die alte volle Suche.
+
+Gemessen: doppelmuster-Stufe bei 200k Kerzen 29,6 s → 2,6 s. `prepare()` ueber
+die volle Historie jetzt **~85 s** (Laden 61 s, `niveau_ereignisse` 86 s,
+`pruefe_lookahead` 0,1 s — alles auf 1m, kein Kompromiss).
+
+### 37.3 TRADAYRI: schwarzer Chart, Zeitachse auf „1970"
+
+Laurin meldete am 31.08.2026: Chart schwarz, Zeitachse „21.01.1970", beim
+Umschalten auf 1d ein Absturz. Ursache: **pandas 3.0.5 parst ISO8601 zu
+`datetime64[us]`**, dann liefert `DatetimeIndex.asi8` Mikrosekunden.
+`_rahmen_zu_bars` gab die als „Nanosekunden" aus; das Frontend
+(`toChartTime` in `TradeChart.tsx`) teilt durch 1e9 und landet im Januar
+1970. Bei 1m kollidieren viele Kerzen auf dieselbe Sekunde →
+lightweight-charts bricht beim naechsten Update mit „data must be asc
+ordered" ab → schwarzer Screen.
+
+Fix: `_rahmen_zu_bars` erzwingt `df.index.as_unit("ns").asi8`.
+Regressionstest in `test_execution_server.py`. `desktop_app.py`:
+Serverstart-Timeout 30 s → 90 s (erster Start muss die 657-MB-Kerzen-DB
+oeffnen; der Launcher hatte den langsam startenden Server sonst getoetet und
+Prozess-Waisen hinterlassen, die den Port hielten).
+
+**Offen, nicht Code:** „keine neuen Kerzen" — die letzte 1m-Kerze ist vom
+28.08.2026 (Import-Ende). Die Live-Bruecke (`ClaudeBridge.cs`-Indikator in
+NinjaTrader → `python -m ntbridge` → sqlite) schreibt nichts nach, solange in
+NT8 kein Chart mit dem Indikator offen ist oder der Empfaenger nicht laeuft.
+
+### 37.4 Forschungsplan: fuenf Schema-Ergaenzungen (externe Pruefung)
+
+Eine externe Durchsicht (Gemini) nannte fuenf Luecken, alle berechtigt,
+eingearbeitet (`docs/FORSCHUNGSPLAN_EVENTDATENBANK.md` Abschnitt 16):
+
+- `triggers.order_art` + gemessene Limit-Nichtfuellung; Slippage bleibt
+  benanntes Szenario in der Auswertung (Invariante 10/11)
+- `outcomes.intrabar_ambig` + Doppelklassifikation stop-zuerst/ziel-zuerst
+- `events.cluster_id`: gleichzeitige Signale ueber Mustertypen/Zeitebenen
+  zaehlen in der Signifikanz als eine Beobachtung
+- `events.volumen_am_extremum_relativ` als Orderbuch-Ersatz
+- VIX taeglich ueber FRED als Merkmal; `smt_divergenz` im Schema, `NULL` bis
+  eine ES-Reihe angebunden ist
+
+Kernaussage im Plan festgehalten: diese Verschaerfungen machen die Messung
+ehrlicher, erzeugen aber **keinen** Vorteil. Die Grundratentabelle kann
+genauso gut zeigen, dass in 1m-OHLCV-Mustern nichts zu holen ist — ein
+zulaessiges Ergebnis.
