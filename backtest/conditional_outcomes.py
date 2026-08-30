@@ -73,8 +73,33 @@ class ConditionalOutcomeReport:
     baseline_mean_r: float
     baseline_median_r: float
     edge_r: float                        # Differenz Mean R vs Baseline Mean R
+
+    #: t und p ueber ALLE Vorkommen - **ueberlappend gerechnet und deshalb
+    #: nicht belastbar**. Steht hier nur, weil der Unterschied zur ehrlichen
+    #: Rechnung die eigentliche Auskunft ist.
     t_statistic: float
     p_value: float
+
+    #: Dieselbe Groesse ueber ueberschneidungsfreie Vorkommen. **Das sind die
+    #: Zahlen, die gelten.**
+    #:
+    #: WARUM ES DIESE ZWEITE RECHNUNG BRAUCHT
+    #: --------------------------------------
+    #: Die Vorwaertsrendite ab Kerze i und die ab Kerze i+1 teilen sich
+    #: ``horizon_bars - 1`` ihrer Kerzen. Sie sind nicht unabhaengig, die
+    #: t-Statistik setzt das aber voraus. Am 30.08.2026 auf echten MNQ-Daten
+    #: nachgemessen, Horizont 24 Kerzen:
+    #:
+    #:     ueberlappend      n=149.975   t=8,49   p=2,0e-17
+    #:     ueberschneidungsfrei  n=6.249  t=1,71   p=0,088
+    #:     Faktor 4,98 - erwartet sqrt(24) = 4,90
+    #:
+    #: Dieselben Daten, dieselbe Kante. Einmal sieht sie aus wie eine
+    #: Gewissheit, einmal ist sie nicht einmal auf 5 % signifikant. Wer die
+    #: ueberlappende Zahl berichtet, berichtet einen Messfehler.
+    sample_size_unabhaengig: int = 0
+    t_statistic_unabhaengig: float = 0.0
+    p_value_unabhaengig: float = 1.0
 
     # Grid von Target / Stop Resultaten
     target_stop_grid: list[TargetStopOutcome] = field(default_factory=list)
@@ -90,9 +115,21 @@ class ConditionalOutcomeReport:
             "edge_ueber_baseline_r": round(self.edge_r, 4),
             "median_mfe_in_r": round(self.median_mfe_r, 2),
             "median_mae_in_r": round(self.median_mae_r, 2),
-            "t_statistik": round(self.t_statistic, 3),
-            "p_wert": round(self.p_value, 6),
-            "signifikant_alpha_005": bool(self.p_value < 0.05),
+            # Die ueberschneidungsfreien Zahlen zuerst - sie sind die, die
+            # gelten. Die ueberlappenden stehen daneben, damit der
+            # Unterschied sichtbar bleibt.
+            "stichprobe_unabhaengig": self.sample_size_unabhaengig,
+            "t_statistik": round(self.t_statistic_unabhaengig, 3),
+            "p_wert": round(self.p_value_unabhaengig, 6),
+            "signifikant_alpha_005": bool(self.p_value_unabhaengig < 0.05),
+            "t_statistik_ueberlappend": round(self.t_statistic, 3),
+            "p_wert_ueberlappend": round(self.p_value, 6),
+            "hinweis_ueberlappung": (
+                "Die ueberlappenden Werte setzen unabhaengige Beobachtungen "
+                "voraus, die es nicht gibt (Vorwaertsfenster teilen sich "
+                "Kerzen). Sie ueberschaetzen die Signifikanz um rund "
+                "sqrt(Horizont). Massgeblich sind t_statistik und p_wert."
+            ),
             "target_stop_matrix": [o.to_dict() for o in self.target_stop_grid],
         }
 
@@ -149,13 +186,37 @@ def analyze_conditional_outcomes(
     base_median = float(np.median(uncond_r))
     edge = mean_r - base_mean
 
-    # t-Statistik gegen Baseline
-    s_cond = len(cond_r)
-    var_cond = float(np.var(cond_r, ddof=1)) if s_cond > 1 else 1.0
-    se = math.sqrt(var_cond / s_cond) if s_cond > 0 else 1.0
-    t_stat = (mean_r - base_mean) / se if se > 0 else 0.0
-    deg_f = max(1, s_cond - 1)
-    p_val = p_wert_zweiseitig(t_stat, deg_f)
+    def _t_und_p(werte: np.ndarray) -> tuple[float, float]:
+        anzahl = len(werte)
+        if anzahl < 2:
+            return 0.0, 1.0
+        varianz = float(np.var(werte, ddof=1))
+        fehler = math.sqrt(varianz / anzahl)
+        if fehler <= 0:
+            return 0.0, 1.0
+        t = (float(np.mean(werte)) - base_mean) / fehler
+        return t, p_wert_zweiseitig(t, max(1, anzahl - 1))
+
+    # Ueberlappend - nur zum Vergleich, siehe Feld-Dokumentation.
+    t_stat, p_val = _t_und_p(cond_r)
+
+    # Ueberschneidungsfrei: aus den Vorkommen nur solche behalten, die
+    # mindestens einen Horizont auseinander liegen.
+    #
+    # WARUM GREEDY UND NICHT JEDES n-te: bei einer seltenen Bedingung (ein
+    # Muster, das alle paar hundert Kerzen auftritt) sind die Vorkommen
+    # ohnehin fast alle unabhaengig - jedes 24. zu nehmen wuerde 23 von 24
+    # gueltigen Beobachtungen wegwerfen. Der gierige Durchlauf behaelt
+    # alles, was sich nicht ueberschneidet, und duennt nur dort aus, wo es
+    # noetig ist.
+    unabhaengige_positionen: list[int] = []
+    letzter_index = -(horizon_bars + 1)
+    for laufnummer, kerzenindex in enumerate(cond_indices):
+        if kerzenindex - letzter_index >= horizon_bars:
+            unabhaengige_positionen.append(laufnummer)
+            letzter_index = kerzenindex
+    unabhaengig_r = cond_r[unabhaengige_positionen]
+    t_unab, p_unab = _t_und_p(unabhaengig_r)
 
     # Grid-Evaluation: Target vs Stop
     grid_results: list[TargetStopOutcome] = []
@@ -194,13 +255,13 @@ def analyze_conditional_outcomes(
                     target_hits=tgt_hits,
                     stop_hits=stp_hits,
                     neither_hits=neither,
-                    sample_size=s_cond,
+                    sample_size=len(cond_r),
                 )
             )
 
     return ConditionalOutcomeReport(
         condition_name=condition_name,
-        sample_size=s_cond,
+        sample_size=len(cond_r),
         unconditional_sample_size=len(uncond_r),
         horizon_bars=horizon_bars,
         mean_return_pts=mean_pts,
@@ -215,5 +276,8 @@ def analyze_conditional_outcomes(
         edge_r=edge,
         t_statistic=t_stat,
         p_value=p_val,
+        sample_size_unabhaengig=len(unabhaengig_r),
+        t_statistic_unabhaengig=t_unab,
+        p_value_unabhaengig=p_unab,
         target_stop_grid=grid_results,
     )

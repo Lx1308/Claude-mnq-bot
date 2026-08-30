@@ -100,7 +100,8 @@ def main(argv: list[str] | None = None) -> int:
         description="Einzelfaktor-Discovery gegen die Regime-Achsen.",
     )
     parser.add_argument("--symbol", default="MNQ")
-    parser.add_argument("--interval", type=int, default=5)
+    # 1m: der Bot handelt auf Minutenkerzen (Laurin, 30.08.2026).
+    parser.add_argument("--interval", type=int, default=1)
     parser.add_argument(
         "--strategie", action="append", dest="strategien",
         help="mehrfach moeglich; Vorgabe sind drei",

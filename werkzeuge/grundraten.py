@@ -138,14 +138,21 @@ def sammle_bedingungen(rahmen: pd.DataFrame) -> list[tuple[str, pd.Series, int]]
 
 
 def zeile(bericht: ConditionalOutcomeReport) -> str:
-    kante = bericht.edge_r
+    """Eine Zeile der Tabelle.
+
+    ``n_unab`` ist die Zahl der **ueberschneidungsfreien** Vorkommen, und der
+    p-Wert bezieht sich darauf. Die ueberlappende Rechnung ueberschaetzt die
+    Signifikanz um rund sqrt(Horizont) - am 30.08.2026 gemessen: derselbe
+    Effekt einmal mit p = 2e-17, einmal mit p = 0,088.
+    """
     return (
         f"  {bericht.condition_name:<44} "
-        f"n={bericht.sample_size:>6}  "
+        f"n={bericht.sample_size:>6} "
+        f"(unab {bericht.sample_size_unabhaengig:>5})  "
         f"E[R]={bericht.mean_return_r:>+6.3f}  "
         f"Basis={bericht.baseline_mean_r:>+6.3f}  "
-        f"Kante={kante:>+6.3f}  "
-        f"p={bericht.p_value:<8.5f}"
+        f"Kante={bericht.edge_r:>+6.3f}  "
+        f"p={bericht.p_value_unabhaengig:<8.5f}"
     )
 
 
@@ -177,10 +184,15 @@ def main(argv: list[str] | None = None) -> int:
         description="Wie oft kam eine Lage vor, und wie ging sie aus?",
     )
     parser.add_argument("--symbol", default="MNQ")
-    parser.add_argument("--interval", type=int, default=5)
+    # 1m ist die Vorgabe, weil der Bot auf Minutenkerzen handeln wird.
+    # Ein Backtest auf 5m misst dann eine ANDERE Strategie als die, die
+    # laeuft (Laurin, 30.08.2026). Der Lauf dauert dadurch rund fuenfmal
+    # so lang - das ist ausdruecklich in Ordnung.
+    parser.add_argument("--interval", type=int, default=1)
     parser.add_argument(
-        "--horizont", type=int, default=24,
-        help="Wie viele Kerzen nach dem Ereignis betrachtet werden (24 x 5m = 2 h)",
+        "--horizont", type=int, default=120,
+        help="Wie viele Kerzen nach dem Ereignis betrachtet werden "
+             "(120 x 1m = 2 h, derselbe Zeitraum wie zuvor 24 x 5m)",
     )
     parser.add_argument(
         "--alles", action="store_true",
@@ -234,7 +246,15 @@ def main(argv: list[str] | None = None) -> int:
           f"({args.horizont * args.interval} Minuten)")
     print("R = Vielfaches der ATR zum Ereigniszeitpunkt.")
     print("'Basis' ist derselbe Zeitraum OHNE Bedingung - ohne diesen "
-          "Vergleich sagt E[R] nichts.\n")
+          "Vergleich sagt E[R] nichts.")
+    print(
+        "'unab' ist die Zahl der UEBERSCHNEIDUNGSFREIEN Vorkommen, und der "
+        "p-Wert gilt dafuer.\n"
+        "Die Vorwaertsfenster benachbarter Kerzen teilen sich Kerzen; wer "
+        "alle Vorkommen als\nunabhaengig rechnet, ueberschaetzt die "
+        "Signifikanz um rund sqrt(Horizont). Gemessen am\n30.08.2026: "
+        "derselbe Effekt einmal p = 2e-17, einmal p = 0,088.\n"
+    )
     print("=" * 100)
 
     berichte: list[ConditionalOutcomeReport] = []
