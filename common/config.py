@@ -398,6 +398,48 @@ class BacktestConfig:
 
 
 @dataclass(frozen=True)
+class AusfuehrungConfig:
+    """Ausfuehrung: welches Konto, welche Grenzen, wann darf gehandelt werden.
+
+    Die eigentlichen Kontoregeln stehen als benanntes Profil in
+    ``common/kontoregeln.py`` - hier wird nur ausgewaehlt und, wo noetig,
+    ueberschrieben. Derselbe Aufbau wie bei den Kostenprofilen und aus
+    demselben Grund: dasselbe Handelsverhalten ist unter 25k-Regeln ein
+    anderes Geschaeft als unter 150k-Regeln.
+
+    ``enabled`` steuert NUR den autonomen Bot. Die Oberflaeche kann unabhaengig
+    davon Orders schicken - sonst waere ein abgeschalteter Bot gleichbedeutend
+    mit einer gesperrten Handelsoberflaeche.
+    """
+
+    enabled: bool = False
+    kontoprofil: str = "frei"
+    #: Rohdaten der Ueberschreibungen. Zu ``Kontoregeln`` wird das erst in
+    #: ``common.kontoregeln`` - hier bleibt es Daten.
+    kontoprofile: dict[str, dict[str, Any]] = field(default_factory=dict)
+
+    startkapital_usd: float | None = None
+
+    #: Eigenes Kontraktlimit, meist strenger als das des Anbieters. Die
+    #: Anbietergrenze ist das Maximum des Erlaubten, keine Empfehlung.
+    max_kontrakte: int = 2
+
+    #: Handelsfenster in Boersenzeit. Vorgabe deckt London-Eroeffnung bis
+    #: US-Schluss ab; ausserhalb ist der Nasdaq duenn.
+    handel_von: dtime = dtime(3, 0)
+    handel_bis: dtime = dtime(16, 0)
+    handel_zeitzone: str = "America/New_York"
+    nur_wochentags: bool = True
+
+    #: NinjaTrader-Konto. Das AddOn laesst ohnehin nur Simulationskonten zu;
+    #: der Name steht hier, damit im Protokoll steht, WELCHES gehandelt wurde.
+    konto: str = "Sim101"
+
+    #: Wie oft der Bot nach neuen Signalen sieht.
+    takt_sekunden: int = 60
+
+
+@dataclass(frozen=True)
 class Config:
     market: MarketConfig
     indicators: IndicatorConfig
@@ -410,6 +452,7 @@ class Config:
     ideas: IdeasConfig = field(default_factory=IdeasConfig)
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
+    ausfuehrung: AusfuehrungConfig = field(default_factory=AusfuehrungConfig)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     # -- Laden -------------------------------------------------------------
@@ -587,6 +630,27 @@ class Config:
             ),
         )
 
+        aus = dict(data.get("ausfuehrung", {}) or {})
+        ausfuehrung = AusfuehrungConfig(
+            enabled=bool(aus.get("enabled", False)),
+            kontoprofil=str(aus.get("kontoprofil", "frei")).lower(),
+            kontoprofile={
+                str(name).lower(): dict(werte or {})
+                for name, werte in (aus.get("kontoprofile", {}) or {}).items()
+            },
+            startkapital_usd=(
+                None if aus.get("startkapital_usd") is None
+                else float(aus["startkapital_usd"])
+            ),
+            max_kontrakte=int(aus.get("max_kontrakte", 2)),
+            handel_von=_parse_hhmm(str(aus.get("handel_von", "03:00")), "ausfuehrung.handel_von"),
+            handel_bis=_parse_hhmm(str(aus.get("handel_bis", "16:00")), "ausfuehrung.handel_bis"),
+            handel_zeitzone=str(aus.get("handel_zeitzone", "America/New_York")),
+            nur_wochentags=bool(aus.get("nur_wochentags", True)),
+            konto=str(aus.get("konto", "Sim101")),
+            takt_sekunden=int(aus.get("takt_sekunden", 60)),
+        )
+
         cfg = Config(
             market=market,
             indicators=indicators,
@@ -597,6 +661,7 @@ class Config:
             ideas=ideas,
             logging=logging_cfg,
             backtest=backtest,
+            ausfuehrung=ausfuehrung,
             raw=dict(data),
         )
         cfg.validate()
@@ -639,6 +704,42 @@ class Config:
                     f"{instrument.root} im Instrument-Register ({instrument.point_value}). "
                     f"Ein Tick ist bei {instrument.root} {instrument.tick_value:.2f} USD wert."
                 )
+
+        # Ausfuehrung: ein Tippfehler im Kontoprofil wuerde nicht auffallen,
+        # sondern den Bot unter den falschen Grenzen handeln lassen - und das
+        # merkt man erst, wenn eine Grenze gerissen ist, die es gar nicht gab.
+        from common.kontoregeln import KONTOREGELN, bekannte_kontoprofile
+
+        if self.ausfuehrung.kontoprofil not in KONTOREGELN:
+            raise ConfigError(
+                f"ausfuehrung.kontoprofil ({self.ausfuehrung.kontoprofil!r}) ist "
+                f"unbekannt. Bekannt: {', '.join(bekannte_kontoprofile())}"
+            )
+        if self.ausfuehrung.max_kontrakte <= 0:
+            raise ConfigError("ausfuehrung.max_kontrakte muss > 0 sein.")
+        if self.ausfuehrung.handel_von >= self.ausfuehrung.handel_bis:
+            raise ConfigError(
+                f"ausfuehrung.handel_von ({self.ausfuehrung.handel_von:%H:%M}) muss vor "
+                f"handel_bis ({self.ausfuehrung.handel_bis:%H:%M}) liegen. Ein Fenster "
+                "ueber Mitternacht ist hier nicht vorgesehen - es waere in "
+                "Boersenzeit auch keins."
+            )
+        if self.ausfuehrung.takt_sekunden < 5:
+            raise ConfigError(
+                "ausfuehrung.takt_sekunden unter 5 Sekunden ist sinnlos: der Bot "
+                "arbeitet auf Kerzenschluessen, nicht auf Ticks."
+            )
+        # Ein Prop-Konto ohne Startkapital laesst jede Verlustgrenze ins Leere
+        # laufen - die Grenzen sind absolute Kontostaende, keine Prozente.
+        if (
+            self.ausfuehrung.kontoprofil != "frei"
+            and self.ausfuehrung.startkapital_usd is None
+            and KONTOREGELN[self.ausfuehrung.kontoprofil].kontogroesse_usd <= 0
+        ):
+            raise ConfigError(
+                "ausfuehrung.startkapital_usd fehlt und das Profil kennt keine "
+                "Kontogroesse - die Verlustgrenzen waeren nicht berechenbar."
+            )
 
         swing_window = 2 * self.analyse.swing_strength + 1
         if self.analyse.swing_lookback < swing_window:

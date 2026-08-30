@@ -433,3 +433,84 @@ backtest:
     # fuer die Confirmation-Phase reserviert. 0.5 heisst: von den 30 % nach dem
     # 70-%-Trainingsschnitt werden 15 Prozentpunkte Validation, 15 bleiben OOS.
     validation_fraction: 0.5
+
+
+# ===========================================================================
+# AUSFUEHRUNG - autonomer Handel und Order-Panel
+# ===========================================================================
+#
+# Bis zum 30.08.2026 war das Projekt read-only: es gab keinen Order-Endpunkt,
+# und das war eine bewusste Entscheidung. Laurin hat sie am 30.08.2026
+# aufgehoben - Ausfuehrung ueber NinjaTrader ist jetzt Projektbestandteil.
+#
+# Zwei Riegel bleiben, unabhaengig von allem hier:
+#
+#  1. Das NinjaScript-AddOn (TradayriBridge) handelt AUSSCHLIESSLICH auf
+#     Konten mit Provider == Simulator. Dafuer gibt es dort keinen Schalter
+#     und keinen Konfigurationseintrag - genau deshalb steht auch hier keiner.
+#  2. ClaudeBridge.cs ist ein Indikator und kann strukturell keine Orders
+#     platzieren. Der Datenweg bleibt damit vom Orderweg getrennt.
+ausfuehrung:
+  # Steuert NUR den autonomen Bot. Das Order-Panel der Oberflaeche arbeitet
+  # unabhaengig davon weiter - ein abgeschalteter Bot ist keine gesperrte
+  # Handelsoberflaeche.
+  enabled: false
+
+  # Welches Regelwerk gilt. Die Profile stehen in common/kontoregeln.py:
+  #   frei              - Eigenkapital, keine Anbieterregeln
+  #   lucid_pro_25k     - kein Tagesverlustlimit, 1.000 USD Gesamtverlust
+  #   lucid_pro_50k     - 1.200 USD/Tag, 2.000 USD Gesamtverlust
+  #   lucid_pro_100k    - 1.800 USD/Tag, 3.000 USD Gesamtverlust
+  #   lucid_pro_150k    - 2.700 USD/Tag, 4.500 USD Gesamtverlust
+  #   lucid_flex_50k / _100k / _150k - wie Pro, aber ohne Tagesverlustlimit
+  #
+  # ACHTUNG: Alle Lucid-Zahlen sind ANNAHMEN aus zwei Uebersichten Dritter
+  # (30.08.2026). Lucids eigenes Hilfe-Center antwortet automatisierten
+  # Abrufen mit HTTP 403. Wo die Quellen sich widersprachen, steht der
+  # striktere Wert. Bestaetige sie aus deinem Dashboard und trage sie unter
+  # "kontoprofile" ein - dann verschwindet der Annahme-Vermerk aus den
+  # Berichten.
+  kontoprofil: frei
+
+  # Einzelne Werte eines Profils ueberschreiben. Eine Aenderung OHNE "quelle"
+  # wird abgelehnt: eine Zahl ohne Herkunft ist im Protokoll wertlos.
+  #
+  # kontoprofile:
+  #   lucid_pro_25k:
+  #     max_verlust_usd: 1000.0
+  #     quelle: "Lucid-Dashboard, abgelesen am TT.MM.2026"
+  #     ist_annahme: false
+  kontoprofile: {}
+
+  # Kontostand, auf dem die Verlustgrenzen rechnen. null = Kontogroesse des
+  # Profils. Beim freien Konto muss hier ein Wert stehen, sonst rechnen die
+  # Kennzahlen gegen 0.
+  startkapital_usd: null
+
+  # Eigenes Kontraktlimit. Das Anbieterlimit ist das Maximum des ERLAUBTEN,
+  # keine Empfehlung: 20 Micro-Kontrakte auf einem 25k-Konto sind formal
+  # zulaessig und trotzdem unvernuenftig. Es gilt immer der kleinere Wert.
+  max_kontrakte: 2
+
+  # Handelsfenster in Boersenzeit (ET). 03:00 deckt die London-Eroeffnung ab,
+  # 16:00 den US-Schluss. Ausserhalb ist der Nasdaq duenn; dort produziert ein
+  # Bot vor allem schlechte Fuellungen.
+  #
+  # Das Fenster gilt fuer den EINSTIEG. Eine laufende Position wird nicht
+  # angefasst - ihr Stop und ihr Ziel liegen als echte Orders bei NinjaTrader
+  # und wirken auch dann, wenn hier nichts mehr laeuft.
+  handel_von: "03:00"
+  handel_bis: "16:00"
+  handel_zeitzone: "America/New_York"
+  nur_wochentags: true
+
+  # NinjaTrader-Konto. Das AddOn laesst ohnehin nur Simulationskonten zu; der
+  # Name steht hier, damit im Protokoll steht, WELCHES gehandelt wurde. Ohne
+  # ausdruecklichen Namen lehnt das AddOn ab, sobald es mehr als einen
+  # Kandidaten gibt (Sim101 und Backtest sind beide Simulator).
+  konto: "Sim101"
+
+  # Wie oft der Bot nach neuen Signalen sieht. Er arbeitet auf
+  # Kerzenschluessen, nicht auf Ticks - haeufiger als der Kerzentakt bringt
+  # nichts.
+  takt_sekunden: 60
