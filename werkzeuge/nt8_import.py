@@ -75,6 +75,24 @@ MIN_UEBERLAPPUNG = 200
 #: kleiner als jede echte Preisbewegung und groesser als jeder Rundungsrest.
 MAX_ABWEICHUNG = 0.03
 
+#: Welcher Anteil der gemeinsamen Kerzen in der Toleranz liegen muss, damit
+#: der Kreuzvergleich besteht. Nicht 100 %: eine LUECKE ist keine KORRUPTION.
+#: Die Referenzkerzen kommen live ueber die Bridge, der Export aus NinjaTraders
+#: gesetzter Historie - an der Minutengrenze weichen open/close gelegentlich um
+#: ein, zwei Ticks ab (erster/letzter *gesehener* Tick gegen ersten/letzten
+#: *Trade*), und an einem Tag, den NinjaTrader lokal nie vollstaendig geladen
+#: hat, stehen im Export ein paar Platzhalter. Beim ersten echten Import
+#: (MNQ 09-26 am 30.08.2026) lagen 99,31 % bittgenau. Ein Zeitzonen-,
+#: Beschriftungs- oder Kontraktfehler dagegen kippt ~100 % der Kerzen, nie 1 %.
+MIN_ANTEIL_IN_TOLERANZ = 0.99
+
+#: Um wie viel besser die verschobene Ausrichtung sein muss, damit der
+#: Versatztest auf einen Beschriftungsfehler schliesst. Die verschobene und die
+#: unverschobene Schnittmenge enthalten an den Raendern leicht verschiedene
+#: Kerzen; ohne Marge koennte ein Rundungsrest einen Fehlalarm ausloesen. Ein
+#: echter Ein-Minuten-Versatz hebt den Anteil um Dutzende Prozentpunkte.
+VERSATZ_MARGE = 0.02
+
 
 #: NinjaTrader benennt Kontrakte "MNQ SEP19". Monatskuerzel -> Monatszahl.
 MONATE = {
@@ -89,21 +107,40 @@ def kontrakt_aus_name(text: str) -> tuple[str, int, int] | None:
     Auch aus einem Dateinamen wie "MNQ SEP19.Last.txt" oder
     "MNQ_SEP19_minute.txt" - NinjaTrader benennt die Exportdatei nach dem
     Kontrakt, und den Namen von Hand nachzutragen waere eine Fehlerquelle.
+
+    NinjaTrader schreibt den Kontrakt je nach Kontext als Monatskuerzel
+    ("MNQ SEP19") ODER numerisch als "MM-YY" ("MNQ 09-19") - der Exportdialog
+    auf dieser Installation liefert die numerische Form, und die
+    Datenbankordner unter ``db\\minute`` heissen ebenfalls so. Beide werden
+    hier gelesen.
     """
     import re
 
+    grosstext = text.upper()
+
     treffer = re.search(
         r"([A-Z]{2,4})[ _-]?(" + "|".join(MONATE) + r")[ _-]?(\d{2}|\d{4})",
-        text.upper(),
+        grosstext,
     )
-    if not treffer:
-        return None
-    wurzel, monat, jahr = treffer.groups()
+    if treffer:
+        wurzel, monat, jahr = treffer.groups()
+        monatszahl = MONATE[monat]
+    else:
+        # Numerisch: "MNQ 09-26". Der Bindestrich ist Pflicht - ohne ihn
+        # waere "MNQ 0926" nicht von einer Kursangabe zu unterscheiden.
+        treffer = re.search(r"([A-Z]{2,4})[ _]?(\d{2})-(\d{2})", grosstext)
+        if not treffer:
+            return None
+        wurzel, monat, jahr = treffer.groups()
+        monatszahl = int(monat)
+        if not 1 <= monatszahl <= 12:
+            return None
+
     jahreszahl = int(jahr)
     if jahreszahl < 100:
         # Zweistellig: 19 -> 2019. Futures laufen nicht 80 Jahre.
         jahreszahl += 2000
-    return wurzel, jahreszahl, MONATE[monat]
+    return wurzel, jahreszahl, monatszahl
 
 
 def rollfenster(
@@ -288,8 +325,12 @@ def kreuzvergleich(
     """Stimmen die gemeinsamen Kerzen ueberein?
 
     Liefert (bestanden, Meldungen). Bestanden ist der Vergleich nur, wenn
-    genug gemeinsame Zeitstempel existieren UND alle vier Kurse je Kerze
-    innerhalb der Toleranz liegen.
+    genug gemeinsame Zeitstempel existieren, KEINE um eine Minute verschobene
+    Ausrichtung deutlich besser passt (Beschriftung, Invariante 9), UND
+    mindestens ``MIN_ANTEIL_IN_TOLERANZ`` der gemeinsamen Kerzen auf allen
+    vier Kursen innerhalb der Toleranz liegen. Nicht 100 %: eine Luecke in der
+    einen Quelle ist keine Korruption, und Live- gegen Historienkerzen weichen
+    an der Minutengrenze gelegentlich um einen Tick ab.
     """
     meldungen: list[str] = []
     gemeinsam = neu.index.intersection(referenz.index)
@@ -316,18 +357,36 @@ def kreuzvergleich(
                 )
         return False, meldungen
 
+    def kerzenabweichung(x: pd.DataFrame, y: pd.DataFrame) -> pd.Series:
+        """Groesste Abweichung je Kerze ueber die vier Kurse."""
+        return pd.concat(
+            [(x[s] - y[s]).abs() for s in ("open", "high", "low", "close")],
+            axis=1,
+        ).max(axis=1)
+
+    def anteil_in_toleranz(x: pd.DataFrame, y: pd.DataFrame) -> float:
+        return float((kerzenabweichung(x, y) <= MAX_ABWEICHUNG).mean())
+
     a = neu.loc[gemeinsam].sort_index()
     b = referenz.loc[gemeinsam].sort_index()
-    abweichungen: dict[str, float] = {}
-    for spalte in ("open", "high", "low", "close"):
-        groesste = float((a[spalte] - b[spalte]).abs().max())
-        abweichungen[spalte] = groesste
 
+    abweichungen = {
+        spalte: float((a[spalte] - b[spalte]).abs().max())
+        for spalte in ("open", "high", "low", "close")
+    }
+    je_kerze = kerzenabweichung(a, b)
+    innerhalb = je_kerze <= MAX_ABWEICHUNG
+    anteil = float(innerhalb.mean())
     schlimmste = max(abweichungen.values())
+
     meldungen.append(f"{len(gemeinsam)} gemeinsame Kerzen geprueft.")
     meldungen.append(
         "  groesste Abweichung: "
         + ", ".join(f"{s} {w:.4f}" for s, w in abweichungen.items())
+    )
+    meldungen.append(
+        f"  {int(innerhalb.sum())} von {len(gemeinsam)} Kerzen in Toleranz "
+        f"({anteil * 100:.2f} %)"
     )
 
     # Der Versatzvergleich kommt VOR dem Toleranzurteil, weil er die
@@ -336,9 +395,11 @@ def kreuzvergleich(
     # Beschriftung ist; "um eine Minute verschoben passt es besser" sagt genau,
     # was zu tun ist.
     #
-    # Und er ist auch dann noetig, wenn die Kurse innerhalb der Toleranz
-    # liegen: in einem ruhigen Markt aehneln sich benachbarte Minuten so sehr,
-    # dass eine verschobene Reihe durchrutschen wuerde.
+    # Gemessen wird jetzt am ANTEIL der Kerzen in Toleranz, nicht am einzelnen
+    # schlechtesten Balken: ein paar Ausreisser sollen das Urteil nicht kippen,
+    # ein echter Ein-Minuten-Versatz kippt den Anteil dagegen um Dutzende
+    # Prozentpunkte - auch im ruhigen Markt, in dem sich die absoluten Kurse
+    # benachbarter Minuten stark aehneln.
     for versatz in (-1, 1):
         verschoben = neu.copy()
         verschoben.index = verschoben.index + pd.Timedelta(minutes=versatz)
@@ -347,24 +408,38 @@ def kreuzvergleich(
             continue
         va = verschoben.loc[treffer].sort_index()
         vb = referenz.loc[treffer].sort_index()
-        versatz_fehler = float((va["close"] - vb["close"]).abs().max())
-        if versatz_fehler < schlimmste:
+        versatz_anteil = anteil_in_toleranz(va, vb)
+        if versatz_anteil > anteil + VERSATZ_MARGE:
             meldungen.append(
-                f"ABBRUCH: um {versatz:+d} Minute verschoben passt der Export "
-                f"BESSER ({versatz_fehler:.4f} statt {schlimmste:.4f}). Die "
-                "Beschriftung stimmt nicht - NinjaTrader beschriftet eine "
-                "Kerze mit dem ENDE ihres Fensters (Invariante 9)."
+                f"ABBRUCH: um {versatz:+d} Minute verschoben liegen deutlich "
+                f"mehr Kerzen in Toleranz ({versatz_anteil * 100:.2f} % statt "
+                f"{anteil * 100:.2f} %). Die Beschriftung stimmt nicht - "
+                "NinjaTrader beschriftet eine Kerze mit dem ENDE ihres "
+                "Fensters (Invariante 9)."
             )
             return False, meldungen
 
-    if schlimmste > MAX_ABWEICHUNG:
+    if anteil < MIN_ANTEIL_IN_TOLERANZ:
         meldungen.append(
-            f"ABBRUCH: {schlimmste:.4f} Punkte Abweichung ueberschreiten die "
-            f"Toleranz von {MAX_ABWEICHUNG}. Ein Zeitversatz wurde geprueft und "
+            f"ABBRUCH: nur {anteil * 100:.2f} % der gemeinsamen Kerzen liegen "
+            f"in der Toleranz von {MAX_ABWEICHUNG} (noetig: "
+            f"{MIN_ANTEIL_IN_TOLERANZ * 100:.0f} %), groesste Abweichung "
+            f"{schlimmste:.4f}. Ein Zeitversatz wurde geprueft und "
             "ausgeschlossen - es bleibt ein anderer Kontrakt, eine andere "
             "Zeitzone oder ein anderer Datentyp (Last/Bid/Ask)."
         )
         return False, meldungen
+
+    if not bool(innerhalb.all()):
+        ausser = je_kerze[~innerhalb]
+        tage = sorted({d.strftime("%Y-%m-%d") for d in ausser.index})
+        meldungen.append(
+            f"  {len(ausser)} Kerzen ausserhalb der Toleranz (max "
+            f"{schlimmste:.2f} Punkte), an: {', '.join(tage)}. Unter der "
+            f"Schwelle von {(1 - MIN_ANTEIL_IN_TOLERANZ) * 100:.0f} % und "
+            "nicht systematisch (Versatztest bestanden) - typisch fuer "
+            "Live-vs-Historie-Rauschen an der Minutengrenze."
+        )
 
     meldungen.append("Kreuzvergleich bestanden.")
     return True, meldungen
@@ -423,7 +498,11 @@ def schreibe_nachweis(symbol: str, timeframe: str, zeitzone: str,
 
 
 def pruefe_anschluss(
-    neu_df, referenz_df, *, max_sprung_punkte: float = 400.0
+    neu_df,
+    referenz_df,
+    *,
+    max_sprung_prozent: float = 3.0,
+    max_luecke_tage: int = 4,
 ) -> tuple[bool, list[str]]:
     """Passt der Kontrakt zeitlich und preislich an das Vorhandene an?
 
@@ -431,39 +510,62 @@ def pruefe_anschluss(
     einzige moegliche Pruefung. Sie ist schwaecher als der Kreuzvergleich und
     wird auch so benannt.
 
-    Geprueft wird der Preissprung an der Nahtstelle. Ein Rollsprung bei MNQ
-    liegt in der Groessenordnung von Dutzenden bis wenigen Hundert Punkten
-    (Zinsdifferenz und Dividenden ueber ein Quartal). Ein Sprung von mehreren
-    Tausend Punkten heisst dagegen: falscher Kontrakt, falsches Jahr oder
-    falsches Instrument.
+    Geprueft wird der Preissprung an der Nahtstelle - RELATIV, nicht in
+    absoluten Punkten. MNQ stand 2019 bei 7.500 und 2026 bei 29.500; 400
+    Punkte waren damals 5 %, heute 1,4 %. Ueber alle 29 echten Rollen von
+    JUN19 bis SEP26 lag der Sprung zwischen -0,55 % und +1,46 % (Zinsdifferenz
+    minus Dividenden ueber ein Quartal). Ein Sprung von mehreren Prozent heisst
+    dagegen: falscher Kontrakt, falsches Jahr oder falsches Instrument.
+
+    Nur der ZEITLICH ANGRENZENDE Kontrakt taugt als Nachbar. Liegt die
+    naechste vorhandene Kerze mehr als ``max_luecke_tage`` entfernt, gibt es
+    auf dieser Seite nichts anzuschliessen - das ist der Normalfall, wenn erst
+    der laufende Kontrakt in der Datenbank liegt und ein sechs Jahre alter
+    importiert wird. Frueher nahm die Pruefung stur die erste Kerze jenseits
+    der Grenze; die lag dann Jahre entfernt auf einem voellig anderen
+    Kursniveau, und jeder alte Import brach ab.
     """
     meldungen: list[str] = []
     if referenz_df.empty or neu_df.empty:
         return True, ["Kein Nachbar zum Anschliessen - nichts zu pruefen."]
 
+    grenze = pd.Timedelta(days=max_luecke_tage)
     davor = referenz_df[referenz_df.index < neu_df.index[0]]
     danach = referenz_df[referenz_df.index > neu_df.index[-1]]
 
-    for nachbar, seite, eigener in (
-        (davor, "davor", neu_df["open"].iloc[0]),
-        (danach, "danach", neu_df["close"].iloc[-1]),
+    for nachbar, seite, eigen_ts, eigener in (
+        (davor, "davor", neu_df.index[0], neu_df["open"].iloc[0]),
+        (danach, "danach", neu_df.index[-1], neu_df["close"].iloc[-1]),
     ):
         if nachbar.empty:
             continue
-        nachbarkurs = (
-            float(nachbar["close"].iloc[-1]) if seite == "davor"
-            else float(nachbar["open"].iloc[0])
-        )
-        sprung = abs(float(eigener) - nachbarkurs)
-        meldungen.append(
-            f"  Anschluss {seite}: {sprung:.1f} Punkte Sprung "
-            f"({nachbarkurs:.2f} -> {float(eigener):.2f})"
-        )
-        if sprung > max_sprung_punkte:
+        if seite == "davor":
+            nachbar_ts = nachbar.index[-1]
+            nachbarkurs = float(nachbar["close"].iloc[-1])
+        else:
+            nachbar_ts = nachbar.index[0]
+            nachbarkurs = float(nachbar["open"].iloc[0])
+
+        luecke = abs(nachbar_ts - eigen_ts)
+        if luecke > grenze:
             meldungen.append(
-                f"ABBRUCH: {sprung:.1f} Punkte sind kein Rollsprung. Das "
-                "deutet auf einen falschen Kontrakt, ein falsches Jahr oder "
-                "ein anderes Instrument hin."
+                f"  Anschluss {seite}: naechste Kerze {luecke.days} Tage "
+                "entfernt - kein direkter Nachbar, nichts anzuschliessen."
+            )
+            continue
+
+        sprung = abs(float(eigener) - nachbarkurs)
+        sprung_prozent = sprung / nachbarkurs * 100 if nachbarkurs else 0.0
+        meldungen.append(
+            f"  Anschluss {seite}: {sprung:.1f} Punkte / {sprung_prozent:.2f} % "
+            f"Sprung ({nachbarkurs:.2f} -> {float(eigener):.2f})"
+        )
+        if sprung_prozent > max_sprung_prozent:
+            meldungen.append(
+                f"ABBRUCH: {sprung_prozent:.2f} % sind kein Rollsprung "
+                f"(groesste echte MNQ-Rolle: 1,46 %). Das deutet auf einen "
+                "falschen Kontrakt, ein falsches Jahr oder ein anderes "
+                "Instrument hin."
             )
             return False, meldungen
 
@@ -555,8 +657,13 @@ def main(argv: list[str] | None = None) -> int:
         # jede Formel, wann gerollt wurde. Nur wenn der Ordner fehlt, wird
         # gerechnet - und das steht dann auch da.
         plan = {} if args.rolltage_erzwingen else rollplan_aus_nt8(wurzel)
-        if kennung in plan:
-            von, bis = plan[kennung]
+        # ``rollplan_aus_nt8`` schluesselt auf (jahr, monat) - ``kennung`` ist
+        # ein Dreitupel (wurzel, jahr, monat). Frueher stand hier
+        # ``kennung in plan``, was nie zutraf: der Import fiel still auf die
+        # gerechnete Acht-Tage-Formel zurueck, obwohl der Bestand vorlag.
+        planschluessel = (jahr, monat)
+        if planschluessel in plan:
+            von, bis = plan[planschluessel]
             herkunft = "aus NinjaTraders Datenbestand"
         else:
             von, bis = rollfenster(wurzel, jahr, monat, rolltage=args.rolltage)

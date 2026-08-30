@@ -91,9 +91,9 @@ Der Import schneidet ohnehin auf das Rollfenster zu — ein etwas
 grosszuegigerer Zeitraum im Export schadet also nicht. **Leer lassen darfst du
 das Startdatum trotzdem nie**, siehe oben.
 
-## Reihenfolge: SEP26 zuerst
+## Reihenfolge: laufender Kontrakt zuerst, dann von alt nach neu
 
-**Der laufende Kontrakt muss als erster importiert werden.** Nur er
+**Der laufende Kontrakt (MNQ 09-26) muss als erster importiert werden.** Nur er
 überschneidet sich mit den Kerzen, die die Bridge gesammelt hat, und nur an
 dieser Überlappung lässt sich prüfen, ob Zeitzone und Beschriftung stimmen.
 Besteht diese Prüfung, wird ein Formatnachweis gespeichert
@@ -102,38 +102,55 @@ durch — sie überschneiden sich mit nichts von 2026.
 
 Ohne diesen Nachweis lehnt der Import einen alten Kontrakt ab. Das ist Absicht.
 
+**Die übrigen 29 danach von alt nach neu** (JUN19, SEP19, … , JUN26). Die
+Anschlussprüfung vergleicht den Rollsprung zum *zeitlich angrenzenden*
+Kontrakt — der muss also schon in der Datenbank liegen. Importiert man von neu
+nach alt, sieht jeder Kontrakt als einzigen Nachbarn den sechs Jahre
+entfernten laufenden Kontrakt, und die Prüfung hat nichts Sinnvolles zu tun.
+
 ## Wie lange dauert das
 
-Ein Kontrakt umfasst rund 90.000 Minutenkerzen. Liegt er lokal vor — und das
-tut er, wenn er unter „Geladen!" steht — sind das Sekunden bis wenige Minuten.
-Zieht es sich über Minuten ohne Ergebnis, fehlt das Startdatum oder die
-Serververbindung hakt.
+Ein Kontrakt umfasst rund 85.000 Minutenkerzen. Liegt er lokal vor — und das
+tut er, wenn er unter „Geladen!" steht — dauert der Export Sekunden bis wenige
+Minuten. Das *Schreiben* in die Datenbank braucht dann noch einmal 15–20
+Sekunden je Kontrakt. Zieht sich der Export über Minuten ohne Ergebnis, fehlt
+das Startdatum oder die Serververbindung hakt.
 
 ## Importieren
+
+Die Exportdateien heißen `MNQ MM-YY.Last.txt` (z.B. `MNQ 09-26.Last.txt`) und
+liegen in `C:\Users\lm130\Documents\NinjaTrader 8\export\`.
+
+**Diese Installation exportiert in UTC, nicht in `America/New_York`** — die
+Vorgabe des Werkzeugs stimmt hier also nicht, `--zeitzone UTC` gehört an jeden
+Aufruf. (NinjaTrader exportiert in seiner Anzeigezeitzone; die steht hier auf
+UTC. Der Formatnachweis hält die Zeitzone pro Eintrag fest.) Stimmt die
+Zeitzone nicht, schlägt der Kreuzvergleich fehl und sagt das.
 
 Erst prüfen, geschrieben wird nichts:
 
 ```bash
-.venv\Scripts\python.exe werkzeuge\nt8_import.py "C:\Users\lm130\Documents\NinjaTrader 8\export\MNQ SEP26.txt"
+.venv\Scripts\python.exe werkzeuge\nt8_import.py "C:\Users\lm130\Documents\NinjaTrader 8\export\MNQ 09-26.Last.txt" --zeitzone UTC
 ```
 
 Sieht das gut aus, dasselbe mit `--schreiben`:
 
 ```bash
-.venv\Scripts\python.exe werkzeuge\nt8_import.py "...\MNQ SEP26.txt" --schreiben
+.venv\Scripts\python.exe werkzeuge\nt8_import.py "...\MNQ 09-26.Last.txt" --zeitzone UTC --schreiben
 ```
-
-Vorgabe für die Zeitzone ist `America/New_York`. Stimmt sie nicht, schlägt der
-Kreuzvergleich fehl und sagt das — dann `--zeitzone` setzen.
 
 ## Was der Import prüft
 
 1. **Kreuzvergleich** gegen die vorhandenen Kerzen (nur beim laufenden
-   Kontrakt möglich): stimmen die Kurse auf 0,03 Punkte?
+   Kontrakt möglich): stimmen mindestens 99 % der gemeinsamen Kerzen auf
+   0,03 Punkte? Ein paar Ausreißer sind erlaubt — eine Lücke in einer Quelle
+   ist keine Korruption. Bei MNQ 09-26 lagen 99,31 % bittgenau.
 2. **Beschriftung**: liegt die Reihe um eine Minute verschoben *besser* auf der
    Referenz, bricht der Import ab. NinjaTrader beschriftet eine Kerze mit dem
    **Ende** ihres Fensters — genau dieser Fehler ist bei den Dukascopy-Daten
    passiert und war an den Kursen nicht zu sehen.
 3. **Rollfenster**: alles außerhalb wird verworfen.
-4. **Anschluss** (bei alten Kontrakten): der Preissprung zum Nachbarkontrakt
-   muss ein Rollsprung sein und keine Größenordnung.
+4. **Anschluss** (bei alten Kontrakten): der Preissprung zum *zeitlich
+   angrenzenden* Kontrakt muss ein Rollsprung sein — relativ gemessen, unter
+   3 % (die größte echte MNQ-Rolle seit 2019 war 1,46 %). Liegt der nächste
+   Nachbar mehr als 4 Tage entfernt, gibt es nichts anzuschließen.

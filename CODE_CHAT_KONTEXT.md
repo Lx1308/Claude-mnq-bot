@@ -10,7 +10,9 @@ UTF-8-BOM), Ausführungsschicht neu gebaut: `common/kontoregeln.py`,
 `execution/store.py`, `execution/risiko.py`, `execution/buchung.py`,
 `execution/bot.py`, `execution/overlays.py`. Chart-Overlays und
 Strategie-Panel an die vorhandene Erkennung angeschlossen, Asia-/London-Level
-in `common/levels.py` ergänzt. 543 Tests, grün.)
+in `common/levels.py` ergänzt. Abschnitt 34.9: die NT8-Historie ist
+importiert — 2,57 Mio MNQ-Minutenkerzen von 2019 bis August 2026, vier
+Import-Bugs unterwegs behoben. Tests grün.)
 Davor Abschnitt 33 — Vollständige Formalisierung der Marktprimitive
 (FVG, Displacement, EQH/EQL, Liquidity Sweeps BSL/SSL, Reclaims, MSS/BOS/CHoCH)
 in `common/market_primitives.py`, Multi-Timeframe Resampling & 4h-Integration
@@ -3121,3 +3123,72 @@ Kontrakte, 1.954 Handelstage, Mai 2019 bis heute.
 
 Kleine Dateien (unter 40 Byte) sind Platzhalter ohne Kerzen und wuerden den
 Beginn faelschlich vorziehen; sie werden uebergangen.
+
+### 34.9 NT8-Historie importiert: 30 Kontrakte, Mai 2019 bis August 2026 (30.08.2026)
+
+Die Exporte lagen als `MNQ MM-YY.Last.txt` in `Documents/NinjaTrader 8/export/`
+(Minuten-OHLCV, Semikolon, `yyyyMMdd HHmmss`). Beim Import fielen vier Dinge
+auf, alle in `werkzeuge/nt8_import.py` behoben, jeweils mit Regressionstest
+(`tests/test_nt8_import.py`, jetzt 32 Tests).
+
+**1. Die Exporte sind in UTC, nicht `America/New_York`.** Der Kreuzvergleich
+gegen die Bridge-Kerzen war eindeutig: als UTC gelesen stimmen **99,31 % der
+9.310 gemeinsamen Kerzen bittgenau** (Return-Korrelation 0,9992); als
+`America/New_York` gelesen liegt die Reihe vier Stunden daneben
+(Niveau-Korrelation faellt von 1,000 auf 0,87, Return-Korrelation auf 0,05).
+NinjaTrader exportiert in seiner Anzeigezeitzone, und die steht auf dieser
+Installation auf UTC. **Jeder Import braucht `--zeitzone UTC`.** Der
+Formatnachweis (`data/nt8_import_nachweis.json`) haelt die Zeitzone pro Eintrag
+fest — ein Nachweis fuer `America/New_York` uebertraegt sich nicht auf UTC.
+
+**2. `rollplan_aus_nt8` (der Fund aus 34.8) war toter Code.** `main()` verglich
+das Dreitupel `(wurzel, jahr, monat)` gegen die `(jahr, monat)`-Schluessel des
+Plans — `if kennung in plan` traf nie zu, der Import fiel still auf die
+gerechnete Acht-Tage-Formel zurueck. Der Dry-Run sagte `(gerechnet, 8 Tage vor
+Verfall)` statt `(aus NinjaTraders Datenbestand)`. Kein Test deckte `main()`
+ab; die Tests aus 34.8 pruefen `rollplan_aus_nt8` und `rollfenster` einzeln.
+
+**3. Numerische Dateinamen (`MNQ 09-26.Last.txt`) wurden nicht erkannt** — nur
+`MNQ SEP26`. `kontrakt_aus_name` liest jetzt beide Schreibweisen; die
+`db/minute`-Ordner heissen ohnehin `MNQ MM-YY`.
+
+**4. Zwei Schutzpruefungen waren fuer die Realitaet zu streng.** Beide
+Aenderungen wurden Laurin am 30.08.2026 vorgelegt und von ihm freigegeben
+(Ausreisser-Toleranz: „einbauen"; die 2 stale Kerzen am 21.08. duerfen die
+Bridge-Kerzen ueberschreiben).
+
+- `kreuzvergleich` brach bei **jeder** Kerze ausserhalb 0,03 Punkten ab. Bei
+  MNQ 09-26 waren 64 von 9.310 daneben: 2 am 21.08.2026 (NT8s eigene
+  Lokaldatei fuer den Tag ist 935 Byte gross, quasi leer — die Bridge hat
+  1.260 Kerzen), 62 am 24./25.08. mit <= 5 Punkten, fast alle <= 1 Punkt, und
+  **ausschliesslich auf open/close, nie auf high/low** — Live-Tick gegen
+  Historien-Trade an der Minutengrenze. Neu: besteht bei **>= 99 % in
+  Toleranz** UND wenn keine +-1-Minuten-Verschiebung deutlich mehr Kerzen in
+  Toleranz bringt (Marge 2 Prozentpunkte gegen Rundungsflattern an den
+  Rand-Kerzen). Der Versatztest misst jetzt am **Anteil**, nicht am einzelnen
+  schlechtesten Balken. Die Zeitzonen-/Beschriftungs-/Kontraktabsicherung
+  bleibt voll erhalten — die scheitert bei ~100 % der Kerzen, nie bei 1 %.
+- `pruefe_anschluss` verglich den Rollsprung in **absoluten Punkten** gegen
+  400. MNQ stand 2019 bei 7.500 und 2026 bei 29.500 — 400 Punkte waren damals
+  5 %, heute 1,4 %. Ueber alle 29 echten Rollen JUN19–SEP26 lag der Sprung
+  zwischen **-0,55 % und +1,46 %**. Neu: relativ gegen **3 %**. Ausserdem nahm
+  die Pruefung stur die erste Kerze jenseits der Kontraktgrenze als Nachbarn
+  — beim ersten Alt-Import ist das der laufende Kontrakt, Jahre entfernt auf
+  einem ganz anderen Kursniveau, und **jeder Alt-Import brach ab**. Neu:
+  liegt der naechste Nachbar mehr als **4 Tage** entfernt, gibt es nichts
+  anzuschliessen.
+
+**Importreihenfolge:** MNQ 09-26 zuerst (schreibt den Formatnachweis), dann
+die uebrigen 29 **von alt nach neu**, damit jeder Kontrakt seinen bereits
+importierten Vorgaenger als Anschlussnachbarn sieht.
+
+**Ergebnis:** `data/ntbridge.sqlite3` haelt jetzt **2.573.719 MNQ-Minutenkerzen**
+(`source='nt8_export'` 2.572.461, `source='ninjatrader'` 1.258), von
+2019-05-06 bis 2026-08-28, null doppelte Zeitstempel. Rund 352.000 Kerzen je
+vollem Jahr. Die Luecken sind Wochenenden plus vereinzelte Duennmarkt-Minuten
+2019–2021 (das ist, was NinjaTrader lokal vorhaelt). Die Backtests rechnen ab
+jetzt auf sieben Jahren statt auf zehn Tagen — die p-Werte werden damit
+ueberhaupt erst aussagekraeftig, und die Mehrfachtestkorrektur wird noetig.
+
+Sicherung vor dem Import: `ntbridge.sqlite3` wurde vorher in den
+Scratchpad kopiert (nicht im Repo).

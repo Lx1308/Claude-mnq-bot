@@ -27,6 +27,11 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 - [x] **P1** Asia-/London-Level in `common/levels.py`
 - [x] **P1** Strategie-Panel echt (Ideen + Ablehnungsgründe)
 - [x] **P1** Historien-Import aus NT8 mit erzwungenem Kreuzvergleich
+- [x] **P1** NT8-Historie **tatsächlich importiert** — 2,57 Mio
+      MNQ-Minutenkerzen 2019–08/2026, vier Import-Bugs behoben
+      (Zeitzone UTC, toter `rollplan_aus_nt8`, numerische Dateinamen,
+      zu strenge Kreuzvergleich-/Anschlussprüfung). Details:
+      `CODE_CHAT_KONTEXT.md` 34.9
 - [x] **P1** Pine-Export und TradingView-Ergebnisimport
 - [x] **P1** Research-Engine neu (Split, Kosten, Register, ehrliches Protokoll)
 - [x] **P1** Watchdog mit Sperre, Tageslimit, Notaus und Parallelitätsprüfung
@@ -54,19 +59,14 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 
 ## P1 — Forschungsgrundlage
 
-- [ ] **NT8-Historie tatsächlich importieren.** Das Werkzeug steht
-      (`werkzeuge/nt8_import.py`), der Export fehlt. NinjaTrader hält
-      MNQ-Minutendaten von 30 Kontrakten zurück bis 2019 vor.
-      Ablauf und die Start-/Enddaten für alle 30 Kontrakte stehen in
-      `docs/NT8_EXPORT_ANLEITUNG.md`. **MNQ SEP26 muss zuerst importiert
-      werden** (Formatnachweis), danach die übrigen in beliebiger Reihenfolge.
-      Zu holen sind 1.954 Handelstage ab Mai 2019 — danach rechnen die
-      Backtests auf Jahren statt auf zehn Tagen, und die p-Werte werden
-      überhaupt erst aussagekräftig.
-
-- [ ] **Erst danach: Hypothesen ernsthaft rechnen.** Auf zehn Tagen sind alle
-      Urteile „UNENTSCHIEDEN" (unter 30 Trades). Mit Jahreshistorie werden die
-      p-Werte erst aussagekräftig — und die Mehrfachtestkorrektur nötig.
+- [ ] **Hypothesen ernsthaft rechnen — jetzt möglich.** Bis 30.08.2026 waren
+      auf zehn Tagen alle Urteile „UNENTSCHIEDEN" (unter 30 Trades). Seit dem
+      NT8-Import liegen sieben Jahre Minutenhistorie in
+      `data/ntbridge.sqlite3` — die Backtests rechnen auf Jahren, die p-Werte
+      werden aussagekräftig, und die Mehrfachtestkorrektur (P3) wird nötig.
+      **Achtung Forschungsintegrität:** die frühe Historie 2019–2021 hat mehr
+      Dünnmarkt-Lücken (junger Micro-Kontrakt); das ist kein Datenfehler, aber
+      bei Ergebnissen aus diesem Zeitraum zu bedenken.
 
 - [ ] **Die vier Hypothesen aus der Antigravity-Phase als Strategien bauen:**
       15-Minuten-Opening-Range-Breakout, ICT Silver Bullet (10–11 ET),
@@ -90,6 +90,16 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
       Trade-Zeitraums holt und die Felder füllt.
 
 ## P2 — Aufräumen und Härten
+
+- [ ] **`nt8_import` Kreuzvergleich beim Re-Import des Frontkontrakts.**
+      Liegt der Frontkontrakt schon in `ntbridge.sqlite3` und wird er
+      erneut importiert, vergleicht der Kreuzvergleich den Export gegen
+      seine *eigenen* schon geschriebenen Kerzen — die Prüfung wird trivial,
+      und `nt8_import_nachweis.json` bekommt eine nichtssagende
+      `gemeinsame_kerzen`-Zahl (nach dem Import-Lauf vom 30.08.2026 stand da
+      75423 statt der echten 9310; von Hand korrigiert). Fix: nur gegen
+      Referenzkerzen aus einer *anderen* `source` vergleichen
+      (`BarStore.load_frame` müsste die Spalte durchreichen).
 
 - [ ] **`ib_breakout` ist weiterhin nicht Pine-exportierbar** und
       `flag_breakout` auch nicht. Beide hängen an selbst gerechneten Spalten.
