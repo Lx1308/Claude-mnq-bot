@@ -16,6 +16,7 @@ Vorteile gegenueber frei geschriebenem Code:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
+from typing import Mapping
 from dataclasses import dataclass, field
 from datetime import time as dtime
 from typing import Any
@@ -55,6 +56,16 @@ class BarContext:
         return float("nan") if raw is None else float(raw)
 
 
+class NichtUebersetzbar(NotImplementedError):
+    """Diese Regel laesst sich nicht nach Pine uebersetzen.
+
+    Kein Fehler, sondern eine Auskunft: manche Regeln haengen an Spalten, die
+    ``common.indicators`` selbst berechnet (Flaggen, Initial Balance) und die
+    es auf TradingView nicht gibt. Sie zu naehern waere schlimmer als sie
+    wegzulassen - der Vergleich haette dann keine Aussage mehr.
+    """
+
+
 class Rule(ABC):
     """Basisklasse aller Regeln."""
 
@@ -89,6 +100,29 @@ class Rule(ABC):
         """
         return set()
 
+    def nach_pine(self, spalten: "Mapping[str, str]") -> str:
+        """Dieselbe Bedingung als Pine-Ausdruck.
+
+        WARUM DIE UEBERSETZUNG HIER STEHT UND NICHT IN EINEM EIGENEN MODUL
+        -----------------------------------------------------------------
+        Laurin will die lokal gefundenen Hypothesen auf TradingView ueber
+        rund 2 Mio. Kerzen nachrechnen lassen. Damit dieser Vergleich etwas
+        bedeutet, muss die Pine-Fassung **dieselbe Bedingung** pruefen wie
+        ``evaluate``. Steht die Uebersetzung in einer zweiten Datei, aendert
+        frueher oder spaeter jemand nur eine der beiden - und dann vergleicht
+        man zwei verschiedene Strategien, ohne es zu merken.
+
+        ``spalten`` bildet unsere Spaltennamen auf Pine-Ausdruecke ab
+        (``"close"`` -> ``"close"``, ``"sma_slow"`` -> ``"smaSlow"``). Was
+        dort fehlt, ist nicht uebersetzbar - dann fliegt
+        :class:`NichtUebersetzbar`, und der Export **verweigert**, statt zu
+        naehern. Eine genaeherte Pine-Fassung waere genau die Art Zahl, die
+        aussieht wie eine Messung.
+        """
+        raise NichtUebersetzbar(
+            f"{type(self).__name__} hat keine Pine-Entsprechung."
+        )
+
     def __and__(self, other: "Rule") -> "AllOf":
         return AllOf(self, other)
 
@@ -118,6 +152,10 @@ class AllOf(Rule):
     def benoetigte_spalten(self) -> set[str]:
         return set().union(*(rule.benoetigte_spalten() for rule in self._rules)) if self._rules else set()
 
+
+    def nach_pine(self, spalten):
+        return "(" + " and ".join(r.nach_pine(spalten) for r in self._rules) + ")"
+
     def describe(self) -> str:
         return " UND ".join(f"({rule.describe()})" for rule in self._rules)
 
@@ -134,6 +172,10 @@ class AnyOf(Rule):
     def benoetigte_spalten(self) -> set[str]:
         return set().union(*(rule.benoetigte_spalten() for rule in self._rules)) if self._rules else set()
 
+
+    def nach_pine(self, spalten):
+        return "(" + " or ".join(r.nach_pine(spalten) for r in self._rules) + ")"
+
     def describe(self) -> str:
         return " ODER ".join(f"({rule.describe()})" for rule in self._rules)
 
@@ -148,6 +190,10 @@ class Not(Rule):
     def benoetigte_spalten(self) -> set[str]:
         return self._rule.benoetigte_spalten()
 
+
+    def nach_pine(self, spalten):
+        return f"(not {self._rule.nach_pine(spalten)})"
+
     def describe(self) -> str:
         return f"NICHT ({self._rule.describe()})"
 
@@ -158,6 +204,10 @@ class Always(Rule):
 
     def evaluate(self, ctx: BarContext) -> bool:
         return self._value
+
+
+    def nach_pine(self, spalten):
+        return "true"
 
     def describe(self) -> str:
         return "immer" if self._value else "nie"
@@ -192,6 +242,14 @@ class ColumnAbove(Rule):
     def benoetigte_spalten(self) -> set[str]:
         return _spaltennamen(self._column, self._reference)
 
+
+    def nach_pine(self, spalten):
+        links = _pine_wert(self._column, spalten)
+        rechts = _pine_wert(self._reference, spalten)
+        if self._offset:
+            rechts = f"({rechts} + {abs(self._offset)})"
+        return f"({links} > {rechts})"
+
     def describe(self) -> str:
         suffix = f" + {self._offset}" if self._offset else ""
         return f"{self._column} > {self._reference}{suffix}"
@@ -209,6 +267,14 @@ class ColumnBelow(Rule):
 
     def benoetigte_spalten(self) -> set[str]:
         return _spaltennamen(self._column, self._reference)
+
+
+    def nach_pine(self, spalten):
+        links = _pine_wert(self._column, spalten)
+        rechts = _pine_wert(self._reference, spalten)
+        if self._offset:
+            rechts = f"({rechts} - {abs(self._offset)})"
+        return f"({links} < {rechts})"
 
     def describe(self) -> str:
         suffix = f" - {self._offset}" if self._offset else ""
@@ -233,6 +299,16 @@ class CrossesAbove(Rule):
     def benoetigte_spalten(self) -> set[str]:
         return _spaltennamen(self._column, self._reference)
 
+
+    def nach_pine(self, spalten):
+        links = _pine_wert(self._column, spalten)
+        rechts = _pine_wert(self._reference, spalten)
+        puffer = f" + {self._buffer}" if self._buffer else ""
+        # Bewusst ausgeschrieben statt ta.crossover(): das Original prueft
+        # "vorher <= Referenz UND jetzt > Referenz + Puffer" - ta.crossover
+        # kennt keinen Puffer und waere damit eine andere Bedingung.
+        return f"({_vor(links)} <= {_vor(rechts)} and {links} > {rechts}{puffer})"
+
     def describe(self) -> str:
         suffix = f" (Puffer {self._buffer})" if self._buffer else ""
         return f"{self._column} kreuzt {self._reference} von unten{suffix}"
@@ -254,6 +330,13 @@ class CrossesBelow(Rule):
     def benoetigte_spalten(self) -> set[str]:
         return _spaltennamen(self._column, self._reference)
 
+
+    def nach_pine(self, spalten):
+        links = _pine_wert(self._column, spalten)
+        rechts = _pine_wert(self._reference, spalten)
+        puffer = f" - {self._buffer}" if self._buffer else ""
+        return f"({_vor(links)} >= {_vor(rechts)} and {links} < {rechts}{puffer})"
+
     def describe(self) -> str:
         suffix = f" (Puffer {self._buffer})" if self._buffer else ""
         return f"{self._column} kreuzt {self._reference} von oben{suffix}"
@@ -274,6 +357,18 @@ class FlagBreakout(Rule):
     def benoetigte_spalten(self) -> set[str]:
         return {self._column}
 
+
+    def nach_pine(self, spalten):
+        # Die Spalten flag_breakout_up/-down entstehen in
+        # common.indicators.compute_indicators aus Impuls, Konsolidierung und
+        # Ausbruchspuffer. Auf TradingView gibt es sie nicht; sie dort
+        # nachzubauen waere eine zweite Implementierung derselben Logik - und
+        # jede Abweichung machte den Vergleich wertlos.
+        raise NichtUebersetzbar(
+            "FlagBreakout haengt an flag_breakout_up/-down aus "
+            "common.indicators - auf TradingView nicht vorhanden."
+        )
+
     def describe(self) -> str:
         return f"Flaggen-Ausbruch nach {'oben' if self._direction == 'up' else 'unten'}"
 
@@ -291,6 +386,11 @@ class Rising(Rule):
     def benoetigte_spalten(self) -> set[str]:
         return {self._column}
 
+
+    def nach_pine(self, spalten):
+        wert = _pine_wert(self._column, spalten)
+        return f"({wert} > {_vor(wert)})"
+
     def describe(self) -> str:
         return f"{self._column} steigt"
 
@@ -307,6 +407,11 @@ class Falling(Rule):
 
     def benoetigte_spalten(self) -> set[str]:
         return {self._column}
+
+
+    def nach_pine(self, spalten):
+        wert = _pine_wert(self._column, spalten)
+        return f"({wert} < {_vor(wert)})"
 
     def describe(self) -> str:
         return f"{self._column} faellt"
@@ -354,6 +459,16 @@ class PreviousDeviationExceeds(Rule):
 
     def benoetigte_spalten(self) -> set[str]:
         return _spaltennamen(self._column, self._reference, self._atr_column)
+
+
+    def nach_pine(self, spalten):
+        wert = _vor(_pine_wert(self._column, spalten))
+        bezug = _vor(_pine_wert(self._reference, spalten))
+        atr = _vor(_pine_wert(self._atr_column, spalten))
+        schwelle = f"({self._multiple} * {atr})"
+        if self._side == "above":
+            return f"({atr} > 0 and ({wert} - {bezug}) >= {schwelle})"
+        return f"({atr} > 0 and ({wert} - {bezug}) <= -{schwelle})"
 
     def describe(self) -> str:
         richtung = "ueber" if self._side == "above" else "unter"
@@ -438,6 +553,30 @@ class DeviationReentry(Rule):
     def benoetigte_spalten(self) -> set[str]:
         return _spaltennamen(self._column, self._reference, self._atr_column)
 
+
+    def nach_pine(self, spalten):
+        wert = _pine_wert(self._column, spalten)
+        bezug = _pine_wert(self._reference, spalten)
+        atr = _pine_wert(self._atr_column, spalten)
+        v_wert, v_bezug, v_atr = _vor(wert), _vor(bezug), _vor(atr)
+        vorher = f"({v_wert} - {v_bezug})"
+        jetzt = f"({wert} - {bezug})"
+        m = self._multiple
+
+        if self._side == "below":
+            war_draussen = f"{vorher} <= -({m} * {v_atr})"
+            ist_drinnen = f"{jetzt} > -({m} * {atr})"
+            noch_nicht_durch = f"{jetzt} < 0"
+        else:
+            war_draussen = f"{vorher} >= ({m} * {v_atr})"
+            ist_drinnen = f"{jetzt} < ({m} * {atr})"
+            noch_nicht_durch = f"{jetzt} > 0"
+
+        return (
+            f"({v_atr} > 0 and {atr} > 0 and {war_draussen} and "
+            f"{ist_drinnen} and {noch_nicht_durch})"
+        )
+
     def describe(self) -> str:
         richtung = "unterhalb" if self._side == "below" else "oberhalb"
         return (
@@ -470,6 +609,16 @@ class SessionTimeWindow(Rule):
         # Fenster ueber Mitternacht
         return local >= self._start or local <= self._end
 
+
+    def nach_pine(self, spalten):
+        # Pine prueft Zeitfenster ueber time() mit Sitzungsangabe. Die
+        # Zeitzone wird mitgegeben, damit die Sommerzeit dort genauso
+        # einfliesst wie in ZoneInfo hier.
+        fenster = f"{self._start:%H%M}-{self._end:%H%M}"
+        return (
+            f'(not na(time(timeframe.period, "{fenster}", "{self._tz_name}")))'
+        )
+
     def describe(self) -> str:
         return f"Uhrzeit {self._start:%H:%M}-{self._end:%H:%M} ({self._tz_name})"
 
@@ -482,6 +631,16 @@ class MinBarsInTrade(Rule):
 
     def evaluate(self, ctx: BarContext) -> bool:
         return ctx.bars_in_trade >= self._minimum
+
+
+    def nach_pine(self, spalten):
+        # bars_in_trade ist Zustand der Engine, nicht der Kerzen. Pine kennt
+        # das ueber strategy.opentrades.entry_bar_index, aber nur INNERHALB
+        # eines offenen Trades - eine Bedingung, die hier als reiner
+        # Kerzenausdruck gebraucht wird. Lieber ehrlich ablehnen.
+        raise NichtUebersetzbar(
+            "MinBarsInTrade braucht den Zustand der Engine, nicht der Kerze."
+        )
 
     def describe(self) -> str:
         return f"mindestens {self._minimum} Kerzen im Trade"
@@ -559,3 +718,47 @@ class RuleStrategy:
     @property
     def trades_short(self) -> bool:
         return self.short_entry is not None
+
+
+# ---------------------------------------------------------------------------
+# Pine-Uebersetzung: Hilfsfunktionen
+# ---------------------------------------------------------------------------
+
+def _pine_wert(bezug: "str | float", spalten: "Mapping[str, str]") -> str:
+    """Spaltenname oder Konstante als Pine-Ausdruck.
+
+    Eine Zahl bleibt eine Zahl. Ein Spaltenname muss in der Abbildung stehen -
+    sonst ist die Regel nicht uebersetzbar, und das ist ein Abbruch und keine
+    Naeherung.
+    """
+    if isinstance(bezug, (int, float)):
+        return repr(float(bezug))
+    name = str(bezug)
+    if name not in spalten:
+        raise NichtUebersetzbar(
+            f"Fuer die Spalte {name!r} gibt es keine Pine-Entsprechung."
+        )
+    return spalten[name]
+
+
+def _vor(ausdruck: str) -> str:
+    """Derselbe Ausdruck eine Kerze frueher.
+
+    In Pine ist das der Index ``[1]``. Drei Faelle:
+
+    * Eine **Konstante** bleibt unveraendert. ``30.0[1]`` ist in Pine kein
+      gueltiger Ausdruck, und eine Zahl war vor einer Kerze ohnehin dieselbe.
+    * Ein zusammengesetzter Ausdruck wird geklammert, sonst bezoege sich der
+      Index nur auf den letzten Teilausdruck.
+    * Ein einfacher Bezeichner bekommt den Index direkt.
+    """
+    try:
+        float(ausdruck)
+        return ausdruck
+    except ValueError:
+        pass
+    if ausdruck.startswith("(") and ausdruck.endswith(")"):
+        return f"{ausdruck}[1]"
+    if any(zeichen in ausdruck for zeichen in " +-*/()"):
+        return f"({ausdruck})[1]"
+    return f"{ausdruck}[1]"
