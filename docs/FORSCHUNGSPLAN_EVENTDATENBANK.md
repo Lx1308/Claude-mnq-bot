@@ -6,7 +6,9 @@ wie entwickeln sie sich danach.
 
 > **Stand 30.08.2026:** Die fünf offenen Entscheidungen sind getroffen
 > (Abschnitt 15). Der Plan ist freigegeben, die Umsetzung folgt den
-> Etappen aus Abschnitt 14.
+> Etappen aus Abschnitt 14. Eine externe Durchsicht hat fünf
+> Schema-Ergänzungen ausgelöst — dokumentiert in Abschnitt 16, eingearbeitet
+> in die Abschnitte 2, 6, 9 und 12.
 
 ---
 
@@ -53,6 +55,20 @@ Ereignisdatenbank selbst, die Outcome-Klassifikation und die Stop-Analyse.
 | **Ticks** | Keine Intrabar-Reihenfolge. Ob innerhalb einer Minute erst das High oder erst das Low kam, ist unbekannt. |
 | **Orderbuch / DOM** | Keine Liquiditätstiefe. „Liquidity" wird hier ausschließlich als *Preisniveau, an dem Stops vermutet werden* definiert — nicht als tatsächliche Order-Liquidität. |
 | **Terminkalender vor der laufenden Woche** | Forex Factory liefert nur die aktuelle Woche. Historische Termindaten gibt es nur über FRED/ALFRED (8 Makroreihen) und deterministisch ableitbare Termine (FOMC, NFP, Verfallstage, Monatsende). |
+| **ES-Minutenreihe** | Für NQ-gegen-ES-Divergenz (SMT) fehlt eine belastbare ES-Reihe. `smt_divergenz` bleibt `NULL`, bis eine Quelle angebunden ist — Dukascopy hat einen S&P-Index-CFD, dessen Tauglichkeit für Richtungsdivergenzen (nicht Niveaus) noch zu prüfen ist. |
+
+### Makro-Kontext, der erlaubt und billig ist
+
+CLAUDE.md (25.08.2026) erlaubt passive Cross-Asset-Kontextdaten ausdrücklich —
+über **externe Quellen**, nie über die NT8-MNQ-Bridge. Damit in Reichweite:
+
+- **VIX täglich** (FRED `VIXCLS`): Vortagesschluss, rollierendes Terzil,
+  5-Tages-Delta. Ausbruchsverhalten hängt stark am Vola-Regime des Gesamtmarkts;
+  der instrumenteneigene ATR fängt das nur teilweise. Kommt als Merkmal in
+  `events`, kostet fast nichts.
+- **NQ/ES-Divergenz (SMT)**: konzeptionell wertvoll (institutioneller
+  Arbitrage-Fluss), aber ES-Daten fehlen — siehe Tabelle oben. Feld ist im
+  Schema vorgesehen, bleibt vorerst leer.
 
 ### Datenqualität, die dokumentiert gehört
 
@@ -330,9 +346,27 @@ trend_4h            TEXT
 abstand_vwap_atr    REAL
 abstand_pdh_atr     REAL
 abstand_pdl_atr     REAL
-volumen_relativ     REAL                 vs. gleiche Tageszeit
+volumen_relativ     REAL                 am verfuegbar_idx, vs. gleiche Tageszeit
+volumen_am_extremum_relativ REAL         am Pattern-Extremum (Swing-Tief/-Hoch,
+                                         Sweep-Kerze), vs. Session-Norm. Ein
+                                         Sweep mit hohem Volumen ist strukturell
+                                         etwas anderes als einer bei duennem.
+                                         Ersatz fuer das fehlende Orderbuch.
 naechstes_level_ueber REAL
 naechstes_level_unter REAL
+
+-- Makro-Kontext (externe Quellen, nie ueber die NT8-Bridge; CLAUDE.md 25.08.2026)
+vix_schluss         REAL                 VIX Vortagesschluss (FRED VIXCLS)
+vix_regime          TEXT                 Terzil rollierend 60 Handelstage
+vix_veraenderung_5t REAL                 5-Tages-Delta, als Merkmal
+smt_divergenz       INTEGER              -1/0/+1, NQ gegen ES am letzten Swing;
+                                         NULL solange keine ES-Reihe angebunden
+
+-- Klumpen (mehrere gleichzeitige Signale, Abschnitt 12.1)
+cluster_id          TEXT                 gemeinsame ID fuer Ereignisse, die
+                                         innerhalb von 3 Kerzen in dieselbe
+                                         Richtung feuern
+cluster_groesse     INTEGER              wie viele Ereignisse im selben Cluster
 
 -- Herkunft
 nt_kontrakt         TEXT
@@ -350,7 +384,23 @@ end_pkt, end_r, end_prozent,
 max_hoch_pkt, max_tief_pkt,
 weg_bis_naechstes_level_atr,
 klasse                        -- Abschnitt 6
+
+-- Intrabar-Ambiguitaet (Schroedinger-Kerze)
+intrabar_ambig (0/1)          -- Kerze enthielt Ziel UND Stop; aus OHLC ist
+                              --   nicht rekonstruierbar, was zuerst kam
+klasse_stop_zuerst            -- Klassifikation unter der pessimistischen Annahme
+klasse_ziel_zuerst            -- Klassifikation unter der Gegenannahme
+                              --   Bei intrabar_ambig=0 sind beide gleich.
 ```
+
+**Warum die Doppelrechnung.** Auf 1m-MNQ mit hoher Vola faellt bei engen
+Ziel/Stop-Abstaenden ein grosser Teil der Kerzen in den ambiguen Fall. Die
+pessimistische Konvention (Stop zuerst, Abschnitt 5) ist sicher, kann aber
+funktionierende Ansaetze rechnerisch „toeten". Wer beide Klassifikationen
+speichert, kann je Muster ausweisen: Anteil `intrabar_ambig`, und wie weit die
+Kennzahlen zwischen den beiden Annahmen auseinanderliegen. Ist der Spread klein,
+ist das Ergebnis robust; ist er gross, haengt die Aussage an der Annahme und
+gehoert entsprechend gekennzeichnet.
 
 ### `triggers` — Entry-Varianten je Ereignis
 
@@ -358,7 +408,25 @@ klasse                        -- Abschnitt 6
 event_id, entry_type, ausgeloest (0/1),
 trigger_ts, trigger_idx, entry_preis,
 verzoegerung_bars             -- verfuegbar_idx -> trigger_idx
+
+order_art                     -- limit | stop_market | market (folgt aus entry_type)
+limit_durchhandelt (0/1)      -- nur order_art=limit: hat der Kurs das Limit
+                              --   um >= 1 Tick durchgehandelt? Wenn nicht,
+                              --   waere die Limit-Order NICHT gefuellt worden.
+                              --   Das ist aus OHLC messbar, keine Annahme.
+nichtfuellung_grund           -- '' | 'limit_nicht_erreicht' | 'fenster_zu_ende'
 ```
+
+**Slippage steht bewusst NICHT in dieser Tabelle.** Sie ist aus OHLCV nicht
+messbar (Invariante 11) und haengt vom `order_art` ab: eine Stop-Market-Order
+auf einen Ausbruch zahlt in schneller Bewegung 2–4 Ticks, eine Limit-Order auf
+einen Retest zahlt null, traegt aber das Nichtfuellungs-Risiko. Ein pauschaler
+Abzug verzerrt zugunsten der Limit-Systeme und zulasten der Ausbruchsysteme —
+oder umgekehrt. Deshalb: `order_art` wird gespeichert, die **Nichtfuellung von
+Limit-Ordern wird gemessen** (`limit_durchhandelt`), und die Slippage selbst
+kommt erst in der Auswertung als **benanntes Szenario je `order_art` und
+Vola-Regime** dazu, durchgehend als `ist_annahme` markiert (wie in
+`backtest/kosten.py`, Invariante 10).
 
 ### `stop_szenarien` — je Ereignis × Entry × Stop-Position
 
@@ -443,6 +511,25 @@ Je Muster mit `n ≥ 30`:
 die uninteressanten. Wer daraus eines herausgreift, trifft eine Auswahl — und
 ab da gilt die Mehrfachtestkorrektur gegen die Gesamtzahl.
 
+### 12.1 Gleichzeitige Signale — Klumpenrisiko
+
+Die überschneidungsfreie Stichprobe aus `conditional_outcomes.py` entfernt die
+Abhängigkeit *innerhalb einer* Bedingungsreihe (Vorwärtsrenditen aus Kerze `i`
+und `i+1` teilen sich `H−1` Kerzen). Sie fängt **nicht** den Fall, dass um
+15:35 ein 1m-Doppelboden, eine 5m-Flagge und ein 15m-Sweep denselben
+Einstiegspreis in dieselbe Richtung triggern. Über Mustertypen und Zeitebenen
+hinweg wären das drei `events`-Zeilen mit fast identischem Outcome — die
+Grundratentabelle würde `n` künstlich verdreifachen.
+
+**Regel:** Ereignisse, deren `verfuegbar_idx` weniger als 3 × (1m-Kerzen des
+gröbsten beteiligten Timeframes) auseinanderliegen **und** dieselbe `direction`
+haben, bekommen eine gemeinsame `cluster_id`. In der Signifikanzprüfung zählt
+ein Cluster als **eine** Beobachtung (Mittel der Outcomes), nicht als mehrere.
+Die Einzelzeilen bleiben erhalten — die Reduktion passiert beim Auswerten, nicht
+beim Schreiben (wie bei den gefilterten Ideen, Invariante 7).
+
+Das ist zusätzlich zur überschneidungsfreien Stichprobe, nicht statt ihr.
+
 ---
 
 ## 13. Unbekannte Muster (Clustering)
@@ -473,9 +560,14 @@ Regime, Session), dann k-Means oder HDBSCAN.
 | 5 | Outcome-Klassifikation | `klasse` je Zeile |
 | 6 | Entry-Trigger-Varianten | `triggers`-Tabelle |
 | 7 | Stop-Szenarien, Fälle A–D | `stop_szenarien` |
-| 8 | Statistische Auswertung, Bericht | Grundratentabelle |
+| 8 | Statistische Auswertung, Bericht | Grundratentabelle, Cluster-reduziert (12.1), Doppelannahme-Spread (§6) |
 | 9 | Hypothesenbudget im Register | Auswahlschritt wird zählbar |
-| 10 | Clustering | optional, zuletzt |
+| 10 | Clustering unbenannter Muster | optional, zuletzt |
+
+`cluster_id`, `intrabar_ambig`, `order_art`/`limit_durchhandelt`,
+`volumen_am_extremum_relativ` und die VIX-Merkmale werden **in Etappe 2/3
+mitgeschrieben**, nicht nachgerüstet — die Spalten kosten beim Erkennen fast
+nichts, ein Nachlauf über 2,57 Mio Kerzen dagegen Stunden.
 
 **Etappen 1–4 sind die Grundlage; erst danach lohnen 5–8.**
 
@@ -517,6 +609,42 @@ beantwortet; sie sind damit verbindlich.
    Ereignisse. Eine ausgedünnte Rasterung könnte genau die Distanz verfehlen,
    an der sich Erfolg und Fehlschlag trennen — und die Stop-Frage ist der Kern
    dieser Untersuchung. Laufzeit über Nacht ist eingeplant.
+
+---
+
+## 16. Nachträge nach externer Prüfung (30.08.2026)
+
+Eine externe Durchsicht (Gemini) hat fünf Lücken benannt. Bewertung und
+Umsetzung:
+
+| # | Kritikpunkt | Urteil | Umsetzung |
+|---|---|---|---|
+| A | Slippage nicht je Entry-Typ; statischer Abzug verzerrt | **berechtigt, teils schon im Geist da** | `triggers.order_art` + gemessene Limit-Nichtfüllung (`limit_durchhandelt`); Slippage bleibt benanntes Szenario in der Auswertung, nicht in der DB (Invariante 10/11) |
+| B | Intrabar-Ambiguität nur aggregiert, kein Flag je Zeile | **berechtigt** | `outcomes.intrabar_ambig` + Doppelklassifikation `klasse_stop_zuerst` / `klasse_ziel_zuerst`, Spread wird je Muster ausgewiesen (§6) |
+| C | Gleichzeitige Signale über Mustertypen/Zeitebenen blähen `n` | **berechtigt, stärkster Punkt** | `events.cluster_id` + `cluster_groesse`, in der Signifikanz zählt ein Cluster als eine Beobachtung (§12.1). Zusätzlich zur schon vorhandenen überschneidungsfreien Stichprobe |
+| D | Volumen am Extremum als Orderbuch-Ersatz fehlt | **berechtigt, billig** | `events.volumen_am_extremum_relativ` |
+| E | Kein Makro-Kontext (VIX, NQ/ES-SMT) | **berechtigt; VIX sofort, SMT vertagt** | VIX über FRED als Merkmal (§2); `smt_divergenz` im Schema, bleibt `NULL` bis ES-Daten angebunden sind |
+
+**Wo die Kritik danebenlag:** Friktion ist im Projekt *bewusst* nicht in der
+Ergebnistabelle, sondern in der Auswertung unter einem benannten Kostenprofil
+(`backtest/kosten.py`, Invariante 10) — wie das Ideen-Log kein Ergebnisfeld
+trägt (Etappe-C-Spezifikation). Der ~1,45-Punkte-Wert ist die Auswertungszahl,
+kein DB-Feld. Der eigentliche Punkt (Slippage variiert mit der Orderart) bleibt
+richtig und ist in A umgesetzt.
+
+**Was auch die externe Prüfung nicht adressiert — und wichtiger ist als diese
+fünf Punkte:** ob ein Vorteil in 1m-OHLCV-Mustern auf MNQ überhaupt existiert,
+ist offen. Mesfin (2026) hat 14 Signalfamilien falsifiziert; `vwap_trend` misst
+auf den echten Daten −0,08 bis −1,72 USD je Trade. Diese Schema-Verschärfungen
+machen die Messung ehrlicher — sie erzeugen keinen Vorteil. Die
+Grundratentabelle kann genauso gut zeigen, dass es nichts zu holen gibt. Das
+ist ein zulässiges Ergebnis dieser Untersuchung, kein Scheitern.
+
+**Noch offen für die Auswertung (Etappe 8), nicht schemarelevant:** Grundraten
+zusätzlich je Ära aufschlüsseln (2019–21 / 22–23 / 24 / 25–26) — die
+Marktmikrostruktur hat sich über sieben Jahre verschoben (0DTE-Optionen), ein
+abklingender Effekt muss sichtbar werden. Ebenso Outcomes je Session-Drittel,
+nicht nur `minuten_seit_open` als Merkmal.
 
 ---
 
