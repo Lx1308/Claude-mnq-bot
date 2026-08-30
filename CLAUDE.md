@@ -2,6 +2,16 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+## Neu in dieser Sitzung? → `docs/START_HIER.md`
+
+Wenn Laurin nur „mach weiter“ schreibt, steht dort in zehn Minuten Lesezeit,
+was das Projekt ist, was gerade läuft, woran du dich nicht vergreifst, wie er
+arbeiten will und was als Nächstes dran ist. Danach diese Datei hier.
+
+Dort steht auch Laurins Bitte vom 30.08.2026 zur **Modellwahl**: er möchte vor
+jeder Aufgabe eine Empfehlung, ob Sonnet 5 reicht oder Opus 5 nötig ist — sein
+Wochenlimit war zuletzt nach zwei bis drei Tagen aufgebraucht.
+
 ## Kontextdateien — zuerst lesen, am Ende pflegen
 
 **Vier** Dateien bilden das Projektgedächtnis (seit 23.08.2026; vorher zwei).
@@ -117,7 +127,7 @@ das **repo-weit**.
 Immer das venv des Projekts verwenden:
 
 ```bash
-.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 543)
+.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 632)
 .venv\Scripts\python.exe -m pytest tests/test_engine.py      # eine Datei
 .venv\Scripts\python.exe -m pytest -k lookahead -v           # einzelne Tests nach Namensmuster
 .venv\Scripts\python.exe -m pytest tests/test_ideas.py::test_deviation_reentry_feuert_nur_beim_uebertritt
