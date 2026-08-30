@@ -3390,10 +3390,12 @@ Erster Backtest dieses Projekts auf **echten MNQ-Futuresdaten**. 519.084
 | `vwap_trend` | IS | 2.602 | 21,9 % | 0,86 | −4,09 USD |
 | `vwap_trend` | OOS | 1.010 | 22,3 % | 0,95 | −2,38 USD |
 
-**Die Trefferquote des W liegt bei ~35 %, nicht bei 8/10.** Das widerlegt die
-Idee nicht — Trefferquote allein ist wertlos (MASTERPLAN J) —, aber es
-widerlegt die *erinnerte Zahl*. „8 von 10" ist ohne Stop und Ziel nicht
-einmal definiert.
+**Die Trefferquote des W liegt bei ~35 %.** Laurins „acht von zehn Faellen"
+war ausdruecklich ein erfundenes Illustrationsbeispiel, keine Behauptung —
+hier wird also nichts widerlegt. Festzuhalten bleibt: eine Trefferquote ist
+**ohne Stop und Ziel nicht definiert**, und sie allein ist wertlos
+(MASTERPLAN J). Jede Aussage der Form „funktioniert in X von 10 Faellen" muss
+das Regelwerk mitnennen, sonst ist sie nicht ueberpruefbar.
 
 **Die beste Zahl der Tabelle ist auch die verdaechtigste.** Ein
 Vorzeichenwechsel zwischen IS und OOS ist kein Fund, sondern eine Warnung; und
@@ -3403,10 +3405,95 @@ t-/p-Werte nicht entscheiden. **Keine der beiden Hypothesen ist im Register
 eingetragen** — bis das nachgeholt ist, zaehlen sie nicht gegen das
 Hypothesenbudget.
 
-### 36.6 Naechste Schritte
+### 36.6 Regime-Engine und erster Discovery-Lauf — ein sauberes Negativ
 
-1. Regime-Engine (MASTERPLAN I) — drei Achsen, Grenzen aus der Verteilung.
-2. Globales Hypothesenbudget + OOS-Kontingent im Register (36.1).
-3. Discovery-Lauf auf echten Daten, alles ins Register.
+`common/regime.py` baut die drei Achsen aus MASTERPLAN I:
+
+| Achse | Groesse | Auspraegungen |
+|---|---|---|
+| `vola_regime` | ATR-Rang | niedrig / mittel / hoch |
+| `struktur_regime` | ADX-Rang | range / uebergang / trend |
+| `liquiditaet_regime` | relatives Volumen zur **selben Tageszeit** | duenn / normal / rege |
+
+**Grenzen aus der Verteilung, nicht aus einem Lehrbuch** — Terzile eines
+rollenden 60-Sessions-Fensters. „ADX ueber 25 heisst Trend" waere eine Zahl
+aus einem Buch; der `consolidation_max_atr = 1.2`-Fund vom 22.08.2026 zeigt,
+was solche Zahlen anrichten.
+
+**Rueckwaertsgerichtet, und ein Test haelt das fest.** Perzentile ueber die
+Gesamthistorie waeren bequem und falsch: das Regime einer Kerze von 2019
+haenge dann davon ab, wie volatil 2026 war.
+`test_spaetere_kerzen_aendern_ein_frueheres_regime_nicht` schneidet die Reihe
+ab und prueft, dass sich nichts aendert.
+
+**Warum relatives Volumen zur selben Tageszeit:** ein roher Volumenrang wuerde
+die Eroeffnung immer als „rege" und die Nacht immer als „duenn" einstufen —
+eine Aussage, die schon in der Session-Angabe steckt. Interessant ist, ob die
+10:00-Kerze *heute* belebter ist als die 10:00-Kerze ueblicherweise.
+
+**Verteilung auf echten Daten:** alle 27 Schubladen belegt (1,7 % bis 8,1 %).
+Die Achsen sind aber **nicht unabhaengig** — `niedrig|range|duenn` und
+`hoch|trend|rege` sind die groessten; ruhige Naechte und aktive Trendtage
+buendeln sich.
+
+**Discovery-Lauf** (`werkzeuge/regime_discovery.py`, nur Trainingsteil,
+`pruefe_nur_training` scharf): drei Strategien x fuenf Faktoren.
+
+```
+Gepruefte Hypothesen : 51
+Korrigierte Schwelle : 0,000980  (alpha / 51)
+Bester p-Wert        : 0,0071
+KEINE Gruppe unterschreitet die korrigierte Schwelle.
+```
+
+**Nach strengem Massstab ist nichts gefunden.** Das ist kein Fehlschlag,
+sondern der Zweck des Laufs: bei 51 Hypothesen und alpha = 0,05 sind rund 2,6
+„signifikante" Funde der Erwartungswert. Die beste positive Gruppe
+(`doppelboden_bestaetigt` / Struktur / `uebergang`, p = 0,050) waere
+unkorrigiert ein „Fund" gewesen.
+
+**Notiert, ohne Signifikanzanspruch:** beide Doppelboden-Varianten ordnen die
+Liquiditaetsachse identisch (rege > normal > duenn), obwohl sie sich im
+Einstieg unterscheiden. Auf der Strukturachse widersprechen sie sich dagegen
+(frueh traegt im Uebergang, spaet im Trend). Zahlen und Einordnung in
+`docs/REGIME_DISCOVERY_2026-08-30.md`.
+
+**Der Vorzeichenwechsel aus 36.5 ist damit nicht erklaert.** Die Achsen
+trennen zu schwach.
+
+### 36.7 Naechste Schritte
+
+1. Globales Hypothesenbudget + OOS-Kontingent im Register (36.1). **Bis dahin
+   darf aus mehreren Discovery-Laeufen keine Signifikanzaussage
+   zusammengesetzt werden** — die 51 Hypothesen dieses Laufs zaehlen nirgends.
+2. Ungeprueft gebliebene Faktoren: Position zu Vortagesmarken, Struktur der
+   uebergeordneten Zeitebene, Abstand zum VWAP.
+3. Achsen entkoppeln (Strukturrang *innerhalb* des Volatilitaetsterzils).
 4. Die vier offenen Hypothesen aus der Antigravity-Phase.
 5. Erst danach der autonome Kreislauf.
+
+### 36.8 Zu Laurins Zielbild „fallbasiertes Schliessen"
+
+Er hat es am 30.08.2026 praezisiert: der Bot soll erkennen „diese Situation
+kam schon mal vor, ist meist so und so verlaufen, also setze ich so" — Muster,
+Strukturen und Ereignisse zusammen. `common/market_state.py::MarketState` ist
+bereits die passende Fingerabdruck-Struktur dafuer.
+
+**Die eingebaute Gefahr, schaerfer als normales Overfitting:** bei 519.000
+Kerzen und reichem Merkmalsvektor findet man zu *jeder* Lage aehnliche
+historische Lagen. Die Bonferroni-Zaehlung greift dann nicht mehr, weil aus
+abzaehlbaren Hypothesen ein Kontinuum wird. Was dagegen wirkt: Merkmalsvektor
+vorher festlegen statt suchen; Mindestzahl an Analogfaellen, sonst „keine
+Meinung"; die Vorhersage muss eine naive Nulllinie schlagen; vorwaerts in der
+Zeit halten, nicht nur im Nachbarschaftsraum. Die Regime-Engine baut die
+ersten beiden als grobe Stufe — 27 abzaehlbare Schubladen statt eines
+Kontinuums.
+
+**Ereignisdaten, Bestandsaufnahme:** `ideas/kalender.py` (Forex Factory)
+liefert „im Wesentlichen die laufende Woche" — fuer 2019–2026 gibt es dort
+**keine Terminhistorie**. Historisch verfuegbar sind: FRED/ALFRED-Vintages
+(`macro/`, 8 Reihen, mit „was war wann bekannt"), `common/marktkalender.py`
+(Feiertage, Frueh-Schluesse), deterministisch ableitbare Termine (FOMC, NFP,
+Verfallstage, Monatsende) — und vor allem die Spuren der Ereignisse **im
+Kursverlauf selbst** (Volatilitaets- und Volumenanomalien), die in
+Minutenaufloesung schon vorliegen.

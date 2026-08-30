@@ -51,6 +51,10 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
       erste Messung in `docs/W_MESSUNG_2026-08-30.md`.
 - [x] **P1** Engine ~20× schneller (nur deklarierte Spalten je Kerze),
       abgesichert durch `tests/test_spaltenvertrag.py`.
+- [x] **P1** Regime-Engine (`common/regime.py`) — drei Achsen, Grenzen aus
+      der Verteilung, rückwärtsgerichtet mit Lookahead-Test. Erster
+      Discovery-Lauf auf echten Daten: 51 Hypothesen, keine übersteht die
+      Bonferroni-Korrektur. `docs/REGIME_DISCOVERY_2026-08-30.md`
 
 ---
 
@@ -73,11 +77,20 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 
 ## P1 — Forschungsgrundlage
 
-- [ ] **Regime-Engine bauen** (MASTERPLAN I). Drei Achsen — Volatilität,
-      Trend/Range, Liquidität —, Grenzen **aus der Verteilung** abgeleitet.
-      Ohne sie ist der Vorzeichenwechsel des Doppelbodens zwischen In-Sample
-      und Out-of-Sample nicht deutbar, und Laurins Zielbild („für jede
-      sinnvolle Marktsituation ein Spezialist") nicht baubar.
+- [ ] **Achsen entkoppeln.** Die drei Regime-Achsen korrelieren
+      (`niedrig|range|duenn` und `hoch|trend|rege` sind die größten
+      Schubladen). Sauberer wäre der Strukturrang *innerhalb* des
+      Volatilitätsterzils.
+
+- [ ] **Ungeprüfte Faktoren nachziehen.** Der Discovery-Lauf vom 30.08.2026
+      deckte Volatilität, Struktur, Liquidität, Tageszeit und Wochentag ab.
+      Offen: Position zu Vortagesmarken, Struktur der übergeordneten
+      Zeitebene, Abstand zum VWAP.
+
+- [ ] **`vola_regime = niedrig` hat unter 80 Trades je Strategie.** Die Achse
+      ist gegenüber der Handelszeit unausgewogen — die Strategien handeln RTH,
+      und RTH ist selten „niedrige Volatilität". Entweder die Achse relativ zur
+      Session bilden oder die Ausprägung als nicht auswertbar führen.
 
 - [ ] **Globales Hypothesenbudget im Register.**
       `Discoverylauf.bonferroni_schwelle` zählt nur laufintern. Ein
