@@ -3,7 +3,16 @@
 Du hast gesagt: „mache jetzt komplett weiter und sag mir morgen was ich tun
 muss dass alles funktioniert." Hier steht beides.
 
-**Alles lokal committet, nichts gepusht.** 810 Tests grün.
+**Alles lokal committet, nichts gepusht.** 871 Tests grün.
+
+> **Das wichtigste zuerst:** Der Grundratenbericht ist gelaufen. Er zeigt
+> **keinen handelbaren Mustervorteil** — und der erste Durchlauf, der einen
+> anzeigte, war ein Artefakt (unten „Das Ergebnis, auf das alles hinauslief").
+> Das ist die erwartete, ehrliche Antwort, kein Fehlschlag.
+>
+> **Zwei Entscheidungen liegen bei dir:** (1) Datenbank kleiner neu bauen oder
+> Index neu aufbauen (Teil 3). (2) Ob wir die regime-/session-weise Auswertung
+> noch machen, bevor das Thema OHLCV-Muster abgehakt wird.
 
 ---
 
@@ -360,6 +369,43 @@ muss viel von der Platte holen.
 4. Mir sagen, welchen der drei Wege aus Teil 3 du willst.
 
 ---
+
+## Das Ergebnis, auf das alles hinauslief
+
+**Der Grundratenbericht ist gelaufen. Es gibt keinen Vorteil — und der erste
+Bericht, der einen anzeigte, war ein Artefakt.**
+
+Vollständig in `docs/GRUNDRATEN_H60_2026-08-31.md`. Kurz:
+
+Der erste Durchlauf meldete **neun Muster mit hochsignifikantem Vorteil**.
+Beim Nachrechnen: `niveau_test [long]` hatte E[R] = **−3,03** bei einem Median
+von **+0,22** — der Mittelwert von einzelnen Extremwerten zertrümmert, weil
+`end_r = end_pkt / atr_referenz` und die ATR-Referenz in der dünnen
+Frühhistorie bis auf **0,003 Punkte** heruntergeht (eingefrorene Kurse).
+Diese eine kaputte Zahl zog die Nulllinie *aller* Longs nach unten, und
+dadurch sah jedes andere Long-Muster wie ein Vorteil aus.
+
+Der robuste Blick — Trefferanteil gegen die Nulllinie, ganz ohne ATR —
+zeigt: **jedes Muster sitzt auf seiner Nulllinie**, ±1 Prozentpunkt.
+
+Das ist die erwartete Antwort. Mesfin (2026) hat 14 Signalfamilien
+falsifiziert, die Zweiwochenprobe zeigte Zufallspfadverhalten. **Ein reiner
+OHLCV-Mustervorteil auf 1-Minuten-MNQ ist, wenn überhaupt, sehr klein — und
+die Grundratentabelle findet ihn nicht.**
+
+Ich habe die Auswertungslogik gehärtet (ATR-Untergrenze, Winsorisierung,
+Anteilstest als Hauptkriterium, Nulllinie ohne die eigene Gruppe), 27 Tests.
+
+**Bevor das Projekt als gescheitert gilt**, ist der nächste sinnvolle Schritt
+die Gruppierung nach **Regime und Session** — ein Vorteil könnte nur in einer
+bestimmten Marktlage auftreten und im Gesamtschnitt untergehen:
+
+```bash
+.venv\Scripts\python.exe -m werkzeuge.grundratenbericht --nach regime --horizont 30
+.venv\Scripts\python.exe -m werkzeuge.grundratenbericht --nach session --horizont 60
+```
+
+(Diese brauchen erst den Index-Neuaufbau, siehe unten.)
 
 ## Was ich in dieser Nacht nicht geschafft habe
 

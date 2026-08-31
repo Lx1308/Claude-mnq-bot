@@ -247,13 +247,24 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 
 ## Fragen an Laurin
 
-- **Umfang der Stop-Analyse (31.08.2026, neu — blockiert Etappe 7).**
-  Der Forschungsplan rechnete mit 200–800 k Ereignissen; gemessen sind es
-  **2,59 Mio** (nur 1m-Ebene). Das volle Stop-Raster aus Entscheidung 5
-  (25 Positionen × 5 Entries) wären **über 300 Mio Zeilen** — nicht
-  handhabbar. Drei Wege mit Empfehlung stehen in
-  `docs/UEBERGABE_2026-08-31.md` Abschnitt 3.
-  **Blockiert nicht Etappe 4** (Outcomes) — die kann vorher laufen.
+- **Datenbank kleiner neu bauen? (31.08.2026)** `data/eventdb.sqlite3` ist
+  ~7 GB und auf Laurins Laptop an der Grenze — Schreiben 5 h, Indexaufbau
+  1 h, jede Auswertung Gigabyte-Arbeit. ~800 k der 2,59 Mio Ereignisse
+  hängen daran, dass jeder bestätigte Swing als eigenes Niveau zählt. Weg 2
+  in `docs/UEBERGABE_2026-08-31.md` Teil 3 (Swing-Niveaus ausdünnen) ist
+  vermutlich nötig. Zusätzlich blockiert das volle Stop-Raster aus Etappe 7
+  (25 × 5 × alle Ereignisse = >300 Mio Zeilen) — Weg 1 empfohlen.
+
+- **Grundraten nach Regime/Session (31.08.2026).** Der Gesamtschnitt zeigt
+  keinen Mustervorteil (`docs/GRUNDRATEN_H60_2026-08-31.md`). Bevor OHLCV-
+  Muster abgehakt werden: `--nach regime` / `--nach session` über mehrere
+  Horizonte — ein Vorteil könnte nur in einer Marktlage auftreten. Braucht
+  erst den Index-Neuaufbau (`idx_outcomes_auswertung` wurde um
+  `atr_referenz` erweitert).
+
+- **Bestätigender Vollrun der gehärteten Grundraten-Auswertung** über die
+  ganze Datenbank. Bisher stützt sich der Befund auf Diagnose + CSV des
+  ersten (rohen) Laufs.
 
 - **Lucid-Zahlen** (siehe P0). *(300k-Frage ist geklärt: gibt es nicht.)*
 *(Beantwortet am 30.08.2026: der Bot handelt mit `frei`; die Auswertung

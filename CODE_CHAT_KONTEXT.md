@@ -2,21 +2,19 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-31 (Abschnitte 37 und 38 — **Die Ereignisdatenbank steht und
-ist gefuellt**: 2.592.334 Ereignisse ueber 2.573.719 1m-Kerzen, 2019–2026,
-sieben serielle O(n)-Erkenner in `common/ereignisse/` (Swings, Struktur,
-Niveau-Interaktion, FVG, Displacement, Order Block, Equal Highs/Lows,
-Liquidity Sweep), Schema und Schreibweg in
-`common/ereignisse/datenbank.py`, Lauf ueber
-`werkzeuge/ereignisse_erkennen.py`. Zahlen:
-`docs/EREIGNISDATENBANK_BESTAND_2026-08-31.md`. Zwei Performance-Funde
-unterwegs: `muster_serie` war O(n²) (blockierte jeden Volllauf), der
-Schreibweg 45x zu langsam (Timestamp-Zugriffe je Zeile). TRADAYRI: schwarzer
-Chart = Zeitstempel in Mikro- statt Nanosekunden; Livedaten kamen nicht an,
-weil die Nachladeschleife an einem Platzhalter-Endpunkt hing. **Offene
-Entscheidung fuer Laurin**: 2,59 Mio Ereignisse statt der geplanten
-200–800k — das volle Stop-Raster waere ueber 300 Mio Zeilen, siehe
-`docs/UEBERGABE_2026-08-31.md` Abschnitt 3.)
+Stand: 2026-08-31 (Abschnitte 37–40 — **Ereignisdatenbank Etappen 1–4 und 8
+gebaut, erster Befund steht**: 2.592.334 Ereignisse + 23,3 Mio Outcome-Zeilen
+in `data/eventdb.sqlite3` (~7 GB), sieben serielle Erkenner in
+`common/ereignisse/`. Der erste Grundratenbericht meldete neun signifikante
+Long-Muster — **das war ein Artefakt** (fuenfte statistische Falle, Abschnitt
+40: `end_r` durch atr_referenz bis 0,003 zertruemmert den Mittelwert und
+vergiftet die Nulllinie). Nach Haertung von `grundraten.py`
+(ATR-Untergrenze, Winsorisierung, Anteilstest als Hauptkriterium):
+**kein Muster mit belastbarem Vorteil**. `docs/GRUNDRATEN_H60_2026-08-31.md`.
+Naechster Schritt vor einem "gescheitert": Auswertung nach Regime/Session.
+**Offene Entscheidungen fuer Laurin**: Datenbank kleiner neu bauen (7 GB an
+der Hardware-Grenze), und ob die Regime-Auswertung noch kommt. Details
+`docs/UEBERGABE_2026-08-31.md`.)
 
 Stand: 2026-08-30 (Abschnitt 34 — **Die Projektgrenze ist aufgehoben**:
 Ausführung über NinjaTrader ist seit dem 30.08.2026 Projektbestandteil.
@@ -3875,3 +3873,87 @@ Zur Kontrolle der Mechanik, **nicht** als Befund:
 exakt das Verhalten eines Zufallspfads. Auf zwei Wochen ist das kein Befund —
 aber es ist ein Vorgeschmack darauf, was der Volllauf zeigen koennte, und es
 belegt, dass die Mechanik rechnet, was sie soll.
+
+---
+
+## 40. Der erste Grundratenbericht war ein Fehlalarm - die fuenfte statistische Falle (31.08.2026)
+
+### 40.1 Was der Bericht anzeigte
+
+Erster Volllauf der Outcomes (23,3 Mio Zeilen), dann
+`werkzeuge/grundratenbericht.py --horizont 60 --block train`: **neun von zehn
+Long-Mustern** mit `kante_R` um +0,22 bis +0,30 und `p` praktisch null - alle
+unter der Bonferroni-Schwelle.
+
+### 40.2 Warum es nicht stimmte
+
+Wenn **jedes** Long-Muster denselben Vorteil zeigt, ist das kein Fund, sondern
+ein Fehler im Aufbau. `niveau_test [long]`: **E[R] = -3,03** bei **Median
++0,22** - der Mittelwert von einzelnen Extremwerten zertruemmert.
+
+`end_r = end_pkt / atr_referenz`. In der Datenbank fanden sich Ereignisse mit
+`atr_referenz` bis hinunter zu **0,0026 Punkten** - eingefrorene Kurse in der
+duennen Fruehhistorie (2019-2021, MNQ bei 7.500, tote Nachtstunden), kein
+handelbarer Zustand. Eine normale -156-Punkte-Bewegung ergibt dann
+`end_r = -9.440`. 6.273 der 69.126 niveau_test-long-Ereignisse (9 %) haben
+`atr_referenz < 1,5`, deren `end_r`-Mittel ist -33,8.
+
+**Der zweite Effekt, der es gefaehrlich macht:** `niveau_test [long]` ist 8 %
+aller Long-Ereignisse. Ihr Mittel von -3,03 zog die **Nulllinie aller Longs**
+auf -0,20. Dadurch sah jedes andere Long-Muster mit `E[R] ~ +0,05` wie ein
+Vorteil von +0,25 aus - reiner Vergleich gegen eine vergiftete Nulllinie.
+
+Getrimmtes Mittel (1-99 %) von `niveau_test [long]`: **+0,055**. In einer
+Reihe mit allem anderen.
+
+### 40.3 Der robuste Blick
+
+Der **Trefferanteil** (Vorzeichen von `end_pkt`, ohne ATR) je Muster: 0,509
+bis 0,520 fuer Longs, Nulllinie 0,516; 0,462 bis 0,476 fuer Shorts, Nulllinie
+0,473. **Jedes Muster sitzt auf seiner Nulllinie**, Wilson-Intervalle
+ueberlappen sie durchweg. Der einzige Ausreisser (`bos_bearish [short]` bei
+0,462) ist *schlechter* als Zufall.
+
+Die Long/Short-Asymmetrie selbst ist der MNQ-Aufwaertsdrift 2019-2023; die
+per-Richtung-Nulllinie korrigiert genau das.
+
+### 40.4 Haertung von `common/ereignisse/grundraten.py`
+
+Alles in der Auswertungsschicht, kein Datenneuschrieb:
+
+- `ATR_UNTERGRENZE = 1.0`: Ereignisse mit kleinerer ATR-Referenz werden
+  verworfen. MNQ-1m-ATR liegt praktisch immer ueber 2.
+- `WINSOR_R = 25.0`: der Rest wird gekappt.
+- **Massgeblich ist `anteil_kante` mit `anteil_p_wert`** - der
+  ueberschneidungsfreie Zwei-Anteile-Test (`zwei_anteile_p`, Normal-CDF ueber
+  `math.erf`) auf den Trefferanteil gegen die Nulllinie. Benutzt die ATR
+  nicht. `E[R]`/Median stehen daneben, mit `hinweis` wenn sie > 0,5 R
+  auseinanderliegen.
+- Die Nulllinie einer Gruppe ist jetzt "alle gleichgerichteten Ereignisse
+  **ohne diese Gruppe**" - ein grosses schiefes Muster kann die Nulllinie
+  nicht mehr in seine eigene Richtung ziehen.
+- Der deckende Index `idx_outcomes_auswertung` wurde um `atr_referenz`
+  erweitert (Neuaufbau noetig).
+- 27 Tests, u.a. `test_anteil_kante_ist_gegen_atr_muell_immun`, das die
+  vergiftete Nulllinie exakt nachstellt.
+
+### 40.5 Stand
+
+Nach der Haertung (aus Diagnose + CSV; der bestaetigende Vollrun ueber die
+7-GB-DB steht noch aus): **kein Muster mit belastbarem Vorteil im
+Trainingsblock**. Deckt sich mit Mesfin (2026) und der Zweiwochenprobe.
+
+Naechster sinnvoller Schritt vor einem "gescheitert": Gruppierung nach Regime
+und Session (`--nach regime`, `--nach session`) - ein Vorteil koennte nur in
+einer Marktlage auftreten und im Schnitt untergehen. Vollstaendig:
+`docs/GRUNDRATEN_H60_2026-08-31.md`.
+
+### 40.6 Datenbank an der Hardware-Grenze
+
+`data/eventdb.sqlite3` ist ~7 GB. Der erste Outcome-Schreiblauf brauchte 5 h
+(behoben: ereignisweise statt horizontweise, `INDIZES` erst nach allen
+INSERTs), der Auswertungs-Join lief 25 min ins Leere (behoben: getrennte
+Abfragen + deckender Index). Selbst danach ist jede Auswertung Gigabyte-Arbeit
+auf diesem Laptop. Weg 2 aus `docs/UEBERGABE_2026-08-31.md` Teil 3
+(Swing-Niveaus ausduennen, ~800 k Ereignisse weniger) ist auf dieser Hardware
+wohl noetig, nicht nur wuenschenswert - Laurins Entscheidung.
