@@ -3772,3 +3772,106 @@ Ebenfalls behoben: Serverstart-Timeout 30 s → 90 s. Der erste Start muss die
 657-MB-Kerzendatenbank oeffnen; unter Plattenlast reichte das nicht, und der
 Launcher hat den langsam startenden Server dann getoetet (Laurins
 Fehlermeldung vom 30.08.2026 abends).
+
+---
+
+## 39. Ereignisdatenbank Etappen 4 und 8: Outcomes und Grundraten (31.08.2026)
+
+### 39.1 `common/ereignisse/outcomes.py`
+
+MFE, MAE, Endergebnis je Ereignis und Horizont (1/3/5/10/20/30/60/120/240
+Kerzen).
+
+`backtest/excursions.py::compute_path_excursions` rechnet je Einstieg eine
+Python-Schleife ueber den Horizont: **O(Ereignisse × Horizont)**. Bei 2,59 Mio
+Ereignissen und Horizonten bis 240 waeren das Milliarden Iterationen.
+
+Hier stattdessen **rollende Fenster ueber die ganze Kursreihe** — einmal je
+Horizont gerechnet, danach ist alles Nachschlagen. Die Zeit-bis-Extremum
+kommt aus `sliding_window_view` + `argmax`, blockweise (200k Kerzen je
+Block, ~380 MB Fensterblick).
+
+**Gemessen: 4,4 s fuer 500k Ereignisse auf 500k Kerzen ueber alle neun
+Horizonte** — hochgerechnet 2 Minuten fuer die volle Historie.
+
+Ein Test vergleicht beide Fassungen ueber vier Horizonte × zwei Richtungen,
+Zeile fuer Zeile (Einstiegspreis, MFE, MAE, Ende, Zeit bis MFE/MAE).
+
+**Ein Unterschied ist Absicht:** `compute_path_excursions` setzt bei
+fehlendem ATR ersatzweise `5.0` ein (Zeile 104). Das ist eine erfundene Zahl,
+die aussieht wie eine Messung — fuer eine Anzeige verzeihlich, fuer eine
+Wissensbasis nicht (Invariante 11). In `outcomes.py` bleiben die R-Werte
+`NaN`.
+
+**Unvollstaendige Fenster werden verworfen, nicht gekuerzt.** Ein gekuerztes
+Fenster sieht aus wie ein vollstaendiges und verzerrt die Statistik zum
+Reihenende hin (Plan Abschnitt 10). Im Probelauf: bei H=240 fehlen genau die
+letzten 233 Ereignisse — plausibel.
+
+### 39.2 Schemakorrektur: Rohzahlen und Klassen getrennt
+
+Der Plan sah `outcomes` mit Primaerschluessel
+`(event_id, horizont_bars, schwelle_atr)` vor. Das ist falsch normalisiert:
+**MFE und MAE haengen nicht von der Klassifikationsschwelle ab**, nur die
+Klasse tut das. Bei drei Schwellen (0,25/0,5/1,0) waeren das 70 statt 23 Mio
+Zeilen fuer denselben Inhalt.
+
+Jetzt: `outcomes` traegt die Rohzahlen mit `(event_id, horizont_bars)`,
+`outcome_klassen` die Klassifikation mit
+`(event_id, horizont_bars, schwelle_atr)`.
+
+### 39.3 `common/ereignisse/grundraten.py` — die vier Fallen
+
+Die Tabelle, um die es Laurin von Anfang an ging. Jede der vier Vorkehrungen
+existiert wegen eines konkreten Fehlers, der sie sonst wertlos machte:
+
+1. **Nulllinie.** „In 62 % der Faelle ging es hoch" ist wertlos, wenn es ohne
+   das Muster in 61 % der Faelle hochgeht. Jede Zahl steht neben ihrer
+   Grundrate — und die wird **je Richtung** gerechnet: ein Muster, das nur
+   Shorts erzeugt, waere gegen eine gemischte Nulllinie systematisch falsch
+   bewertet.
+2. **Ueberschneidung.** `ueberschneidungsfrei()` waehlt gierig Ereignisse,
+   deren Fenster sich nicht ueberlappen. Der ueberschneidungsfreie p-Wert ist
+   der **massgebliche**, der ueberschneidende wird daneben ausgewiesen
+   (empirisch am 30.08.2026: t = 8,49 gegen t = 1,71, Faktor 4,98 ≈ √24).
+3. **Klumpen.** `cluster_id` wird mitgezaehlt (`n_cluster`).
+4. **Auswahl.** Alle Gruppen werden ausgegeben, und `bonferroni_schwelle()`
+   nennt die Zahl der Vergleiche.
+
+`wilson_intervall()` statt Normalapproximation: die faellt bei kleinen `n`
+oder Anteilen nahe 0/1 aus `[0, 1]` heraus und behauptet dann Unsinn mit
+Nachkommastellen.
+
+`lade_fuer_auswertung()` liest **nur den angegebenen Datensatzblock**,
+Vorgabe `train` — Validation und OOS werden nicht beilaeufig mitgelesen und
+ein unbekannter Blockname bricht ab.
+
+### 39.4 `werkzeuge/grundratenbericht.py`
+
+```
+python -m werkzeuge.grundratenbericht --horizont 60
+python -m werkzeuge.grundratenbericht --nach regime --block validation
+```
+
+Gruppierungen: `muster`, `variante`, `regime`, `session`, `struktur`.
+Kontraktnaehte werden **standardmaessig ausgeschlossen** (der Preissprung ist
+ein Artefakt der Verkettung); `--mit-rollnaht` zaehlt sie mit.
+
+Unter der Tabelle steht die Bonferroni-Schwelle. Haelt keine Zeile stand,
+sagt der Bericht das ausdruecklich als **Ergebnis**, nicht als Fehlschlag.
+
+### 39.5 Erste Plausibilitaetsprobe (zwei Wochen OOS, 13.777 Ereignisse)
+
+Zur Kontrolle der Mechanik, **nicht** als Befund:
+
+| H | MFE (R) | MAE (R) | E[R] | Zeit bis MFE |
+|---:|---:|---:|---:|---:|
+| 1 | 0,52 | 0,55 | −0,017 | 1,0 |
+| 10 | 1,67 | 1,70 | −0,007 | 5,3 |
+| 60 | 4,28 | 4,19 | +0,040 | 29,8 |
+| 240 | 8,83 | 8,89 | −0,097 | 112,5 |
+
+**MFE ≈ MAE ueber alle Horizonte, E[R] ≈ 0, Zeit bis MFE ≈ H/2.** Das ist
+exakt das Verhalten eines Zufallspfads. Auf zwei Wochen ist das kein Befund —
+aber es ist ein Vorgeschmack darauf, was der Volllauf zeigen koennte, und es
+belegt, dass die Mechanik rechnet, was sie soll.

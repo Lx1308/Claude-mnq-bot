@@ -198,6 +198,41 @@ auf) ist bereits als `cluster_id` in der Datenbank umgesetzt.
 
 ---
 
+### 2.5 Etappe 4 und 8 sind auch gebaut
+
+Ich bin weiter gekommen als geplant. Zwei Dinge sind dazugekommen:
+
+**Die Outcomes** (`common/ereignisse/outcomes.py`). Für jedes der 2,59 Mio
+Ereignisse wird jetzt gemessen, was danach passiert — über 1, 3, 5, 10, 20,
+30, 60, 120 und 240 Kerzen: wie weit lief es *für* die Position (MFE), wie
+weit *dagegen* (MAE), wo stand es am Ende, und wie lange dauerte es bis zum
+jeweiligen Extrem.
+
+Die bestehende Funktion dafür hätte bei dieser Menge Milliarden Iterationen
+gebraucht. Die neue rechnet über rollende Fenster: **2 Minuten** für alles.
+Ein Test vergleicht beide Fassungen Zeile für Zeile — die Definition ist
+dieselbe.
+
+**Der Grundratenbericht** (`werkzeuge/grundratenbericht.py`). Das ist die
+Tabelle, um die es dir von Anfang an ging. Aufruf:
+
+```bash
+.venv\Scripts\python.exe -m werkzeuge.grundratenbericht --horizont 60
+```
+
+Darin sind vier Vorkehrungen eingebaut, ohne die so eine Tabelle wertlos ist:
+
+1. **Jede Zahl steht neben ihrer Nulllinie.** „In 62 % der Fälle ging es
+   hoch" sagt nichts, wenn es ohne das Muster in 61 % der Fälle hochgeht.
+2. **Überschneidungsfreie Statistik.** Zwei Ereignisse fünf Kerzen
+   auseinander teilen sich bei Horizont 60 fast das ganze Fenster. Als
+   unabhängig gezählt wäre die Signifikanz um Faktor ~8 zu groß.
+3. **Klumpen zählen einmal.** Wenn sieben Erkenner um 15:35 dasselbe melden,
+   ist das eine Beobachtung, nicht sieben.
+4. **Alle Muster stehen in der Tabelle**, auch die langweiligen — und
+   darunter steht, ab welchem p-Wert ein Fund bei so vielen Vergleichen noch
+   zählt.
+
 ## TEIL 3 — Eine Entscheidung, die du treffen musst
 
 ### Es sind viel mehr Ereignisse als geplant
@@ -261,8 +296,26 @@ hätten es sauber gemessen statt geraten.
 | Aufgabe | Modell |
 |---|---|
 | Orderweg live testen | **Sonnet 5** — Handgriffe, kein Denken |
-| Etappe 4 (Outcomes + Klassifikation) | **Opus 5** — hier sitzt die Statistik |
+| Grundratenbericht lesen und deuten | **Opus 5** — hier sitzt die Statistik |
 | Weitere Erkenner (Bewegungsmuster) | Sonnet 5 |
-| Auswertung, Grundratenbericht (Etappe 8) | **Opus 5** |
+| Outcome-Klassifikation (Etappe 5) | Sonnet 5 — Regeln stehen im Plan |
+| Stop-Analyse (Etappe 7) | **Opus 5**, nach deiner Entscheidung aus Teil 3 |
 
-Fang mit dem Orderweg auf Sonnet an, dann wechsle für Etappe 4.
+Fang mit dem Orderweg auf Sonnet an. Für die Deutung der Grundratentabelle
+lohnt Opus — das ist die Stelle, an der man sich am leichtesten selbst
+betrügt.
+
+---
+
+## Die kurze Fassung, falls du wenig Zeit hast
+
+1. TRADAYRI schließen und neu starten.
+2. `python -m ntbridge` starten, in NT8 einen MNQ-Chart mit `ClaudeBridge`
+   öffnen. Dann steht „Letzte Kerze" auf grün.
+3. Diesen Befehl laufen lassen und mir sagen, was dasteht:
+
+```bash
+.venv\Scripts\python.exe -m werkzeuge.grundratenbericht --horizont 60
+```
+
+4. Mir sagen, welchen der drei Wege aus Teil 3 du willst.
