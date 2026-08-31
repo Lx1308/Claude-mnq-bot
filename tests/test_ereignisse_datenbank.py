@@ -149,6 +149,60 @@ def test_ungueltige_outcomes_werden_nicht_geschrieben(conn, config):
     assert geschrieben == ids[0]
 
 
+def test_outcomes_werden_ereignisweise_geschrieben(conn, config):
+    """Alle Horizonte EINES Ereignisses zusammen, nicht ein Horizont fuer
+    alle Ereignisse.
+
+    Der Primaerschluessel ist (event_id, horizont_bars). Horizontweise
+    geschrieben springt jede Runde an den Anfang des B-Baums zurueck - bei 23
+    Mio Zeilen ueber 5 GB bedeutet das durchgehend Zufallszugriffe. Gemessen
+    am 31.08.2026: 1.268 Zeilen/s statt der 16.459/s aus der Messung auf
+    kleiner Tabelle.
+    """
+    from common.ereignisse.datenbank import schreibe_outcomes
+    from common.ereignisse.outcomes import alle_horizonte
+
+    df = _rahmen(config, n=2000)
+    idx = np.array([100, 300, 500])
+    richtung = np.array([1, 1, 1])
+    ereignisse = [_ereignis(int(i)) for i in idx]
+    schreibe_events(conn, ereignisse, df, lauf_id="L1")
+    ids = [r[0] for r in conn.execute(
+        "SELECT event_id FROM events ORDER BY event_id"
+    )]
+
+    # sqlite3.Connection laesst sich nicht monkeypatchen; ein duenner
+    # Mitschreiber davor tut es auch.
+    class Mitschrift:
+        def __init__(self, echt):
+            self._echt = echt
+            self.zeilen: list[tuple] = []
+
+        def executemany(self, frage, zeilen):
+            zeilen = list(zeilen)
+            if "INTO outcomes" in frage:
+                self.zeilen.extend(zeilen)
+            return self._echt.executemany(frage, zeilen)
+
+        def __getattr__(self, name):
+            return getattr(self._echt, name)
+
+    mit = Mitschrift(conn)
+    schreibe_outcomes(
+        mit, ids, alle_horizonte(df, idx, richtung, horizonte=(5, 20, 60))
+    )
+
+    # Die Einfuegereihenfolge muss der Schluesselreihenfolge entsprechen:
+    # nach event_id, darin nach Horizont.
+    schluessel = [(z[0], z[1]) for z in mit.zeilen]
+    assert schluessel == sorted(schluessel), (
+        "Einfuegereihenfolge weicht von der Schluesselreihenfolge ab - "
+        f"{schluessel}"
+    )
+    # Und je Ereignis stehen alle Horizonte beieinander.
+    assert [k[0] for k in schluessel] == sorted(k[0] for k in schluessel)
+
+
 def test_outcome_reihenfolge_wird_geprueft(conn, config):
     """Passen event_ids und Outcomes nicht zusammen, landen Ergebnisse beim
     falschen Ereignis - und man saehe es keiner Zeile an."""

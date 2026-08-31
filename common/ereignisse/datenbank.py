@@ -710,35 +710,50 @@ def schreibe_outcomes(
         f"INSERT OR REPLACE INTO outcomes ({','.join(OUTCOME_SPALTEN)}) "
         "VALUES (" + ",".join("?" * len(OUTCOME_SPALTEN)) + ")"
     )
-    geschrieben = 0
-
-    for horizont, o in sorted(outcomes_je_horizont.items()):
-        if len(o) != len(event_ids):
+    horizonte = sorted(outcomes_je_horizont)
+    for h in horizonte:
+        if len(outcomes_je_horizont[h]) != len(event_ids):
             raise ValueError(
-                f"Horizont {horizont}: {len(o)} Outcomes, aber "
+                f"Horizont {h}: {len(outcomes_je_horizont[h])} Outcomes, aber "
                 f"{len(event_ids)} event_ids - die Reihenfolge stimmt nicht."
             )
-        gueltig = np.nonzero(o.gueltig)[0]
-        if not len(gueltig):
-            continue
 
-        zeilen = [
-            (
-                event_ids[k], horizont,
+    # JE EREIGNIS alle Horizonte zusammen, nicht je Horizont alle Ereignisse.
+    #
+    # Der Primaerschluessel ist (event_id, horizont_bars). Schreibt man
+    # horizontweise, springt jede neue Runde an den Anfang des B-Baums
+    # zurueck: bei 23 Mio Zeilen ueber 5 GB bedeutet das durchgehend
+    # Zufallszugriffe, Seitenteilungen und ein staendig wachsendes
+    # Journal. Gemessen am 31.08.2026: 18.386 Sekunden fuer 23,3 Mio Zeilen
+    # (1.268/s) - gegenueber 16.459/s in der Messung auf kleiner Tabelle.
+    #
+    # Ereignisweise entspricht die Einfuegereihenfolge exakt der
+    # Schluesselreihenfolge, und SQLite haengt hinten an.
+    geschrieben = 0
+    puffer: list[tuple] = []
+    for k in range(len(event_ids)):
+        eid = event_ids[k]
+        for h in horizonte:
+            o = outcomes_je_horizont[h]
+            if not o.gueltig[k]:
+                continue
+            puffer.append((
+                eid, h,
                 _f(o.entry_preis[k]), _f(o.atr_referenz[k]),
                 _f(o.mfe_pkt[k]), _f(o.mfe_r[k]), int(o.zeit_bis_mfe[k]),
                 _f(o.mae_pkt[k]), _f(o.mae_r[k]), int(o.zeit_bis_mae[k]),
                 _f(o.end_pkt[k]), _f(o.end_r[k]), _f(o.end_prozent[k]),
-            )
-            for k in gueltig
-        ]
-        for start in range(0, len(zeilen), stapel):
-            conn.executemany(frage, zeilen[start : start + stapel])
+            ))
+        if len(puffer) >= stapel:
+            conn.executemany(frage, puffer)
             conn.commit()
-            conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
-            geschrieben += len(zeilen[start : start + stapel])
+            geschrieben += len(puffer)
+            puffer = []
 
-    conn.commit()
+    if puffer:
+        conn.executemany(frage, puffer)
+        conn.commit()
+        geschrieben += len(puffer)
     return geschrieben
 
 

@@ -46,9 +46,10 @@ from backtest.engine import Backtester  # noqa: E402
 from common.config import Config  # noqa: E402
 from common.ereignisse.basis import pruefe_lookahead  # noqa: E402
 from common.ereignisse.datenbank import (  # noqa: E402
-    massenschreiben,
+    lege_indizes_an,
     notiere_lauf,
     oeffne,
+    schreibe_events,
     schreibe_outcomes,
     zaehle,
 )
@@ -213,7 +214,10 @@ def main(argv: list[str] | None = None) -> int:
     # der erste Volllauf (2,59 Mio Zeilen) 7.087 Sekunden.
     conn = oeffne(pfad, mit_indizes=False)
     try:
-        n = massenschreiben(
+        # Die Indizes bleiben weg, bis ALLES geschrieben ist - auch die
+        # Outcomes. massenschreiben legt sie am Ende an, deshalb hier der
+        # direkte Weg und ein eigener Aufbau nach dem letzten INSERT.
+        n = schreibe_events(
             conn, ereignisse, rahmen,
             lauf_id=lauf_id,
             instrument=config.market.product,
@@ -258,6 +262,15 @@ def main(argv: list[str] | None = None) -> int:
             t0 = time.perf_counter()
             m = schreibe_outcomes(conn, event_ids, ergebnis)
             _log(f"  {m:,} Outcome-Zeilen in {time.perf_counter() - t0:.1f}s")
+
+        # Jetzt erst die Indizes - am Stueck ueber die fertige Tabelle statt
+        # bei jeder einzelnen Zeile gepflegt.
+        _log("\nIndizes")
+        t0 = time.perf_counter()
+        lege_indizes_an(conn)
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.commit()
+        _log(f"  aufgebaut in {time.perf_counter() - t0:.1f}s")
 
         uebersicht = zaehle(conn)
         _log("\nIn der Datenbank, je Block")
