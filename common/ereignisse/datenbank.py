@@ -124,9 +124,16 @@ CREATE TABLE IF NOT EXISTS events (
     merkmale_json       TEXT NOT NULL
 );
 
+-- Rohzahlen des Kursverlaufs. Sie haengen NICHT von der
+-- Klassifikationsschwelle ab - nur die Klasse tut das. Deshalb hier der
+-- Schluessel (event_id, horizont_bars) und die Klassen in einer eigenen
+-- Tabelle: die Rohzahlen dreimal zu speichern (fuer s = 0,25/0,5/1,0) waeren
+-- 70 statt 23 Mio Zeilen fuer denselben Inhalt.
 CREATE TABLE IF NOT EXISTS outcomes (
     event_id            TEXT NOT NULL,
     horizont_bars       INTEGER NOT NULL,
+    entry_preis         REAL,
+    atr_referenz        REAL,
     mfe_pkt             REAL,
     mfe_r               REAL,
     zeit_bis_mfe        INTEGER,
@@ -136,15 +143,29 @@ CREATE TABLE IF NOT EXISTS outcomes (
     end_pkt             REAL,
     end_r               REAL,
     end_prozent         REAL,
-    max_hoch_pkt        REAL,
-    max_tief_pkt        REAL,
 
-    -- Intrabar-Ambiguitaet (Plan Abschnitt 9, Gemini-Punkt B)
-    intrabar_ambig      INTEGER NOT NULL DEFAULT 0,
+    PRIMARY KEY (event_id, horizont_bars),
+    FOREIGN KEY (event_id) REFERENCES events (event_id)
+);
+
+-- Outcome-Klassen je Schwelle (Plan Abschnitt 6). Getrennt von den
+-- Rohzahlen, weil sie von der Schwelle abhaengen und diese bewusst
+-- variiert wird (0,25 / 0,5 / 1,0 x ATR), um zu zeigen, wie stark das
+-- Ergebnis daran haengt.
+--
+-- klasse_stop_zuerst / klasse_ziel_zuerst: bei Intrabar-Ambiguitaet ist aus
+-- OHLC nicht rekonstruierbar, was zuerst kam (Plan Abschnitt 9,
+-- Gemini-Punkt B). Beide Annahmen werden gerechnet; liegen die Ergebnisse
+-- weit auseinander, haengt die Aussage an der Annahme und gehoert so
+-- gekennzeichnet.
+CREATE TABLE IF NOT EXISTS outcome_klassen (
+    event_id            TEXT NOT NULL,
+    horizont_bars       INTEGER NOT NULL,
+    schwelle_atr        REAL NOT NULL,
     klasse              TEXT,
     klasse_stop_zuerst  TEXT,
     klasse_ziel_zuerst  TEXT,
-    schwelle_atr        REAL,
+    intrabar_ambig      INTEGER NOT NULL DEFAULT 0,
 
     PRIMARY KEY (event_id, horizont_bars, schwelle_atr),
     FOREIGN KEY (event_id) REFERENCES events (event_id)
@@ -240,11 +261,13 @@ INDIZES: tuple[str, ...] = (
     "ON events (vola_regime, struktur_regime, liquiditaet_regime)",
     "CREATE INDEX IF NOT EXISTS idx_outcomes_horizont "
     "ON outcomes (horizont_bars)",
+    "CREATE INDEX IF NOT EXISTS idx_klassen_horizont "
+    "ON outcome_klassen (horizont_bars, schwelle_atr)",
 )
 
 _INDEXNAMEN = ("idx_events_typ", "idx_events_block", "idx_events_zeit",
                "idx_events_cluster", "idx_events_regime",
-               "idx_outcomes_horizont")
+               "idx_outcomes_horizont", "idx_klassen_horizont")
 
 
 def oeffne(pfad: str | Path, *, mit_indizes: bool = True) -> sqlite3.Connection:
@@ -655,6 +678,79 @@ def _session_serie(index: pd.DatetimeIndex) -> list[str]:
     return namen
 
 
+#: Die Spalten von ``outcomes``, in Schreibreihenfolge.
+OUTCOME_SPALTEN: tuple[str, ...] = (
+    "event_id", "horizont_bars", "entry_preis", "atr_referenz",
+    "mfe_pkt", "mfe_r", "zeit_bis_mfe",
+    "mae_pkt", "mae_r", "zeit_bis_mae",
+    "end_pkt", "end_r", "end_prozent",
+)
+
+
+def schreibe_outcomes(
+    conn: sqlite3.Connection,
+    event_ids: Sequence[str],
+    outcomes_je_horizont: dict[int, Any],
+    *,
+    stapel: int = 50_000,
+) -> int:
+    """Outcome-Rohzahlen schreiben - alle Horizonte auf einmal.
+
+    ``event_ids`` sind die ``event_id``-Werte in **derselben Reihenfolge**,
+    in der die Ereignisse an ``berechne_outcomes`` gegeben wurden.
+    ``outcomes_je_horizont`` ist das Ergebnis von
+    ``common.ereignisse.outcomes.alle_horizonte``.
+
+    **Ungueltige Zeilen werden nicht geschrieben.** Ein Ereignis, dessen
+    Fenster nicht vollstaendig in die Reihe passt, hat fuer diesen Horizont
+    kein Ergebnis - und eine Zeile voller NULL saehe aus wie eine Messung,
+    die zufaellig nichts ergab (Invariante 11). Es fehlt lieber.
+    """
+    frage = (
+        f"INSERT OR REPLACE INTO outcomes ({','.join(OUTCOME_SPALTEN)}) "
+        "VALUES (" + ",".join("?" * len(OUTCOME_SPALTEN)) + ")"
+    )
+    geschrieben = 0
+
+    for horizont, o in sorted(outcomes_je_horizont.items()):
+        if len(o) != len(event_ids):
+            raise ValueError(
+                f"Horizont {horizont}: {len(o)} Outcomes, aber "
+                f"{len(event_ids)} event_ids - die Reihenfolge stimmt nicht."
+            )
+        gueltig = np.nonzero(o.gueltig)[0]
+        if not len(gueltig):
+            continue
+
+        zeilen = [
+            (
+                event_ids[k], horizont,
+                _f(o.entry_preis[k]), _f(o.atr_referenz[k]),
+                _f(o.mfe_pkt[k]), _f(o.mfe_r[k]), int(o.zeit_bis_mfe[k]),
+                _f(o.mae_pkt[k]), _f(o.mae_r[k]), int(o.zeit_bis_mae[k]),
+                _f(o.end_pkt[k]), _f(o.end_r[k]), _f(o.end_prozent[k]),
+            )
+            for k in gueltig
+        ]
+        for start in range(0, len(zeilen), stapel):
+            conn.executemany(frage, zeilen[start : start + stapel])
+            conn.commit()
+            conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
+            geschrieben += len(zeilen[start : start + stapel])
+
+    conn.commit()
+    return geschrieben
+
+
+def _f(wert: Any) -> float | None:
+    """NaN wird zu ``None`` - SQLite kennt kein NaN, und ``NULL`` ist die
+    ehrliche Antwort auf 'nicht berechenbar'."""
+    if wert is None:
+        return None
+    w = float(wert)
+    return None if not np.isfinite(w) else w
+
+
 def notiere_lauf(
     conn: sqlite3.Connection,
     *,
@@ -702,6 +798,7 @@ __all__ = [
     "CLUSTER_FENSTER_BARS",
     "EVENT_SPALTEN",
     "INDIZES",
+    "OUTCOME_SPALTEN",
     "Kontextquellen",
     "SCHEMA",
     "TRAINING_BIS",
@@ -713,6 +810,7 @@ __all__ = [
     "notiere_lauf",
     "oeffne",
     "schreibe_events",
+    "schreibe_outcomes",
     "vergib_cluster",
     "zaehle",
 ]

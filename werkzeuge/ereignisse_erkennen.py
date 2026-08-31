@@ -49,6 +49,7 @@ from common.ereignisse.datenbank import (  # noqa: E402
     massenschreiben,
     notiere_lauf,
     oeffne,
+    schreibe_outcomes,
     zaehle,
 )
 from common.ereignisse.displacement import displacement_serie  # noqa: E402
@@ -56,6 +57,7 @@ from common.ereignisse.eqhl import eqhl_ereignisse  # noqa: E402
 from common.ereignisse.fvg import fvg_serie  # noqa: E402
 from common.ereignisse.niveaus import niveau_ereignisse  # noqa: E402
 from common.ereignisse.orderblocks import orderblock_ereignisse  # noqa: E402
+from common.ereignisse.outcomes import HORIZONTE, alle_horizonte  # noqa: E402
 from common.ereignisse.struktur import struktur_ereignisse, struktur_spalten  # noqa: E402
 from common.ereignisse.sweeps import sweep_ereignisse  # noqa: E402
 from common.regime import regime_spalten, relatives_volumen  # noqa: E402
@@ -164,6 +166,11 @@ def main(argv: list[str] | None = None) -> int:
         help="Kennung dieses Laufs. Vorgabe: Zeitstempel. Derselbe Wert "
              "ueberschreibt die Zeilen des vorherigen Laufs.",
     )
+    parser.add_argument(
+        "--ohne-outcomes", action="store_true",
+        help="Nur die Ereignisse schreiben, den Kursverlauf danach nicht "
+             "messen (Etappe 4 ueberspringen).",
+    )
     parser.add_argument("--notiz", default="")
     args = parser.parse_args(argv)
 
@@ -218,6 +225,39 @@ def main(argv: list[str] | None = None) -> int:
             ereignisse=n, notiz=args.notiz,
         )
         _log(f"  {n:,} Zeilen in {time.perf_counter() - t0:.1f}s")
+
+        if not args.ohne_outcomes:
+            _log("\nOutcomes (Etappe 4)")
+            t0 = time.perf_counter()
+            import numpy as np
+
+            # Die event_ids stehen in derselben Reihenfolge wie die
+            # Ereignisliste - schreibe_events vergibt sie fortlaufend. Die
+            # Reihenfolge ist der Schluessel: passt sie nicht, landen
+            # Ergebnisse beim falschen Ereignis, und man saehe es keiner
+            # Zeile an. schreibe_outcomes prueft die Laenge.
+            event_ids = [f"{lauf_id}-{k:09d}" for k in range(len(ereignisse))]
+            verfuegbar = np.fromiter(
+                (e.verfuegbar_idx for e in ereignisse), dtype=np.int64,
+                count=len(ereignisse),
+            )
+            richtungen = np.fromiter(
+                (e.direction for e in ereignisse), dtype=np.int64,
+                count=len(ereignisse),
+            )
+            ergebnis = alle_horizonte(rahmen, verfuegbar, richtungen)
+            _log(f"  gerechnet: {time.perf_counter() - t0:.1f}s")
+            for h in HORIZONTE:
+                gueltig = int(ergebnis[h].gueltig.sum())
+                fehlend = len(ereignisse) - gueltig
+                _log(
+                    f"    H={h:>3}  {gueltig:>10,} gueltig"
+                    + (f"   ({fehlend:,} Fenster unvollstaendig)" if fehlend else "")
+                )
+
+            t0 = time.perf_counter()
+            m = schreibe_outcomes(conn, event_ids, ergebnis)
+            _log(f"  {m:,} Outcome-Zeilen in {time.perf_counter() - t0:.1f}s")
 
         uebersicht = zaehle(conn)
         _log("\nIn der Datenbank, je Block")

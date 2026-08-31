@@ -72,13 +72,94 @@ def _ereignis(idx: int, *, richtung: int = 1, typ: str = "test_muster") -> Ereig
 
 # -- Schema -----------------------------------------------------------------
 
-def test_schema_legt_alle_vier_tabellen_an(conn):
+def test_schema_legt_alle_tabellen_an(conn):
     namen = {
         r[0] for r in conn.execute(
             "SELECT name FROM sqlite_master WHERE type='table'"
         )
     }
-    assert {"events", "outcomes", "triggers", "stop_szenarien", "laeufe"} <= namen
+    assert {
+        "events", "outcomes", "outcome_klassen", "triggers",
+        "stop_szenarien", "laeufe",
+    } <= namen
+
+
+def test_outcomes_haengen_nicht_an_der_schwelle(conn):
+    """Rohzahlen und Klassen sind getrennt: MFE/MAE haengen nicht von der
+    Klassifikationsschwelle ab, nur die Klasse tut das. Beides in einer
+    Tabelle waeren 70 statt 23 Mio Zeilen fuer denselben Inhalt."""
+    outcome_spalten = {b[1] for b in conn.execute("PRAGMA table_info(outcomes)")}
+    klassen_spalten = {
+        b[1] for b in conn.execute("PRAGMA table_info(outcome_klassen)")
+    }
+    assert "schwelle_atr" not in outcome_spalten
+    assert "schwelle_atr" in klassen_spalten
+    assert "mfe_pkt" in outcome_spalten
+    assert "klasse" in klassen_spalten
+
+
+def test_outcomes_werden_geschrieben(conn, config):
+    from common.ereignisse.datenbank import schreibe_outcomes
+    from common.ereignisse.outcomes import alle_horizonte
+
+    df = _rahmen(config, n=2000)
+    idx = np.array([100, 300, 500])
+    richtung = np.array([1, -1, 1])
+    ereignisse = [_ereignis(int(i), richtung=int(r)) for i, r in zip(idx, richtung)]
+    schreibe_events(conn, ereignisse, df, lauf_id="L1")
+    ids = [r[0] for r in conn.execute(
+        "SELECT event_id FROM events ORDER BY event_id"
+    )]
+
+    ergebnis = alle_horizonte(df, idx, richtung, horizonte=(5, 20))
+    n = schreibe_outcomes(conn, ids, ergebnis)
+    assert n == 6, "3 Ereignisse x 2 Horizonte"
+
+    zeile = conn.execute(
+        "SELECT horizont_bars, mfe_pkt, mae_pkt, end_pkt, mfe_r, atr_referenz "
+        "FROM outcomes WHERE event_id = ? AND horizont_bars = 5", (ids[0],)
+    ).fetchone()
+    assert zeile[0] == 5
+    assert zeile[1] >= 0 and zeile[2] >= 0, "Exkursionen sind nie negativ"
+    assert zeile[5] is not None, "ATR-Bezug fehlt"
+
+
+def test_ungueltige_outcomes_werden_nicht_geschrieben(conn, config):
+    """Eine Zeile voller NULL saehe aus wie eine Messung, die zufaellig
+    nichts ergab. Sie fehlt lieber."""
+    from common.ereignisse.datenbank import schreibe_outcomes
+    from common.ereignisse.outcomes import alle_horizonte
+
+    df = _rahmen(config, n=300)
+    # 295 + 1 Einstieg + 20 Horizont passt nicht mehr in 300 Kerzen.
+    idx = np.array([100, 295])
+    richtung = np.array([1, 1])
+    ereignisse = [_ereignis(int(i)) for i in idx]
+    schreibe_events(conn, ereignisse, df, lauf_id="L1")
+    ids = [r[0] for r in conn.execute(
+        "SELECT event_id FROM events ORDER BY event_id"
+    )]
+
+    n = schreibe_outcomes(conn, ids, alle_horizonte(df, idx, richtung,
+                                                   horizonte=(20,)))
+    assert n == 1, "das unvollstaendige Fenster wurde geschrieben"
+    (geschrieben,) = conn.execute(
+        "SELECT event_id FROM outcomes"
+    ).fetchone()
+    assert geschrieben == ids[0]
+
+
+def test_outcome_reihenfolge_wird_geprueft(conn, config):
+    """Passen event_ids und Outcomes nicht zusammen, landen Ergebnisse beim
+    falschen Ereignis - und man saehe es keiner Zeile an."""
+    from common.ereignisse.datenbank import schreibe_outcomes
+    from common.ereignisse.outcomes import alle_horizonte
+
+    df = _rahmen(config, n=1000)
+    idx = np.array([100, 300])
+    ergebnis = alle_horizonte(df, idx, np.array([1, 1]), horizonte=(5,))
+    with pytest.raises(ValueError, match="Reihenfolge"):
+        schreibe_outcomes(conn, ["nur-eine-id"], ergebnis)
 
 
 def test_event_spalten_stimmen_mit_dem_schema_ueberein(conn):
