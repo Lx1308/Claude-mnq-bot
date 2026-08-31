@@ -2,15 +2,21 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
-Stand: 2026-08-31 (Abschnitt 37 — **Ereignisdatenbank Etappe 1**: serielle,
-O(n)-Erkenner in `common/ereignisse/` — Swings, Struktur (BOS/CHoCH), Niveau-
-Interaktion, Fair Value Gap, Displacement, je mit Lookahead- und
-Gleichheitstest. `common/muster_serie.py` von O(n²) auf O(n) gebracht — das
-war der Grund, warum `Backtester.prepare` ueber die volle Historie nicht
-durchlief (jetzt ~85 s). TRADAYRI: der schwarze Chart lag an einem
-Zeitstempel-Einheitenfehler — pandas 3 parst ISO8601 zu Mikrosekunden, das
-Frontend erwartet Nanosekunden. Behoben in `execution/server.py`.
-Forschungsplan um fuenf Schema-Punkte aus einer externen Pruefung ergaenzt.)
+Stand: 2026-08-31 (Abschnitte 37 und 38 — **Die Ereignisdatenbank steht und
+ist gefuellt**: 2.592.334 Ereignisse ueber 2.573.719 1m-Kerzen, 2019–2026,
+sieben serielle O(n)-Erkenner in `common/ereignisse/` (Swings, Struktur,
+Niveau-Interaktion, FVG, Displacement, Order Block, Equal Highs/Lows,
+Liquidity Sweep), Schema und Schreibweg in
+`common/ereignisse/datenbank.py`, Lauf ueber
+`werkzeuge/ereignisse_erkennen.py`. Zahlen:
+`docs/EREIGNISDATENBANK_BESTAND_2026-08-31.md`. Zwei Performance-Funde
+unterwegs: `muster_serie` war O(n²) (blockierte jeden Volllauf), der
+Schreibweg 45x zu langsam (Timestamp-Zugriffe je Zeile). TRADAYRI: schwarzer
+Chart = Zeitstempel in Mikro- statt Nanosekunden; Livedaten kamen nicht an,
+weil die Nachladeschleife an einem Platzhalter-Endpunkt hing. **Offene
+Entscheidung fuer Laurin**: 2,59 Mio Ereignisse statt der geplanten
+200–800k — das volle Stop-Raster waere ueber 300 Mio Zeilen, siehe
+`docs/UEBERGABE_2026-08-31.md` Abschnitt 3.)
 
 Stand: 2026-08-30 (Abschnitt 34 — **Die Projektgrenze ist aufgehoben**:
 Ausführung über NinjaTrader ist seit dem 30.08.2026 Projektbestandteil.
@@ -3618,3 +3624,151 @@ Kernaussage im Plan festgehalten: diese Verschaerfungen machen die Messung
 ehrlicher, erzeugen aber **keinen** Vorteil. Die Grundratentabelle kann
 genauso gut zeigen, dass in 1m-OHLCV-Mustern nichts zu holen ist — ein
 zulaessiges Ergebnis.
+
+---
+
+## 38. Ereignisdatenbank Etappen 2 und 3: Schema, Schreibweg, erster Volllauf (31.08.2026)
+
+### 38.1 `common/ereignisse/datenbank.py`
+
+Vier Tabellen nach Plan (`events`, `outcomes`, `triggers`, `stop_szenarien`)
+plus `laeufe` fuer die Herkunft. **Kernmerkmale als echte Spalten**
+(`level_1/2/neckline`, Hoehe, Dauer), **Musterspezifisches zusaetzlich als
+`merkmale_json`** — nichts geht verloren, die haeufigen Abfragen bleiben
+schnell.
+
+`schreibe_events` reichert jedes Ereignis mit dem Kontext **am
+Verfuegbarkeitszeitpunkt** an: ATR, drei Regime-Achsen, Session, Wochentag,
+Minuten seit RTH-Open, Trendlage, Abstand zu VWAP/PDH/PDL, relatives Volumen,
+Rollnaehe, Datensatzblock, `cluster_id`.
+
+**Drei Entwurfsentscheidungen, die aus konkreten Fehlern stammen:**
+
+1. **Spaltennamen im INSERT ausdruecklich benannt.** Ein `?` zu wenig meldet
+   SQLite (passierte beim ersten Versuch: 38 Spalten, 36 Werte). Ein
+   *vertauschtes* Paar gleicher Typen meldet es **nicht** — dann stuende der
+   Kontext still in der falschen Spalte. Ein Test haelt `EVENT_SPALTEN` und
+   Schema deckungsgleich.
+
+2. **`vergib_cluster` mit festem Fenster statt transitiver Kette.** Die Kette
+   (A-B, B-C ⇒ A-B-C) klang richtiger, lief auf 1m-Daten mit sieben Erkennern
+   aber davon: gemessen **58 Ereignisse ueber mehrere Minuten** in einem
+   Cluster. Das waere keine Gleichzeitigkeit mehr, und die Stichprobe
+   schrumpfte zu stark. Mit festem Fenster: Median 4–5, Maximum 38.
+
+3. **Blockgrenzen fest verdrahtet** (`TRAINING_BIS`, `VALIDATION_BIS`). Sie
+   duerfen nicht mit dem Datenbestand wandern, sonst ist ein Ergebnis von
+   heute nicht mit einem von naechster Woche vergleichbar.
+
+### 38.2 Der Schreibweg war 45x zu langsam — und warum
+
+Der erste Volllauf schrieb 2,59 Mio Zeilen in **7.087 Sekunden**: 2,7 ms je
+Zeile, rund hundertmal langsamer als SQLite kann.
+
+**Erste Vermutung war falsch.** Ich hielt die fuenf Sekundaerindizes fuer die
+Ursache, baute `massenschreiben` (Indizes weg, einfuegen, Indizes neu) — und
+mass **keinen Unterschied** (3.595 gegen 3.563 Zeilen/s).
+
+**Dann profiliert statt geraten** (`cProfile`): **24 von 36 Sekunden** gingen
+in `index[i]`, das Herausgreifen einzelner `Timestamp`-Objekte aus dem
+`DatetimeIndex` — fuenf Zugriffe je Ereignis (drei `isoformat()`, zwei
+`tz_convert`). Jeder Zugriff baut ein Python-Objekt.
+
+Behoben, alles einmal vektorisiert:
+
+| Funktion | Was sie ersetzt |
+|---|---|
+| `_iso_strings` | `strftime` ueber den ganzen Index statt `isoformat()` je Zeile |
+| `_minuten_seit_open_serie` | eine `tz_convert` fuer alles |
+| `_session_serie` | Nachschlagecache ueber (Wochentag, Minute) — `primary_session` hat hoechstens 7 × 1440 Antworten |
+
+Ergebnis: **3.595 → 16.459 Zeilen/s**, hochgerechnet 157 s statt 7.087 s.
+Erst danach brachten die Indizes messbare 25 Prozent — vorher waren sie vom
+Timestamp-Overhead ueberdeckt.
+
+**Das Formatrisiko dabei:** `strftime("%Y-%m-%dT%H:%M:%S") + "+00:00"` muss
+auf das Zeichen genau dem entsprechen, was `Timestamp.isoformat()` liefert —
+sonst waeren zwei Laeufe nicht vergleichbar, **und man saehe es keiner
+einzelnen Zeile an**. Ein Test prueft vier Zeitraeume inklusive beider
+US-Zeitumstellungen; bei Bruchteilsekunden faellt die Funktion auf den
+langsamen, aber immer richtigen Weg zurueck.
+
+`_session_serie` benutzt bewusst **dieselbe** `primary_session` mit Cache und
+keine vektorisierte Neufassung — eine zweite Sessionlogik waere derselbe
+Fehler wie eine zweite Indikatorrechnung (Invariante 1).
+
+### 38.3 `werkzeuge/ereignisse_erkennen.py` und der erste Volllauf
+
+Der Lauf: laden → `prepare` → Regime → sieben Erkenner →
+Lookahead-Sammelpruefung → schreiben. `--probelauf` zaehlt ohne zu schreiben.
+**Alles auf 1m.**
+
+Das relative Volumen kommt aus derselben Funktion wie der Liquiditaetsrang der
+Regime-Engine — eine zweite Formel waere der Anfang davon, dass
+Ereignismerkmal und Regimeachse auseinanderlaufen. Bleibt das Regime leer
+(Zeitraum kuerzer als das rollende 60-Tage-Fenster), sagt der Lauf das
+ausdruecklich, statt still ohne Kontext zu schreiben.
+
+**Ergebnis (`L20260830-233449`):** 2.573.719 Kerzen → **2.592.334 Ereignisse**,
+Training 1.665.446 / Validation 352.175 / OOS 574.713. Regime-Kontext fuer
+98,7 % der Kerzen. Zahlen und Auswertung:
+`docs/EREIGNISDATENBANK_BESTAND_2026-08-31.md`.
+
+### 38.4 Der Befund, der eine Entscheidung erzwingt
+
+Der Plan rechnete mit **200.000–800.000** Ereignissen. Es sind **2,59 Mio** —
+und das ist erst die 1m-Ebene (Entscheidung 1 sieht zusaetzlich 5m/15m/1h vor).
+
+`outcomes` waere damit ~23 Mio Zeilen (× 9 Horizonte) — handhabbar.
+**`stop_szenarien` im vollen Raster (25 Positionen × 5 Entries) waeren ueber
+300 Mio Zeilen** — weder als SQLite-Tabelle noch in vertretbarer Rechenzeit
+machbar. Entscheidung 5 des Plans muss neu getroffen werden.
+
+Ein Grund dafuer ist benennbar: **59 % aller Niveau-Ereignisse haengen an
+Swing-Hochs und -Tiefs**, weil jeder der ~250.000 bestaetigten Swings als
+eigenes Niveau zaehlt. Drei Wege stehen Laurin vorgelegt in
+`docs/UEBERGABE_2026-08-31.md` Abschnitt 3; empfohlen ist, die Grundraten
+ueber alle Ereignisse zu messen und das volle Stop-Raster nur fuer die
+Mustertypen zu rechnen, die dort einen Effekt zeigen — mit Zaehlung des
+Auswahlschritts im Hypothesenregister.
+
+### 38.5 Zwei Beobachtungen aus dem Bestand
+
+**Der n-te Test eines Niveaus faellt bemerkenswert stabil ab:** nach jedem
+Test wird ein Niveau in rund **einem Drittel** der Faelle noch einmal
+getestet (32/31/30/31/33 % ueber sechs Stufen). Ob der zweite Test besser
+*haelt* als der erste, sagt das nicht — dafuer braucht es Etappe 4.
+
+**Sweeps gehen mit rund doppeltem Volumen einher** (1,85–2,11× je Session,
+sehr gleichmaessig), und die Richtungen sind in jeder Session bis auf unter
+3 % ausgeglichen. Das ist die einzige Aussage ueber "Liquiditaet", die diese
+Daten hergeben — gemessen am Umsatz, keine Aussage ueber Order-Tiefe.
+
+### 38.6 Live-Chart: warum keine Livedaten ankamen (31.08.2026)
+
+Laurins Frage. Drei Ursachen, zwei davon unfertiger Code:
+
+1. **Die Nachladeschleife lief nur bei `liveActive`** — also wenn
+   `/api/session` eine laufende Handelssitzung meldete. Dieser Endpunkt war
+   ein fest verdrahteter Platzhalter mit `running: false`. Ein Chart soll
+   ohnehin den neuesten Stand zeigen, ob dabei gehandelt wird oder nicht; die
+   Schleife haengt jetzt nur noch daran, ob die Boerse offen ist.
+2. **`/api/market` hatte `is_open` fest auf `true`.** Eine Kopfzeile, die
+   sonntags "MARKT OFFEN" meldet, ist eine Behauptung mit Autoritaet. Jetzt
+   aus `common/sessions.py`.
+3. **Der Empfaenger lief nicht.** Kein Codefehler — aber es war nirgends
+   sichtbar. `/api/market` liefert jetzt `letzte_kerze_ts`,
+   `datenalter_sekunden`, `daten_frisch`; die Kopfzeile zeigt "Letzte Kerze",
+   gelb wenn die Boerse offen ist und trotzdem nichts nachkommt. Bei
+   geschlossener Boerse **nicht** angemahnt — eine Warnung, die jede Nacht
+   leuchtet, wird ignoriert.
+
+`/api/session` meldet jetzt drei getrennte Aussagen: `running` (Bot
+arbeitet), `connected` (Kerzen kommen an), `active` (beides). Nur `active`
+zeigt "ECHTZEIT" — ein laufender Bot ohne Datenstrom ist kein
+Echtzeitbetrieb.
+
+Ebenfalls behoben: Serverstart-Timeout 30 s → 90 s. Der erste Start muss die
+657-MB-Kerzendatenbank oeffnen; unter Plattenlast reichte das nicht, und der
+Launcher hat den langsam startenden Server dann getoetet (Laurins
+Fehlermeldung vom 30.08.2026 abends).

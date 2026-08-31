@@ -11,6 +11,33 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 
 ---
 
+## Erledigt am 31.08.2026
+
+- [x] **P0** TRADAYRI schwarzer Chart / Zeitachse „1970" — Zeitstempel kamen in
+      Mikro- statt Nanosekunden aus `_rahmen_zu_bars` (pandas 3 parst ISO8601
+      als `datetime64[us]`)
+- [x] **P0** Chart lud keine Livedaten nach — die Schleife hing an
+      `/api/session`, einem Platzhalter mit `running: false`
+- [x] **P0** `/api/market` meldete `is_open` fest als `true` — jetzt aus
+      `common/sessions.py`
+- [x] **P0** Datenstand war nirgends sichtbar — Kopfzeile zeigt „Letzte Kerze"
+- [x] **P0** Serverstart-Timeout 30 s → 90 s (Launcher tötete den Server beim
+      Öffnen der 657-MB-Datenbank)
+- [x] **P1** `muster_serie` war O(n²) — blockierte jeden Volllauf über die
+      Historie (77 min → 90 s)
+- [x] **P1** Ereignisdatenbank **Etappe 1**: sieben serielle Erkenner
+      (Struktur, FVG, Displacement, Order Block, Equal Highs/Lows, Liquidity
+      Sweep, Niveau-Interaktion + Opening Range als Niveauquelle)
+- [x] **P1** Ereignisdatenbank **Etappe 2**: Schema, Schreibweg, Kontext,
+      Cluster-IDs
+- [x] **P1** Ereignisdatenbank **Etappe 3**: erster Volllauf — 2.592.334
+      Ereignisse, `docs/EREIGNISDATENBANK_BESTAND_2026-08-31.md`
+- [x] **P1** Schreibweg 45× schneller (Timestamp-Zugriffe je Zeile
+      vektorisiert)
+- [x] **P2** Forschungsplan um fünf Punkte aus externer Prüfung ergänzt
+      (Slippage je Orderart, Intrabar-Ambiguität, Cluster, Volumen am
+      Extremum, VIX)
+
 ## Erledigt am 30.08.2026
 
 - [x] **P0** Kerzenkorruption im `tcp_proxy` (Invariante 9) — Proxy ist reiner
@@ -60,7 +87,17 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 
 ## P0 — vor dem nächsten Handelstag
 
+- [ ] **Kerzen-Empfänger starten** (31.08.2026). Die jüngste Kerze ist vom
+      28.08. — dem Ende des NT8-Exports. Seither kam nichts nach, weil
+      `python -m ntbridge` nicht lief und in NinjaTrader kein Chart mit dem
+      `ClaudeBridge`-Indikator offen war. **Beides ist nötig.** Die Kopfzeile
+      der Oberfläche zeigt den Datenstand jetzt selbst an („Letzte Kerze",
+      gelb bei offener Börse ohne Datenstrom). Anleitung:
+      `docs/UEBERGABE_2026-08-31.md` Abschnitt 1.3.
+
 - [ ] **Ende-zu-Ende-Probe des Orderwegs mit offener Börse.**
+      **Nur mit Laurin zusammen** — eine Order abzuschicken ist eine Handlung
+      nach außen und gehört nicht in einen unbeaufsichtigten Lauf.
       Bisher ist der Weg nur gegen Testdaten geprüft. Sobald die Börse offen
       ist: eine Order über das Panel schicken und nachsehen, ob
       `order_update`, `execution` und der gebuchte Trade ankommen.
@@ -209,6 +246,14 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 ---
 
 ## Fragen an Laurin
+
+- **Umfang der Stop-Analyse (31.08.2026, neu — blockiert Etappe 7).**
+  Der Forschungsplan rechnete mit 200–800 k Ereignissen; gemessen sind es
+  **2,59 Mio** (nur 1m-Ebene). Das volle Stop-Raster aus Entscheidung 5
+  (25 Positionen × 5 Entries) wären **über 300 Mio Zeilen** — nicht
+  handhabbar. Drei Wege mit Empfehlung stehen in
+  `docs/UEBERGABE_2026-08-31.md` Abschnitt 3.
+  **Blockiert nicht Etappe 4** (Outcomes) — die kann vorher laufen.
 
 - **Lucid-Zahlen** (siehe P0). *(300k-Frage ist geklärt: gibt es nicht.)*
 *(Beantwortet am 30.08.2026: der Bot handelt mit `frei`; die Auswertung

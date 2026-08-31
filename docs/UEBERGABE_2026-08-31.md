@@ -135,6 +135,60 @@ Ereignis ab und prüft, ob der gespeicherte Kontext identisch bleibt. Läse der
 Schreibweg auch nur eine Kerze zu weit, wäre die ganze Datenbank wertlos —
 und man würde es den Zahlen nicht ansehen.
 
+### 2.3a Die Datenbank ist gefüllt
+
+Der Volllauf ist durchgelaufen, während du geschlafen hast:
+
+**2.592.334 Ereignisse** über 2.573.719 Minutenkerzen, 06.05.2019 bis
+28.08.2026. Aufgeteilt in Training (1,67 Mio), Validation (352 k) und
+Out-of-Sample (575 k).
+
+Die vollständige Bestandsaufnahme mit allen Tabellen steht in
+**`docs/EREIGNISDATENBANK_BESTAND_2026-08-31.md`**. Drei Dinge daraus, die
+dich direkt interessieren:
+
+**Der n-te Test eines Niveaus** — deine Frage, jetzt beziffert:
+
+| Test Nr. | Häufigkeit | Anteil vom vorherigen |
+|---:|---:|---:|
+| 1 | 151.446 | — |
+| 2 | 49.035 | 32 % |
+| 3 | 14.998 | 31 % |
+| 4 | 4.566 | 30 % |
+| 5 | 1.429 | 31 % |
+| 6 | 472 | 33 % |
+
+Nach jedem Test wird ein Niveau in rund **einem Drittel** der Fälle noch
+einmal getestet — und diese Rate ist über sechs Stufen bemerkenswert stabil.
+Ob der zweite Test besser *hält* als der erste, sagt das noch nicht. Aber die
+Stichproben reichen bis Test 6 für belastbare Aussagen.
+
+**Liquidity Sweeps** — 357.510 Stück. Das Volumen an der Sweep-Kerze liegt
+durchgehend beim **rund Doppelten** des Normalwerts, gleichmäßig über alle
+Sessions. Das ist die einzige Aussage über „Liquidität", die diese Daten
+hergeben — und sie ist gemessen, nicht behauptet. Die Richtungen sind fast
+perfekt ausgeglichen: keine Session sweept systematisch mehr nach unten als
+nach oben.
+
+**Welche Marke am meisten gehandelt wird:** Swing-Hochs und -Tiefs stellen
+59 % aller Niveau-Ereignisse. Das hängt direkt an der Entscheidung in Teil 3.
+
+> Nochmal deutlich: das sind **Häufigkeiten, keine Ergebnisse**. Ob eines
+> dieser Muster funktioniert, steht nirgends — dafür fehlt Etappe 4.
+
+### 2.3b Ein Fund, den ich beim Aufräumen gemacht habe
+
+Der erste Schreiblauf brauchte fast **zwei Stunden** für die 2,59 Mio Zeilen.
+Statt zu raten habe ich gemessen: 24 von 36 Sekunden gingen für das
+Herausgreifen einzelner Zeitstempel drauf — fünf Mal pro Ereignis.
+
+Jetzt einmal vektorisiert für die ganze Reihe: **16.500 statt 3.600 Zeilen
+pro Sekunde**. Hochgerechnet 157 Sekunden statt 7.087. Faktor 45.
+
+Das Datenformat ändert sich dabei nicht — ein Test prüft das auf das Zeichen
+genau, inklusive beider US-Zeitumstellungen. Die bereits geschriebene
+Datenbank bleibt gültig, ich habe es gegengeprüft.
+
 ### 2.4 Geminis Kritik — eingearbeitet
 
 Alle fünf Punkte waren berechtigt, alle sind jetzt im Plan und teilweise
