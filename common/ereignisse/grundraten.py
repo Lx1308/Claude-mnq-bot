@@ -249,6 +249,18 @@ def grundrate_aus_rahmen(
     )
 
 
+#: Die Ereignisspalten, die eine Auswertung braucht.
+_EVENT_SPALTEN = (
+    "event_id", "pattern_type", "pattern_variant", "direction",
+    "verfuegbar_idx", "cluster_id", "vola_regime", "struktur_regime",
+    "liquiditaet_regime", "session", "datensatz_block", "nahe_rollgrenze",
+)
+
+#: Die Outcome-Spalten, die eine Auswertung braucht.
+_OUTCOME_SPALTEN = ("event_id", "end_r", "mfe_r", "mae_r", "end_pkt",
+                    "zeit_bis_mfe")
+
+
 def lade_fuer_auswertung(
     conn: sqlite3.Connection,
     *,
@@ -260,28 +272,49 @@ def lade_fuer_auswertung(
 
     **Nur der angegebene Datensatzblock.** Vorgabe ``train`` - Validation und
     OOS werden nicht beilaeufig mitgelesen (Plan Abschnitt 11).
+
+    WARUM ZWEI ABFRAGEN STATT EINES JOINS
+    -------------------------------------
+    Der naheliegende ``JOIN ... USING(event_id)`` laesst SQLite fuer **jede**
+    der Millionen Outcome-Zeilen einzeln in ``events`` nachschlagen -
+    gemessen am 31.08.2026 ueber eine 5,4-GB-Datenbank: nach 25 Minuten noch
+    nicht fertig. Der Abfrageplan sagt es deutlich:
+
+        SEARCH o USING INDEX idx_outcomes_horizont (horizont_bars=?)
+        SEARCH e USING INDEX sqlite_autoindex_events_1 (event_id=?)
+
+    Beide Tabellen **getrennt** und jeweils am Stueck zu lesen und in pandas
+    zusammenzufuehren vermeidet die Einzelzugriffe. Der Filter auf den
+    Datensatzblock greift dabei zuerst auf der kleineren Seite (``events``),
+    damit die Outcome-Seite nur fuer die verbliebenen Ereignisse gebraucht
+    wird.
     """
     if block not in ("train", "validation", "oos", "alle"):
         raise ValueError(
             f"Unbekannter Block {block!r}. Erlaubt: train, validation, oos, alle."
         )
-    spalten = [
-        "e.event_id", "e.pattern_type", "e.pattern_variant", "e.direction",
-        "e.verfuegbar_idx", "e.cluster_id", "e.vola_regime",
-        "e.struktur_regime", "e.liquiditaet_regime", "e.session",
-        "e.datensatz_block", "e.nahe_rollgrenze",
-        "o.end_r", "o.mfe_r", "o.mae_r", "o.end_pkt", "o.zeit_bis_mfe",
-    ] + [f"e.{s}" for s in zusatzspalten]
 
-    frage = (
-        f"SELECT {','.join(spalten)} FROM outcomes o "
-        "JOIN events e USING(event_id) WHERE o.horizont_bars = ?"
-    )
-    params: list = [horizont]
+    spalten = list(_EVENT_SPALTEN) + [
+        s for s in zusatzspalten if s not in _EVENT_SPALTEN
+    ]
+    frage_e = f"SELECT {','.join(spalten)} FROM events"
+    params_e: list = []
     if block != "alle":
-        frage += " AND e.datensatz_block = ?"
-        params.append(block)
-    return pd.read_sql_query(frage, conn, params=params)
+        frage_e += " WHERE datensatz_block = ?"
+        params_e.append(block)
+    ereignisse = pd.read_sql_query(frage_e, conn, params=params_e)
+    if ereignisse.empty:
+        return ereignisse
+
+    outcomes = pd.read_sql_query(
+        f"SELECT {','.join(_OUTCOME_SPALTEN)} FROM outcomes "
+        "WHERE horizont_bars = ?",
+        conn, params=[horizont],
+    )
+    if outcomes.empty:
+        return outcomes
+
+    return ereignisse.merge(outcomes, on="event_id", how="inner")
 
 
 def grundratentabelle(

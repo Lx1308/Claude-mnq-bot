@@ -259,15 +259,23 @@ INDIZES: tuple[str, ...] = (
     "CREATE INDEX IF NOT EXISTS idx_events_cluster ON events (cluster_id)",
     "CREATE INDEX IF NOT EXISTS idx_events_regime "
     "ON events (vola_regime, struktur_regime, liquiditaet_regime)",
-    "CREATE INDEX IF NOT EXISTS idx_outcomes_horizont "
-    "ON outcomes (horizont_bars)",
+    # Deckender Index: er enthaelt ALLE Spalten, die eine Auswertung von
+    # outcomes braucht. Damit wird "hole alle Zeilen fuer Horizont H" ein
+    # zusammenhaengender Index-Durchlauf statt Millionen Einzelzugriffe in
+    # eine 5-GB-Tabelle. Gemessen am 31.08.2026: ohne ihn lief die Abfrage
+    # nach 25 Minuten noch. Er kostet Platz - und ist ihn wert, weil das
+    # Auswerten der haeufige Vorgang ist und das Schreiben der seltene.
+    "CREATE INDEX IF NOT EXISTS idx_outcomes_auswertung "
+    "ON outcomes (horizont_bars, event_id, end_r, mfe_r, mae_r, end_pkt, "
+    "zeit_bis_mfe)",
     "CREATE INDEX IF NOT EXISTS idx_klassen_horizont "
     "ON outcome_klassen (horizont_bars, schwelle_atr)",
 )
 
 _INDEXNAMEN = ("idx_events_typ", "idx_events_block", "idx_events_zeit",
                "idx_events_cluster", "idx_events_regime",
-               "idx_outcomes_horizont", "idx_klassen_horizont")
+               "idx_outcomes_horizont", "idx_outcomes_auswertung",
+               "idx_klassen_horizont")
 
 
 def oeffne(pfad: str | Path, *, mit_indizes: bool = True) -> sqlite3.Connection:
