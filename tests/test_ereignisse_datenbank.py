@@ -93,6 +93,121 @@ def test_event_spalten_stimmen_mit_dem_schema_ueberein(conn):
     assert list(EVENT_SPALTEN) == im_schema
 
 
+# -- Vektorisierte Zeitfelder ----------------------------------------------
+
+def test_iso_strings_sind_zeichengleich_mit_isoformat():
+    """Der schnelle Weg muss AUF DAS ZEICHEN dasselbe liefern wie
+    ``Timestamp.isoformat()``.
+
+    Weicht das Format ab, sind die Zeilen eines Laufs nicht mehr mit denen
+    eines frueheren vergleichbar - und man saehe es keiner einzelnen Zeile an.
+    """
+    from common.ereignisse.datenbank import _iso_strings
+
+    for start, freq, n in (
+        ("2019-05-06 00:01", "1min", 500),
+        ("2026-08-28 21:00", "1h", 100),
+        ("2020-03-08 06:00", "1min", 300),   # US-Zeitumstellung
+        ("2020-11-01 05:00", "1min", 300),
+    ):
+        index = pd.date_range(start, periods=n, freq=freq, tz="UTC")
+        schnell = _iso_strings(index)
+        langsam = [t.isoformat() for t in index]
+        assert schnell == langsam, f"Format weicht ab bei {start}/{freq}"
+
+
+def test_iso_strings_faellt_bei_bruchteilsekunden_zurueck():
+    """Mit Mikrosekunden greift der schnelle Weg nicht - dann muss der
+    langsame, aber immer richtige einspringen."""
+    from common.ereignisse.datenbank import _iso_strings
+
+    index = pd.DatetimeIndex(
+        ["2026-01-05T09:00:00.123456+00:00", "2026-01-05T09:01:00.500000+00:00"]
+    )
+    assert _iso_strings(index) == [t.isoformat() for t in index]
+
+
+def test_minuten_seit_open_serie_gleicht_der_einzelrechnung():
+    """Vektorisiert muss dasselbe herauskommen wie je Zeitstempel - inklusive
+    Sommerzeit, wo 13:30 UTC mal 09:30 ET ist und mal 08:30."""
+    from zoneinfo import ZoneInfo
+
+    from common.ereignisse.datenbank import _minuten_seit_open_serie
+
+    for start in ("2026-08-03 12:00", "2026-01-05 12:00"):   # Sommer / Winter
+        index = pd.date_range(start, periods=240, freq="1min", tz="UTC")
+        serie = _minuten_seit_open_serie(index)
+        for k, t in enumerate(index):
+            lokal = t.tz_convert(ZoneInfo("America/New_York"))
+            erwartet = (lokal.hour * 60 + lokal.minute) - (9 * 60 + 30)
+            assert int(serie[k]) == erwartet
+
+
+def test_session_serie_gleicht_primary_session():
+    """Der Cache darf das Urteil nicht veraendern - nur die Zahl der
+    Aufrufe."""
+    from common.ereignisse.datenbank import _session_serie
+    from common.sessions import primary_session
+
+    index = pd.date_range("2026-08-03 00:00", periods=2000, freq="7min", tz="UTC")
+    serie = _session_serie(index)
+    for k, t in enumerate(index):
+        assert serie[k] == primary_session(t.to_pydatetime())
+
+
+def test_indizes_werden_angelegt(conn):
+    namen = {
+        r[0] for r in conn.execute(
+            "SELECT name FROM sqlite_master WHERE type='index' "
+            "AND name LIKE 'idx_%'"
+        )
+    }
+    assert "idx_events_typ" in namen
+    assert "idx_events_regime" in namen
+
+
+def test_massenschreiben_baut_die_indizes_wieder_auf(tmp_path, config):
+    """Fuer den Volllauf werden die Indizes verworfen und danach neu gebaut.
+
+    Mit stehenden Indizes brauchte das Schreiben von 2,59 Mio Zeilen 7.087
+    Sekunden - fuenf Sekundaerindizes bei jeder Zeile zu pflegen ist der
+    teuerste Teil daran. Danach muessen sie aber wieder da sein, sonst ist
+    jede Abfrage der Datenbank ein voller Tabellendurchlauf.
+    """
+    from common.ereignisse.datenbank import massenschreiben
+
+    verbindung = oeffne(tmp_path / "massen.sqlite3", mit_indizes=False)
+    try:
+        vorher = {
+            r[0] for r in verbindung.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND name LIKE 'idx_%'"
+            )
+        }
+        assert not vorher, "mit_indizes=False hat trotzdem Indizes angelegt"
+
+        df = _rahmen(config)
+        n = massenschreiben(
+            verbindung, [_ereignis(100), _ereignis(200)], df, lauf_id="L1"
+        )
+        assert n == 2
+
+        nachher = {
+            r[0] for r in verbindung.execute(
+                "SELECT name FROM sqlite_master WHERE type='index' "
+                "AND name LIKE 'idx_%'"
+            )
+        }
+        assert "idx_events_typ" in nachher
+        assert "idx_events_regime" in nachher
+        assert "idx_outcomes_horizont" in nachher
+        # Und die Daten sind da.
+        (anzahl,) = verbindung.execute("SELECT COUNT(*) FROM events").fetchone()
+        assert anzahl == 2
+    finally:
+        verbindung.close()
+
+
 def test_schema_ist_idempotent(tmp_path):
     pfad = tmp_path / "db.sqlite3"
     a = oeffne(pfad)

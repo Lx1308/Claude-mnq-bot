@@ -124,17 +124,6 @@ CREATE TABLE IF NOT EXISTS events (
     merkmale_json       TEXT NOT NULL
 );
 
-CREATE INDEX IF NOT EXISTS idx_events_typ
-    ON events (pattern_type, pattern_variant, detect_timeframe);
-CREATE INDEX IF NOT EXISTS idx_events_block
-    ON events (datensatz_block, pattern_type);
-CREATE INDEX IF NOT EXISTS idx_events_zeit
-    ON events (verfuegbar_ts);
-CREATE INDEX IF NOT EXISTS idx_events_cluster
-    ON events (cluster_id);
-CREATE INDEX IF NOT EXISTS idx_events_regime
-    ON events (vola_regime, struktur_regime, liquiditaet_regime);
-
 CREATE TABLE IF NOT EXISTS outcomes (
     event_id            TEXT NOT NULL,
     horizont_bars       INTEGER NOT NULL,
@@ -160,9 +149,6 @@ CREATE TABLE IF NOT EXISTS outcomes (
     PRIMARY KEY (event_id, horizont_bars, schwelle_atr),
     FOREIGN KEY (event_id) REFERENCES events (event_id)
 );
-
-CREATE INDEX IF NOT EXISTS idx_outcomes_horizont
-    ON outcomes (horizont_bars);
 
 CREATE TABLE IF NOT EXISTS triggers (
     event_id            TEXT NOT NULL,
@@ -235,8 +221,38 @@ EVENT_SPALTEN: tuple[str, ...] = (
 )
 
 
-def oeffne(pfad: str | Path) -> sqlite3.Connection:
-    """Verbindung mit Schema, WAL und vernuenftigen Schreibeinstellungen."""
+#: Die Sekundaerindizes von ``events``, getrennt vom Schema gehalten.
+#:
+#: WARUM GETRENNT: beim ersten Volllauf (31.08.2026) dauerte das Schreiben von
+#: 2,59 Mio Zeilen **7.087 Sekunden** - 2,7 ms je Zeile, rund hundertmal
+#: langsamer als SQLite kann. Ursache: jeder ``INSERT`` pflegt fuenf
+#: Sekundaerindizes mit, und die Suche nach dem Primaerschluessel laeuft dabei
+#: durch eine auf 622 MB angewachsene WAL-Datei. Indizes **nach** dem
+#: Masseneinfuegen anzulegen ist der Standardweg; ``massenschreiben`` tut das.
+INDIZES: tuple[str, ...] = (
+    "CREATE INDEX IF NOT EXISTS idx_events_typ "
+    "ON events (pattern_type, pattern_variant, detect_timeframe)",
+    "CREATE INDEX IF NOT EXISTS idx_events_block "
+    "ON events (datensatz_block, pattern_type)",
+    "CREATE INDEX IF NOT EXISTS idx_events_zeit ON events (verfuegbar_ts)",
+    "CREATE INDEX IF NOT EXISTS idx_events_cluster ON events (cluster_id)",
+    "CREATE INDEX IF NOT EXISTS idx_events_regime "
+    "ON events (vola_regime, struktur_regime, liquiditaet_regime)",
+    "CREATE INDEX IF NOT EXISTS idx_outcomes_horizont "
+    "ON outcomes (horizont_bars)",
+)
+
+_INDEXNAMEN = ("idx_events_typ", "idx_events_block", "idx_events_zeit",
+               "idx_events_cluster", "idx_events_regime",
+               "idx_outcomes_horizont")
+
+
+def oeffne(pfad: str | Path, *, mit_indizes: bool = True) -> sqlite3.Connection:
+    """Verbindung mit Schema, WAL und vernuenftigen Schreibeinstellungen.
+
+    ``mit_indizes=False`` laesst die Sekundaerindizes weg - fuer einen
+    Massenlauf, der sie danach ueber ``lege_indizes_an`` erzeugt.
+    """
     pfad = Path(pfad)
     pfad.parent.mkdir(parents=True, exist_ok=True)
     conn = sqlite3.connect(str(pfad))
@@ -244,8 +260,28 @@ def oeffne(pfad: str | Path) -> sqlite3.Connection:
     conn.execute("PRAGMA synchronous=NORMAL")
     conn.execute("PRAGMA busy_timeout=10000")
     conn.executescript(SCHEMA)
+    if mit_indizes:
+        lege_indizes_an(conn)
     conn.commit()
     return conn
+
+
+def lege_indizes_an(conn: sqlite3.Connection) -> None:
+    """Die Sekundaerindizes erzeugen (idempotent)."""
+    for befehl in INDIZES:
+        conn.execute(befehl)
+    conn.commit()
+
+
+def loesche_indizes(conn: sqlite3.Connection) -> None:
+    """Die Sekundaerindizes verwerfen - vor einem Masseneinfuegen.
+
+    Der Primaerschluessel bleibt; ohne ihn koennte ``INSERT OR REPLACE``
+    Doppelte nicht erkennen.
+    """
+    for name in _INDEXNAMEN:
+        conn.execute(f"DROP INDEX IF EXISTS {name}")
+    conn.commit()
 
 
 def datensatz_block(zeitpunkt: pd.Timestamp) -> str:
@@ -436,6 +472,14 @@ def schreibe_events(
     naht = _rollnaehe(index, rollgrenzen, rollgrenze_bars)
     cluster = vergib_cluster(ereignisse)
 
+    # Alles, was nur vom Zeitstempel abhaengt, EINMAL vektorisiert statt je
+    # Ereignis. Gemessen am 31.08.2026: die drei ``index[i].isoformat()`` und
+    # die beiden Zeitzonenumrechnungen je Zeile machten 24 von 36 Sekunden
+    # aus - bei 2,59 Mio Ereignissen also Stunden.
+    iso = _iso_strings(index)
+    minuten_open = _minuten_seit_open_serie(index)
+    sessions = _session_serie(index)
+
     zeilen = []
     for pos, e in enumerate(ereignisse):
         i = e.verfuegbar_idx
@@ -451,18 +495,18 @@ def schreibe_events(
         zeilen.append((
             f"{lauf_id}-{pos:09d}",
             e.pattern_type, e.pattern_variant, e.detect_timeframe, e.direction,
-            index[e.entstehung_idx].isoformat(),
-            index[e.bestaetigung_idx].isoformat(),
-            index[i].isoformat(),
+            iso[e.entstehung_idx],
+            iso[e.bestaetigung_idx],
+            iso[i],
             e.entstehung_idx, e.bestaetigung_idx, i, e.dauer_bars,
             m.get("level_1"), m.get("level_2"), m.get("level_neckline"),
             round(hoehe, 4) if hoehe is not None else None,
             round(hoehe / a, 4) if (hoehe is not None and a) else None,
             preis, a,
             _wert(vola, i), _wert(struktur, i), _wert(liquiditaet, i),
-            _session_name(index[i]),
+            sessions[i],
             int(wochentage[i]),
-            _minuten_seit_open(index[i]),
+            int(minuten_open[i]),
             _wert(trend, i),
             _abstand_atr(preis, _wert(vwap, i), a),
             _abstand_atr(preis, _wert(pdh, i), a),
@@ -494,8 +538,40 @@ def schreibe_events(
         teil = zeilen[start : start + stapel]
         conn.executemany(frage, teil)
         geschrieben += len(teil)
+        # Je Stapel abschliessen und die WAL zurueckschneiden. Ohne das
+        # waechst sie ungebremst (gemessen 622 MB), und die
+        # Primaerschluesselpruefung jedes weiteren INSERT muss sich durch sie
+        # hindurcharbeiten - das Schreiben wird mit jeder Zeile langsamer.
+        conn.commit()
+        conn.execute("PRAGMA wal_checkpoint(PASSIVE)")
     conn.commit()
     return geschrieben
+
+
+def massenschreiben(
+    conn: sqlite3.Connection,
+    ereignisse: Sequence[Ereignis],
+    rahmen: pd.DataFrame,
+    **kwargs: Any,
+) -> int:
+    """``schreibe_events`` fuer grosse Mengen: Indizes weg, schreiben, Indizes
+    neu.
+
+    Beim ersten Volllauf ueber die 1m-Historie (2,59 Mio Ereignisse) brauchte
+    das Schreiben MIT stehenden Indizes 7.087 Sekunden. Fuenf Sekundaerindizes
+    bei jeder einzelnen Zeile zu pflegen ist der teuerste Teil daran; sie am
+    Stueck aufzubauen ist um Groessenordnungen billiger.
+
+    Fuer kleine Mengen ist ``schreibe_events`` richtig - dort waere das
+    Neuaufbauen der Indizes teurer als das Pflegen.
+    """
+    loesche_indizes(conn)
+    try:
+        return schreibe_events(conn, ereignisse, rahmen, **kwargs)
+    finally:
+        lege_indizes_an(conn)
+        conn.execute("PRAGMA wal_checkpoint(TRUNCATE)")
+        conn.commit()
 
 
 def _rollnaehe(
@@ -516,18 +592,67 @@ def _rollnaehe(
     return naht
 
 
-def _session_name(zeitpunkt: pd.Timestamp) -> str:
-    from common.sessions import primary_session
+def _iso_strings(index: pd.DatetimeIndex) -> list[str]:
+    """ISO-Zeitstempel fuer den ganzen Index, in einem Zug.
 
-    return primary_session(zeitpunkt.to_pydatetime())
+    ``index[i].isoformat()`` je Ereignis kostet bei Millionen Zeilen Stunden -
+    jeder Zugriff baut ein ``Timestamp``-Objekt. ``strftime`` arbeitet auf dem
+    ganzen Index.
+
+    Nur fuer UTC-Indizes ohne Bruchteilsekunden; sonst faellt die Funktion auf
+    den langsamen, aber immer richtigen Weg zurueck. Das Format muss auf den
+    Zeichen genau dem entsprechen, was ``Timestamp.isoformat()`` liefert -
+    sonst laesst sich ein spaeterer Lauf nicht mit einem frueheren vergleichen.
+    """
+    ganze_sekunden = bool((index.microsecond == 0).all()) and bool(
+        (index.nanosecond == 0).all()
+    )
+    if ganze_sekunden and str(index.tz) == "UTC":
+        return [s + "+00:00" for s in index.strftime("%Y-%m-%dT%H:%M:%S")]
+    return [t.isoformat() for t in index]
 
 
-def _minuten_seit_open(zeitpunkt: pd.Timestamp) -> int | None:
-    """Minuten seit der RTH-Eroeffnung (09:30 ET). Negativ davor."""
+def _minuten_seit_open_serie(index: pd.DatetimeIndex) -> np.ndarray:
+    """Minuten seit der RTH-Eroeffnung (09:30 ET) fuer den ganzen Index.
+
+    Negativ davor. Eine Zeitzonenumrechnung fuer alles statt einer je Zeile.
+    """
     from zoneinfo import ZoneInfo
 
-    lokal = zeitpunkt.tz_convert(ZoneInfo("America/New_York"))
-    return int((lokal.hour * 60 + lokal.minute) - (9 * 60 + 30))
+    lokal = index.tz_convert(ZoneInfo("America/New_York"))
+    return (
+        lokal.hour.to_numpy() * 60 + lokal.minute.to_numpy()
+    ) - (9 * 60 + 30)
+
+
+def _session_serie(index: pd.DatetimeIndex) -> list[str]:
+    """Sessionname je Kerze - ueber einen Nachschlagecache.
+
+    ``primary_session`` haengt ausschliesslich an Wochentag und Uhrzeit (in
+    CT). Es gibt also hoechstens 7 x 1440 verschiedene Antworten. Statt die
+    Funktion millionenfach zu rufen, wird sie je Kombination **einmal**
+    gefragt.
+
+    Bewusst dieselbe Funktion und keine vektorisierte Neufassung: eine zweite
+    Sessionlogik waere derselbe Fehler wie eine zweite Indikatorrechnung
+    (Invariante 1).
+    """
+    from common.sessions import primary_session
+
+    schluessel = (
+        index.dayofweek.to_numpy() * 1440
+        + index.hour.to_numpy() * 60
+        + index.minute.to_numpy()
+    )
+    cache: dict[int, str] = {}
+    namen: list[str] = []
+    for k, zeitpunkt in zip(schluessel, index):
+        name = cache.get(int(k))
+        if name is None:
+            name = primary_session(zeitpunkt.to_pydatetime())
+            cache[int(k)] = name
+        namen.append(name)
+    return namen
 
 
 def notiere_lauf(
@@ -576,11 +701,15 @@ def zaehle(conn: sqlite3.Connection) -> pd.DataFrame:
 __all__ = [
     "CLUSTER_FENSTER_BARS",
     "EVENT_SPALTEN",
+    "INDIZES",
     "Kontextquellen",
     "SCHEMA",
     "TRAINING_BIS",
     "VALIDATION_BIS",
     "datensatz_block",
+    "lege_indizes_an",
+    "loesche_indizes",
+    "massenschreiben",
     "notiere_lauf",
     "oeffne",
     "schreibe_events",

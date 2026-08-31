@@ -438,11 +438,48 @@ ziel_erreicht_trotz_stop (0/1),
 r_ergebnis
 ```
 
-**Schätzung des Umfangs:** bei ~20 Mustern × ~2–3 Varianten über 2,57 Mio
-Kerzen erwarte ich grob 200.000–800.000 Ereignisse, × 9 Horizonte für
-`outcomes`, × 5 Entries × ~25 Stop-Positionen für `stop_szenarien`. Letztere
-Tabelle wird groß (zweistellige Millionen Zeilen) — deshalb Parquet für sie
-und Aggregate in SQLite.
+### Umfang — die Schätzung war um den Faktor vier zu niedrig
+
+> **Gemessen am 31.08.2026, erster Volllauf.** Die ursprüngliche Schätzung
+> („grob 200.000–800.000 Ereignisse") steht unten zur Nachvollziehbarkeit;
+> sie war falsch.
+
+Sieben Erkenner über die 2.573.719 1-Minuten-Kerzen, **2.592.334 Ereignisse**:
+
+| Mustertyp | Anzahl | | Mustertyp | Anzahl |
+|---|---:|---|---|---:|
+| `fair_value_gap` | 541.638 | | `ausbruch_retest` | 185.459 |
+| `ausbruch` | 388.580 | | `bos_bullish` | 46.829 |
+| `liquidity_sweep` | 357.510 | | `choch_bullish` | 46.076 |
+| `niveau_test` | 223.262 | | `equal_highs` | 44.835 |
+| `fehlausbruch` | 221.358 | | `bos_bearish` | 44.340 |
+| `displacement` | 203.661 | | `choch_bearish` | 43.669 |
+| `order_block` | 203.228 | | `equal_lows` | 41.889 |
+
+Laufzeit der Erkennung: 315 s; davor Laden 142 s, `prepare` 91 s, Regime 37 s.
+Das ist **nur die 1m-Ebene** — Entscheidung 1 sieht zusätzlich 5m, 15m und 1h
+vor.
+
+**Was daran hängt:** `outcomes` wird damit ~23 Mio Zeilen (× 9 Horizonte) —
+handhabbar. `stop_szenarien` im vollen Raster (Entscheidung 5: 25 Positionen
+× 5 Entries) wären **über 300 Mio Zeilen**. Das ist weder als SQLite-Tabelle
+noch in vertretbarer Rechenzeit machbar.
+
+**Entscheidung 5 muss deshalb neu getroffen werden.** Drei Wege, Laurin
+vorgelegt am 31.08.2026 (`docs/UEBERGABE_2026-08-31.md` Abschnitt 3):
+
+1. *(empfohlen)* Grundraten über **alle** Ereignisse messen — das ist billig
+   und beantwortet die Hauptfrage. Volles Stop-Raster nur für die
+   Mustertypen, die dort einen Effekt zeigen. Keine Rosinenpickerei, solange
+   der Auswahlschritt im Hypothesenregister gezählt wird (Etappe 9).
+2. Swing-Niveaus ausdünnen. Rund 800.000 Ereignisse entstehen daran, dass
+   **jeder** bestätigte Swing als eigenes Niveau zählt. Nur „bedeutende"
+   Swings zu nehmen ist eine inhaltliche Entscheidung darüber, was ein Niveau
+   ist — nicht nebenbei zu treffen.
+3. Volles Raster in Parquet, Laufzeit mehrere Nächte.
+
+*Ursprüngliche Schätzung (überholt): bei ~20 Mustern × ~2–3 Varianten über
+2,57 Mio Kerzen grob 200.000–800.000 Ereignisse.*
 
 ---
 
@@ -553,9 +590,9 @@ Regime, Session), dann k-Means oder HDBSCAN.
 
 | # | Etappe | Ergebnis |
 |---|---|---|
-| 1 | Punktuelle Erkenner → Serien (`market_primitives`, `patterns`) | Alle Muster als Spalten mit Verfügbarkeitszeitpunkt |
-| 2 | Ereignis-Abstraktion + `eventdb.sqlite3` | Schema, Schreibweg, Lookahead-Tests |
-| 3 | Ereignisse über die Historie erkennen | `events`-Tabelle gefüllt |
+| 1 | Punktuelle Erkenner → Serien (`market_primitives`, `patterns`) | ✅ **31.08.2026** — sieben Erkenner in `common/ereignisse/` |
+| 2 | Ereignis-Abstraktion + `eventdb.sqlite3` | ✅ **31.08.2026** — `common/ereignisse/datenbank.py` |
+| 3 | Ereignisse über die Historie erkennen | ✅ **31.08.2026** — `werkzeuge/ereignisse_erkennen.py`, 2,59 Mio Zeilen |
 | 4 | Outcomes über alle Horizonte | `outcomes`-Tabelle |
 | 5 | Outcome-Klassifikation | `klasse` je Zeile |
 | 6 | Entry-Trigger-Varianten | `triggers`-Tabelle |

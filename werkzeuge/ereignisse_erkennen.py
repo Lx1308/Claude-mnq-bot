@@ -46,9 +46,9 @@ from backtest.engine import Backtester  # noqa: E402
 from common.config import Config  # noqa: E402
 from common.ereignisse.basis import pruefe_lookahead  # noqa: E402
 from common.ereignisse.datenbank import (  # noqa: E402
+    massenschreiben,
     notiere_lauf,
     oeffne,
-    schreibe_events,
     zaehle,
 )
 from common.ereignisse.displacement import displacement_serie  # noqa: E402
@@ -201,9 +201,12 @@ def main(argv: list[str] | None = None) -> int:
 
     _log(f"\nSchreiben nach {pfad}  (lauf_id={lauf_id})")
     t0 = time.perf_counter()
-    conn = oeffne(pfad)
+    # massenschreiben statt schreibe_events: die Sekundaerindizes werden vorher
+    # verworfen und danach am Stueck neu gebaut. Mit stehenden Indizes brauchte
+    # der erste Volllauf (2,59 Mio Zeilen) 7.087 Sekunden.
+    conn = oeffne(pfad, mit_indizes=False)
     try:
-        n = schreibe_events(
+        n = massenschreiben(
             conn, ereignisse, rahmen,
             lauf_id=lauf_id,
             instrument=config.market.product,
