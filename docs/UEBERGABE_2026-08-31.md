@@ -233,6 +233,41 @@ Darin sind vier Vorkehrungen eingebaut, ohne die so eine Tabelle wertlos ist:
    darunter steht, ab welchem p-Wert ein Fund bei so vielen Vergleichen noch
    zählt.
 
+### 2.6 Die Datenbank ist gefüllt — mit einem Vorbehalt
+
+Der Volllauf ist durch: **2.592.334 Ereignisse** und **23.330.554
+Outcome-Zeilen**. Die Datei ist **5,4 GB** groß.
+
+Und da liegt ein Problem, das ich dir offen sagen muss: **auf deinem Laptop
+ist diese Datenbank an der Grenze.** Das Schreiben dauerte fünf Stunden, und
+der erste Auswertungsversuch war nach 25 Minuten noch nicht fertig. Beide
+Ursachen habe ich gefunden und behoben (Details im nächsten Abschnitt), aber
+die Größenordnung bleibt: jede Auswertung liest hier Gigabyte.
+
+Das spricht zusätzlich für Weg 1 aus Teil 3 — und dafür, die Swing-Niveaus
+auszudünnen. Weniger, aber aussagekräftigere Ereignisse wären auf dieser
+Hardware deutlich angenehmer zu handhaben.
+
+### 2.7 Drei Geschwindigkeitsfunde in einer Nacht
+
+Alle drei nach demselben Muster: gemessen statt geraten, und alle drei waren
+woanders, als ich zuerst vermutet hätte.
+
+| Was | Vorher | Nachher | Ursache |
+|---|---|---|---|
+| Musterserie vorbereiten | 77 min | 90 s | quadratische Suche |
+| Ereignisse schreiben | 7.087 s | ~160 s | Zeitstempel je Zeile statt vektorisiert |
+| Outcomes schreiben | 18.386 s | offen* | Einfügereihenfolge gegen den Schlüssel |
+| Auswertung lesen | >25 min | offen* | Join mit Millionen Einzel-Lookups |
+
+\* behoben, aber noch nicht auf voller Größe nachgemessen — der Index dafür
+baut gerade.
+
+Bei zweien davon lag ich mit der ersten Vermutung falsch und habe es gemerkt,
+weil ich gemessen habe: Beim Ereignis-Schreiben hielt ich die Indizes für die
+Ursache, baute den Umbau — und maß **keinen Unterschied**. Erst das Profiling
+zeigte, dass 24 von 36 Sekunden in Zeitstempel-Zugriffen steckten.
+
 ## TEIL 3 — Eine Entscheidung, die du treffen musst
 
 ### Es sind viel mehr Ereignisse als geplant
@@ -318,4 +353,25 @@ betrügt.
 .venv\Scripts\python.exe -m werkzeuge.grundratenbericht --horizont 60
 ```
 
+Das ist der erste echte Blick auf die Frage, die hinter dem ganzen Projekt
+steht. Falls er lange läuft: die Datenbank ist 5,4 GB, der erste Durchlauf
+muss viel von der Platte holen.
+
 4. Mir sagen, welchen der drei Wege aus Teil 3 du willst.
+
+---
+
+## Was ich in dieser Nacht nicht geschafft habe
+
+Damit du es von mir hörst und nicht selbst suchen musst:
+
+- **Der Grundratenbericht ist noch nicht gelaufen.** Die Mechanik steht und
+  ist getestet, aber der erste Volllauf über die 5,4-GB-Datenbank lief in die
+  Länge. Ich habe die Ursachen gefunden und behoben; der Index, der es
+  schnell macht, baut noch, während ich das schreibe.
+- **Die Outcome-Klassifikation (Etappe 5)** fehlt — also die Einteilung in
+  „Ausbruch bestätigt", „Fehlausbruch", „Rückkehr zum Test" und so weiter.
+  Die Rohzahlen sind da, die Klassen noch nicht.
+- **Die Stop-Analyse (Etappe 7)** wartet auf deine Entscheidung aus Teil 3.
+- **Bewegungsmuster** (Impuls + Konsolidierung, Umkehr nach Extrembewegung,
+  Kompression → Expansion) sind noch nicht als Erkenner gebaut.
