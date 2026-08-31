@@ -89,7 +89,9 @@ def bericht(
     tabelle = grundratentabelle(daten, horizont=horizont, gruppierung=gruppierung)
     if tabelle.empty:
         return tabelle
-    return tabelle[tabelle["n"] >= min_n].reset_index(drop=True)
+    gefiltert = tabelle[tabelle["n"] >= min_n].reset_index(drop=True)
+    gefiltert.attrs.update(tabelle.attrs)   # .attrs ueberlebt das Filtern nicht
+    return gefiltert
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -145,34 +147,48 @@ def main(argv: list[str] | None = None) -> int:
         print("\nKeine Zeile erreicht die Mindestgroesse - nichts zu berichten.")
         return 0
 
+    verworfen = tabelle.attrs.get("verworfen_atr_gesamt", 0)
+    if verworfen:
+        print(f"  ATR-Artefakte verworfen: {verworfen:,} Ereignisse "
+              "(atr_referenz < 1 Punkt - eingefrorene Kurse, kein Marktzustand)")
+
     anzeige = tabelle[[
-        "muster", "n", "n_unabhaengig", "n_cluster", "E[R]", "basis_E[R]",
-        "kante_R", "anteil_positiv", "mae_R_median", "mae_R_p90", "p",
+        "muster", "n", "n_unabhaengig", "anteil_positiv", "basis_anteil_positiv",
+        "anteil_kante", "anteil_p", "median_R", "E[R]", "mae_R_median",
     ]].copy()
-    pd.set_option("display.width", 220)
+    pd.set_option("display.width", 240)
     pd.set_option("display.max_rows", 200)
     print()
     print(anzeige.to_string(index=False))
+    print(
+        "\nMASSGEBLICH ist anteil_kante (Ueberschuss im Trefferanteil ueber "
+        "die Nulllinie) mit anteil_p (ueberschneidungsfreier Zwei-Anteile-"
+        "Test). E[R]/median_R stehen daneben - der Mittelwert von R ist gegen "
+        "einzelne winzige ATR-Werte empfindlich, der Anteil nicht."
+    )
 
     schwelle = bonferroni_schwelle(len(tabelle))
-    treffer = tabelle[tabelle["p"] < schwelle]
+    treffer = tabelle[tabelle["anteil_p"] < schwelle]
     print(
-        f"\n{len(tabelle)} Vergleiche. Bonferroni-Schwelle: p < {schwelle:.6f}"
+        f"\n{len(tabelle)} Vergleiche. Bonferroni-Schwelle: anteil_p < {schwelle:.6f}"
     )
     if treffer.empty:
         print("Keine Zeile haelt der Mehrfachtestkorrektur stand.")
         print(
             "Das ist ein Ergebnis, kein Fehlschlag: es heisst, dass sich in "
-            "diesen Rohverlaeufen kein Muster vom Zufall abhebt."
+            "diesen Rohverlaeufen kein Muster vom Zufall abhebt - genau das,\n"
+            "was die Falsifikationsliteratur (Mesfin 2026) erwarten laesst."
         )
     else:
         print(f"{len(treffer)} Zeile(n) unter der Schwelle:")
-        print(treffer[["muster", "n_unabhaengig", "kante_R", "p"]].to_string(index=False))
+        print(treffer[[
+            "muster", "n_unabhaengig", "anteil_kante", "anteil_p", "hinweis",
+        ]].to_string(index=False))
         print(
-            "\nVORBEHALT: Das ist die Trainingsmenge und ohne Kosten "
-            "gerechnet. Bei rund 1,45 Punkten Friktion je Trade sagt ein "
-            "kleines kante_R nichts ueber Handelbarkeit. Der naechste "
-            "Schritt ist Validation - nicht der Bot."
+            "\nVORBEHALT: Trainingsmenge, ohne Kosten. Ein anteil_kante von "
+            "0,01 heisst 1 Prozentpunkt mehr Treffer als die Nulllinie - bei "
+            "rund 1,45 Punkten Friktion je Trade ist das kein Handelssignal.\n"
+            "Der naechste Schritt ist Validation, nicht der Bot."
         )
 
     if args.csv:

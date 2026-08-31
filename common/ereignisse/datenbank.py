@@ -267,11 +267,13 @@ INDIZES: tuple[str, ...] = (
     # Auswerten der haeufige Vorgang ist und das Schreiben der seltene.
     "CREATE INDEX IF NOT EXISTS idx_outcomes_auswertung "
     "ON outcomes (horizont_bars, event_id, end_r, mfe_r, mae_r, end_pkt, "
-    "zeit_bis_mfe)",
+    "atr_referenz, zeit_bis_mfe)",
     "CREATE INDEX IF NOT EXISTS idx_klassen_horizont "
     "ON outcome_klassen (horizont_bars, schwelle_atr)",
 )
 
+#: Auch der Altname idx_outcomes_horizont, damit ``loesche_indizes`` ihn von
+#: Datenbanken frueherer Laeufe mitentfernt (DROP IF EXISTS schadet nicht).
 _INDEXNAMEN = ("idx_events_typ", "idx_events_block", "idx_events_zeit",
                "idx_events_cluster", "idx_events_regime",
                "idx_outcomes_horizont", "idx_outcomes_auswertung",

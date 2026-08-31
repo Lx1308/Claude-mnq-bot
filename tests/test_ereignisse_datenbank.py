@@ -335,7 +335,7 @@ def test_massenschreiben_baut_die_indizes_wieder_auf(tmp_path, config):
         }
         assert "idx_events_typ" in nachher
         assert "idx_events_regime" in nachher
-        assert "idx_outcomes_horizont" in nachher
+        assert "idx_outcomes_auswertung" in nachher
         # Und die Daten sind da.
         (anzahl,) = verbindung.execute("SELECT COUNT(*) FROM events").fetchone()
         assert anzahl == 2
