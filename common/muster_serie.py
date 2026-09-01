@@ -84,6 +84,18 @@ class Musterfund:
     taltiefe: float
     konfidenz: float
 
+    #: Kerze des ERSTEN Extrems. Zusammen mit ``event_index`` ergibt das die
+    #: Formationsdauer - das Merkmal, an dem sich ein W vom Marktrauschen
+    #: unterscheiden laesst. Zwei Tiefs vier Kerzen auseinander sind eine
+    #: andere Sache als zwei Tiefs sechzig Kerzen auseinander, und ohne
+    #: diesen Index war das nicht unterscheidbar.
+    erst_index: int = -1
+
+    @property
+    def dauer_bars(self) -> int:
+        """Kerzen zwischen den beiden Extrema. ``-1``, wenn unbekannt."""
+        return -1 if self.erst_index < 0 else self.event_index - self.erst_index
+
 
 def finde_doppelmuster(
     df: pd.DataFrame,
@@ -203,6 +215,7 @@ def finde_doppelmuster(
                     spitzenabstand=float(spitzenabstand),
                     taltiefe=float(taltiefe),
                     konfidenz=float(konfidenz),
+                    erst_index=erst_idx,
                 )
             )
 
