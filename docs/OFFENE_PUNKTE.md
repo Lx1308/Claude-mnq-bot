@@ -11,6 +11,33 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 
 ---
 
+## Erledigt am 31.08.2026
+
+- [x] **P0** TRADAYRI schwarzer Chart / Zeitachse „1970" — Zeitstempel kamen in
+      Mikro- statt Nanosekunden aus `_rahmen_zu_bars` (pandas 3 parst ISO8601
+      als `datetime64[us]`)
+- [x] **P0** Chart lud keine Livedaten nach — die Schleife hing an
+      `/api/session`, einem Platzhalter mit `running: false`
+- [x] **P0** `/api/market` meldete `is_open` fest als `true` — jetzt aus
+      `common/sessions.py`
+- [x] **P0** Datenstand war nirgends sichtbar — Kopfzeile zeigt „Letzte Kerze"
+- [x] **P0** Serverstart-Timeout 30 s → 90 s (Launcher tötete den Server beim
+      Öffnen der 657-MB-Datenbank)
+- [x] **P1** `muster_serie` war O(n²) — blockierte jeden Volllauf über die
+      Historie (77 min → 90 s)
+- [x] **P1** Ereignisdatenbank **Etappe 1**: sieben serielle Erkenner
+      (Struktur, FVG, Displacement, Order Block, Equal Highs/Lows, Liquidity
+      Sweep, Niveau-Interaktion + Opening Range als Niveauquelle)
+- [x] **P1** Ereignisdatenbank **Etappe 2**: Schema, Schreibweg, Kontext,
+      Cluster-IDs
+- [x] **P1** Ereignisdatenbank **Etappe 3**: erster Volllauf — 2.592.334
+      Ereignisse, `docs/EREIGNISDATENBANK_BESTAND_2026-08-31.md`
+- [x] **P1** Schreibweg 45× schneller (Timestamp-Zugriffe je Zeile
+      vektorisiert)
+- [x] **P2** Forschungsplan um fünf Punkte aus externer Prüfung ergänzt
+      (Slippage je Orderart, Intrabar-Ambiguität, Cluster, Volumen am
+      Extremum, VIX)
+
 ## Erledigt am 30.08.2026
 
 - [x] **P0** Kerzenkorruption im `tcp_proxy` (Invariante 9) — Proxy ist reiner
@@ -27,17 +54,50 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 - [x] **P1** Asia-/London-Level in `common/levels.py`
 - [x] **P1** Strategie-Panel echt (Ideen + Ablehnungsgründe)
 - [x] **P1** Historien-Import aus NT8 mit erzwungenem Kreuzvergleich
+- [x] **P1** NT8-Historie **tatsächlich importiert** — 2,57 Mio
+      MNQ-Minutenkerzen 2019–08/2026, vier Import-Bugs behoben
+      (Zeitzone UTC, toter `rollplan_aus_nt8`, numerische Dateinamen,
+      zu strenge Kreuzvergleich-/Anschlussprüfung). Details:
+      `CODE_CHAT_KONTEXT.md` 34.9
+- [x] **P0** TRADAYRI zeigte beim Start nur ein „schwarzes Rechteck" — das war
+      die leere Chart-Fläche (keine Instrument-Vorauswahl, Chart nur ~1.500
+      Kerzen). Behoben: MNQ wird beim Start geladen, Chart zeigt die volle
+      Historie 2019–heute als Tageskerzen. Neu `werkzeuge/aggregiere_kerzen.py`
+      (1h/4h/1d aus 1m vorberechnet), `execution/server.py` zieht sie im
+      Hintergrund nach. Details: `CODE_CHAT_KONTEXT.md` 35
 - [x] **P1** Pine-Export und TradingView-Ergebnisimport
 - [x] **P1** Research-Engine neu (Split, Kosten, Register, ehrliches Protokoll)
 - [x] **P1** Watchdog mit Sperre, Tageslimit, Notaus und Parallelitätsprüfung
 - [x] **P0** Dokumentation: Projektgrenze aufgehoben, in `CLAUDE.md`,
       `MASTERPLAN.md` und `CODE_CHAT_KONTEXT.md` nachgezogen
+- [x] **P0** Die Engine kam an die echte Historie nicht heran
+      (`create_provider` kannte nur `csv`, MASTERPLAN X.1). Behoben:
+      `NtBridgeDataProvider`. Erster Backtest auf echten MNQ-Daten gelaufen.
+- [x] **P1** Chartmuster als Serie (`common/muster_serie.py`) — das „W" ist
+      messbar, mit Verfügbarkeitszeitpunkt statt Lookahead. Zwei Strategien,
+      erste Messung in `docs/W_MESSUNG_2026-08-30.md`.
+- [x] **P1** Engine ~20× schneller (nur deklarierte Spalten je Kerze),
+      abgesichert durch `tests/test_spaltenvertrag.py`.
+- [x] **P1** Regime-Engine (`common/regime.py`) — drei Achsen, Grenzen aus
+      der Verteilung, rückwärtsgerichtet mit Lookahead-Test. Erster
+      Discovery-Lauf auf echten Daten: 51 Hypothesen, keine übersteht die
+      Bonferroni-Korrektur. `docs/REGIME_DISCOVERY_2026-08-30.md`
 
 ---
 
 ## P0 — vor dem nächsten Handelstag
 
+- [ ] **Kerzen-Empfänger starten** (31.08.2026). Die jüngste Kerze ist vom
+      28.08. — dem Ende des NT8-Exports. Seither kam nichts nach, weil
+      `python -m ntbridge` nicht lief und in NinjaTrader kein Chart mit dem
+      `ClaudeBridge`-Indikator offen war. **Beides ist nötig.** Die Kopfzeile
+      der Oberfläche zeigt den Datenstand jetzt selbst an („Letzte Kerze",
+      gelb bei offener Börse ohne Datenstrom). Anleitung:
+      `docs/UEBERGABE_2026-08-31.md` Abschnitt 1.3.
+
 - [ ] **Ende-zu-Ende-Probe des Orderwegs mit offener Börse.**
+      **Nur mit Laurin zusammen** — eine Order abzuschicken ist eine Handlung
+      nach außen und gehört nicht in einen unbeaufsichtigten Lauf.
       Bisher ist der Weg nur gegen Testdaten geprüft. Sobald die Börse offen
       ist: eine Order über das Panel schicken und nachsehen, ob
       `order_update`, `execution` und der gebuchte Trade ankommen.
@@ -54,19 +114,42 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 
 ## P1 — Forschungsgrundlage
 
-- [ ] **NT8-Historie tatsächlich importieren.** Das Werkzeug steht
-      (`werkzeuge/nt8_import.py`), der Export fehlt. NinjaTrader hält
-      MNQ-Minutendaten von 30 Kontrakten zurück bis 2019 vor.
-      Ablauf und die Start-/Enddaten für alle 30 Kontrakte stehen in
-      `docs/NT8_EXPORT_ANLEITUNG.md`. **MNQ SEP26 muss zuerst importiert
-      werden** (Formatnachweis), danach die übrigen in beliebiger Reihenfolge.
-      Zu holen sind 1.954 Handelstage ab Mai 2019 — danach rechnen die
-      Backtests auf Jahren statt auf zehn Tagen, und die p-Werte werden
-      überhaupt erst aussagekräftig.
+- [ ] **Achsen entkoppeln.** Die drei Regime-Achsen korrelieren
+      (`niedrig|range|duenn` und `hoch|trend|rege` sind die größten
+      Schubladen). Sauberer wäre der Strukturrang *innerhalb* des
+      Volatilitätsterzils.
 
-- [ ] **Erst danach: Hypothesen ernsthaft rechnen.** Auf zehn Tagen sind alle
-      Urteile „UNENTSCHIEDEN" (unter 30 Trades). Mit Jahreshistorie werden die
-      p-Werte erst aussagekräftig — und die Mehrfachtestkorrektur nötig.
+- [ ] **Ungeprüfte Faktoren nachziehen.** Der Discovery-Lauf vom 30.08.2026
+      deckte Volatilität, Struktur, Liquidität, Tageszeit und Wochentag ab.
+      Offen: Position zu Vortagesmarken, Struktur der übergeordneten
+      Zeitebene, Abstand zum VWAP.
+
+- [ ] **`vola_regime = niedrig` hat unter 80 Trades je Strategie.** Die Achse
+      ist gegenüber der Handelszeit unausgewogen — die Strategien handeln RTH,
+      und RTH ist selten „niedrige Volatilität". Entweder die Achse relativ zur
+      Session bilden oder die Ausprägung als nicht auswertbar führen.
+
+- [ ] **Globales Hypothesenbudget im Register.**
+      `Discoverylauf.bonferroni_schwelle` zählt nur laufintern. Ein
+      Dauerlauf prüft über viele Läufe hinweg tausende Hypothesen, und jeder
+      einzelne Lauf sieht für sich sauber aus. Ohne laufübergreifenden
+      Zähler ist die Korrektur eine Fassade. **Von Laurin am 30.08.2026 so
+      entschieden.**
+
+- [ ] **OOS-Kontingent.** Harte Obergrenze an Confirmations; danach ist der
+      Block verbraucht. Der Bot fasst ihn nicht selbständig an.
+
+- [ ] **Doppelboden-Hypothesen ins Register eintragen.** Bis dahin zählen sie
+      nicht gegen das Budget und gelten als nicht geprüft.
+
+- [ ] **Hypothesen ernsthaft rechnen — jetzt möglich.** Bis 30.08.2026 waren
+      auf zehn Tagen alle Urteile „UNENTSCHIEDEN" (unter 30 Trades). Seit dem
+      NT8-Import liegen sieben Jahre Minutenhistorie in
+      `data/ntbridge.sqlite3` — die Backtests rechnen auf Jahren, die p-Werte
+      werden aussagekräftig, und die Mehrfachtestkorrektur (P3) wird nötig.
+      **Achtung Forschungsintegrität:** die frühe Historie 2019–2021 hat mehr
+      Dünnmarkt-Lücken (junger Micro-Kontrakt); das ist kein Datenfehler, aber
+      bei Ergebnissen aus diesem Zeitraum zu bedenken.
 
 - [ ] **Die vier Hypothesen aus der Antigravity-Phase als Strategien bauen:**
       15-Minuten-Opening-Range-Breakout, ICT Silver Bullet (10–11 ET),
@@ -90,6 +173,32 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
       Trade-Zeitraums holt und die Felder füllt.
 
 ## P2 — Aufräumen und Härten
+
+- [ ] **Kennzahl „Max. Drawdown in % vom Hoch" ist kaputt.** Bei einem
+      Zwischenhoch nahe null liefert sie Werte wie „6317,6 % vom Hoch". Die
+      absolute USD-Zahl stimmt; der Prozentwert braucht einen Bezug auf das
+      Startkapital statt auf das Equity-Hoch.
+
+- [ ] **`aggregiere_kerzen --voll` liest die 1m-Reihe je Ziel-Timeframe neu.**
+      Bei drei Timeframes sind das drei volle Lesevorgänge über ~2,5 Mio
+      Zeilen (~20 s jeder). Einmal lesen und im Speicher an alle drei
+      Resample-Läufe geben würde reichen. (Inkrementell ist es egal — da wird
+      nur der junge Rand gelesen.)
+
+- [ ] **`chart.timeframe.v2` in `App.tsx`** ist ein Migrations-Schlüssel, der
+      die gespeicherte Timeframe-Vorliebe einmalig auf `1d` zurücksetzt. Kann
+      wieder auf `chart.timeframe` zurück, sobald sicher ist, dass jeder die
+      neue Version einmal gestartet hat.
+
+- [ ] **`nt8_import` Kreuzvergleich beim Re-Import des Frontkontrakts.**
+      Liegt der Frontkontrakt schon in `ntbridge.sqlite3` und wird er
+      erneut importiert, vergleicht der Kreuzvergleich den Export gegen
+      seine *eigenen* schon geschriebenen Kerzen — die Prüfung wird trivial,
+      und `nt8_import_nachweis.json` bekommt eine nichtssagende
+      `gemeinsame_kerzen`-Zahl (nach dem Import-Lauf vom 30.08.2026 stand da
+      75423 statt der echten 9310; von Hand korrigiert). Fix: nur gegen
+      Referenzkerzen aus einer *anderen* `source` vergleichen
+      (`BarStore.load_frame` müsste die Spalte durchreichen).
 
 - [ ] **`ib_breakout` ist weiterhin nicht Pine-exportierbar** und
       `flag_breakout` auch nicht. Beide hängen an selbst gerechneten Spalten.
@@ -137,6 +246,25 @@ Prioritäten: **P0** blockiert den Betrieb · **P1** wichtig für die Vision ·
 ---
 
 ## Fragen an Laurin
+
+- **Datenbank kleiner neu bauen? (31.08.2026)** `data/eventdb.sqlite3` ist
+  ~7 GB und auf Laurins Laptop an der Grenze — Schreiben 5 h, Indexaufbau
+  1 h, jede Auswertung Gigabyte-Arbeit. ~800 k der 2,59 Mio Ereignisse
+  hängen daran, dass jeder bestätigte Swing als eigenes Niveau zählt. Weg 2
+  in `docs/UEBERGABE_2026-08-31.md` Teil 3 (Swing-Niveaus ausdünnen) ist
+  vermutlich nötig. Zusätzlich blockiert das volle Stop-Raster aus Etappe 7
+  (25 × 5 × alle Ereignisse = >300 Mio Zeilen) — Weg 1 empfohlen.
+
+- **Grundraten nach Regime/Session (31.08.2026).** Der Gesamtschnitt zeigt
+  keinen Mustervorteil (`docs/GRUNDRATEN_H60_2026-08-31.md`). Bevor OHLCV-
+  Muster abgehakt werden: `--nach regime` / `--nach session` über mehrere
+  Horizonte — ein Vorteil könnte nur in einer Marktlage auftreten. Braucht
+  erst den Index-Neuaufbau (`idx_outcomes_auswertung` wurde um
+  `atr_referenz` erweitert).
+
+- **Bestätigender Vollrun der gehärteten Grundraten-Auswertung** über die
+  ganze Datenbank. Bisher stützt sich der Befund auf Diagnose + CSV des
+  ersten (rohen) Laufs.
 
 - **Lucid-Zahlen** (siehe P0). *(300k-Frage ist geklärt: gibt es nicht.)*
 *(Beantwortet am 30.08.2026: der Bot handelt mit `frei`; die Auswertung

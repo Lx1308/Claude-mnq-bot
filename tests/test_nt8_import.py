@@ -159,6 +159,52 @@ def test_falsche_zeitzone_faellt_durch():
     assert not bestanden
 
 
+def test_wenige_ausreisser_bestehen_und_werden_benannt():
+    """Eine LUECKE in einer Quelle ist keine KORRUPTION.
+
+    Am 30.08.2026 lagen beim ersten echten Import (MNQ 09-26) 99,31 % der
+    gemeinsamen Kerzen bittgenau; die 0,69 % Rest waren ein Tag, den
+    NinjaTrader lokal nie voll geladen hatte, plus Tick-Rauschen an der
+    Minutengrenze zwischen Live- und Historienkerzen.
+    """
+    referenz = _reihe(START, 400)
+    mit_luecke = referenz.copy()
+    # 2 von 400 Kerzen (0,5 %) grob daneben - unter der 1-%-Schwelle.
+    mit_luecke.iloc[10, mit_luecke.columns.get_loc("close")] += 30.0
+    mit_luecke.iloc[20, mit_luecke.columns.get_loc("close")] += 30.0
+
+    bestanden, meldungen = kreuzvergleich(mit_luecke, referenz)
+    assert bestanden, meldungen
+    assert any("2 Kerzen ausserhalb der Toleranz" in m for m in meldungen)
+    assert any("bestanden" in m for m in meldungen)
+
+
+def test_zu_viele_ausreisser_brechen_ab():
+    """Ueber der Schwelle ist es kein Rauschen mehr, sondern ein Fehler."""
+    referenz = _reihe(START, 400)
+    kaputt = referenz.copy()
+    idx = kaputt.columns.get_loc("close")
+    for i in range(40):  # 10 % daneben
+        kaputt.iloc[i * 10, idx] += 30.0
+
+    bestanden, meldungen = kreuzvergleich(kaputt, referenz)
+    assert not bestanden
+    assert any("ABBRUCH" in m and "%" in m for m in meldungen)
+
+
+def test_ein_einzelner_ausreisser_kippt_den_versatztest_nicht():
+    """Der Versatztest misst am Anteil, nicht am schlechtesten Balken - sonst
+    koennte eine einzelne krasse Kerze einen Beschriftungs-Fehlalarm ausloesen.
+    """
+    referenz = _reihe(START, 400)
+    fast_gleich = referenz.copy()
+    fast_gleich.iloc[5, fast_gleich.columns.get_loc("high")] += 500.0
+
+    bestanden, meldungen = kreuzvergleich(fast_gleich, referenz)
+    assert bestanden, meldungen
+    assert not any("Beschriftung" in m for m in meldungen)
+
+
 # -- Kontraktrollen ---------------------------------------------------------
 
 def test_kontrakt_wird_aus_dem_dateinamen_gelesen():
@@ -174,6 +220,37 @@ def test_kontrakt_wird_aus_dem_dateinamen_gelesen():
     assert kontrakt_aus_name("MNQ_DEC21_minute.txt") == ("MNQ", 2021, 12)
     assert kontrakt_aus_name("mnq-jun26.txt") == ("MNQ", 2026, 6)
     assert kontrakt_aus_name("irgendwas.csv") is None
+
+
+def test_kontrakt_auch_in_numerischer_schreibweise():
+    """Der Exportdialog auf Laurins Installation schreibt "MNQ 09-26.Last.txt",
+    nicht "MNQ SEP26" - und die db\\minute-Ordner heissen ebenso.
+    """
+    from werkzeuge.nt8_import import kontrakt_aus_name
+
+    assert kontrakt_aus_name("MNQ 09-26.Last.txt") == ("MNQ", 2026, 9)
+    assert kontrakt_aus_name("MNQ 12-19.Last.txt") == ("MNQ", 2019, 12)
+    assert kontrakt_aus_name("MNQ_03-20_minute.txt") == ("MNQ", 2020, 3)
+    # 13 ist kein Monat - lieber None als ein stiller Fehlgriff.
+    assert kontrakt_aus_name("MNQ 13-20.txt") is None
+
+
+def test_rollplan_schluessel_passt_zu_kontrakt_aus_name(tmp_path):
+    """main() schlaegt das Rollfenster mit (jahr, monat) nach - dem Paar, das
+    kontrakt_aus_name liefert. Frueher stand dort das Dreitupel
+    (wurzel, jahr, monat), das nie traf: der Import fiel still auf die
+    gerechnete Acht-Tage-Formel zurueck, obwohl der Bestand vorlag.
+    """
+    from werkzeuge.nt8_import import kontrakt_aus_name, rollplan_aus_nt8
+
+    ordner = tmp_path / "MNQ 09-26"
+    ordner.mkdir()
+    (ordner / "20260612.Last.ncd").write_bytes(b"x" * 5000)
+    plan = rollplan_aus_nt8("MNQ", db_pfad=tmp_path)
+
+    wurzel, jahr, monat = kontrakt_aus_name("MNQ 09-26.Last.txt")
+    assert (jahr, monat) in plan
+    assert (wurzel, jahr, monat) not in plan
 
 
 def test_rollfenster_schliessen_luecken_und_ueberlappungsfrei_aneinander_an():
@@ -260,6 +337,41 @@ def test_ohne_nachbarn_gibt_es_nichts_anzuschliessen():
     leer = _reihe(START, 0)
     bestanden, _ = pruefe_anschluss(_reihe(START, 10), leer)
     assert bestanden
+
+
+def test_anschluss_ist_relativ_nicht_in_absoluten_punkten():
+    """MNQ stand 2019 bei 7.500 und 2026 bei 29.500 - 300 Punkte waren damals
+    4 %, heute 1 %. Eine feste Punktgrenze schnitt die alten Kontrakte weg.
+    """
+    from werkzeuge.nt8_import import pruefe_anschluss
+
+    # 1,4 % Sprung auf hohem Niveau: die groesste echte MNQ-Rolle. Muss durch.
+    alt = _reihe(START, 300, basis=29000.0)
+    neu = _reihe(START + timedelta(minutes=400), 300, basis=29406.0)  # +1,4 %
+    bestanden, meldungen = pruefe_anschluss(neu, alt)
+    assert bestanden, meldungen
+
+    # 4 % Sprung: kein Rollsprung mehr, egal auf welchem Niveau.
+    zu_weit = _reihe(START + timedelta(minutes=400), 300, basis=30200.0)
+    bestanden, meldungen = pruefe_anschluss(zu_weit, alt)
+    assert not bestanden
+    assert any("kein Rollsprung" in m for m in meldungen)
+
+
+def test_anschluss_ueberspringt_den_zeitlich_fernen_nachbarn():
+    """Liegt erst der laufende Kontrakt in der Datenbank und wird ein sechs
+    Jahre alter importiert, ist die naechste Kerze Jahre entfernt auf einem
+    ganz anderen Kursniveau - das ist kein Anschlussfehler, das ist kein
+    Nachbar. Frueher brach hier jeder Alt-Import ab.
+    """
+    from werkzeuge.nt8_import import pruefe_anschluss
+
+    alt_2019 = _reihe(START, 300, basis=7500.0)
+    laufend_2026 = _reihe(START + timedelta(days=2000), 300, basis=29500.0)
+
+    bestanden, meldungen = pruefe_anschluss(alt_2019, laufend_2026)
+    assert bestanden, meldungen
+    assert any("kein direkter Nachbar" in m for m in meldungen)
 
 
 def test_nachweis_wird_geschrieben_und_gelesen(tmp_path, monkeypatch):

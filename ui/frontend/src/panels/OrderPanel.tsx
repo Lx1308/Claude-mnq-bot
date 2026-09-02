@@ -29,8 +29,13 @@ export function OrderPanel() {
           qty: size,
           price: Number(price) || 0,
           stop_price: orderType === 'STOP' ? Number(price) || 0 : undefined,
-          stop_loss: sl,
-          take_profit: tp,
+          // ABSTAENDE in Punkten, nicht Kurse. Bis zum 02.09.2026 gingen
+          // diese Werte als `stop_loss`/`take_profit` raus - Felder, die
+          // absolute Kurse meinen. NinjaTrader legte daraus ein
+          // Verkaufslimit bei Kurs 40 an, das sofort ausfuehrbar war und die
+          // Position eine Sekunde nach dem Einstieg wieder schloss.
+          stop_loss_points: sl,
+          take_profit_points: tp,
           kind: orderType,
         }),
       });

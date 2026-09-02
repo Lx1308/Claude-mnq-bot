@@ -92,12 +92,22 @@ def baue_trade(
 
     # R-Vielfaches nur, wenn ein Stop bekannt war. Ohne Stop gibt es kein R -
     # und ein ersatzweise angenommener Abstand waere eine erfundene Bezugsgroesse.
-    stop = order.get("stop_loss")
-    r_vielfaches = None
-    if stop:
-        risiko_punkte = abs(einstiegskurs - float(stop))
-        if risiko_punkte > 0:
-            r_vielfaches = punkte / risiko_punkte
+    #
+    # Der Stop kommt in zwei Bedeutungen: der Bot liefert einen ABSOLUTEN
+    # KURS aus der Ideen-Tabelle, das Order-Panel einen ABSTAND in Punkten.
+    # Beides hier zu verwechseln kostet nicht nur Genauigkeit: am 02.09.2026
+    # stand als "stop_loss" die 20 aus dem Panel, und die Rechnung
+    # abs(29430,25 - 20) ergab ein Risiko von 29410 Punkten - jedes R war
+    # damit um Faktor 1470 zu klein.
+    risiko_punkte = 0.0
+    abstand = order.get("stop_loss_punkte")
+    if abstand:
+        risiko_punkte = abs(float(abstand))
+    else:
+        stop = order.get("stop_loss")
+        if stop:
+            risiko_punkte = abs(einstiegskurs - float(stop))
+    r_vielfaches = punkte / risiko_punkte if risiko_punkte > 0 else None
 
     return {
         "trade_id": str(uuid.uuid4()),

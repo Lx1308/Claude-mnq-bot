@@ -2,6 +2,20 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
+Stand: 2026-08-31 (Abschnitte 37–40 — **Ereignisdatenbank Etappen 1–4 und 8
+gebaut, erster Befund steht**: 2.592.334 Ereignisse + 23,3 Mio Outcome-Zeilen
+in `data/eventdb.sqlite3` (~7 GB), sieben serielle Erkenner in
+`common/ereignisse/`. Der erste Grundratenbericht meldete neun signifikante
+Long-Muster — **das war ein Artefakt** (fuenfte statistische Falle, Abschnitt
+40: `end_r` durch atr_referenz bis 0,003 zertruemmert den Mittelwert und
+vergiftet die Nulllinie). Nach Haertung von `grundraten.py`
+(ATR-Untergrenze, Winsorisierung, Anteilstest als Hauptkriterium):
+**kein Muster mit belastbarem Vorteil**. `docs/GRUNDRATEN_H60_2026-08-31.md`.
+Naechster Schritt vor einem "gescheitert": Auswertung nach Regime/Session.
+**Offene Entscheidungen fuer Laurin**: Datenbank kleiner neu bauen (7 GB an
+der Hardware-Grenze), und ob die Regime-Auswertung noch kommt. Details
+`docs/UEBERGABE_2026-08-31.md`.)
+
 Stand: 2026-08-30 (Abschnitt 34 — **Die Projektgrenze ist aufgehoben**:
 Ausführung über NinjaTrader ist seit dem 30.08.2026 Projektbestandteil.
 Vier Defekte aus der Antigravity-Schicht behoben (Kerzenkorruption im
@@ -10,7 +24,14 @@ UTF-8-BOM), Ausführungsschicht neu gebaut: `common/kontoregeln.py`,
 `execution/store.py`, `execution/risiko.py`, `execution/buchung.py`,
 `execution/bot.py`, `execution/overlays.py`. Chart-Overlays und
 Strategie-Panel an die vorhandene Erkennung angeschlossen, Asia-/London-Level
-in `common/levels.py` ergänzt. 543 Tests, grün.)
+in `common/levels.py` ergänzt. Abschnitt 34.9: die NT8-Historie ist
+importiert — 2,57 Mio MNQ-Minutenkerzen von 2019 bis August 2026, vier
+Import-Bugs unterwegs behoben. Abschnitt 35: TRADAYRI-Startchart repariert
+(schwarzes Rechteck war die leere Chart-Flaeche), volle Historie als
+Tageskerzen, Kerzenaggregation `werkzeuge/aggregiere_kerzen.py`.
+Abschnitt 36: Forschung auf echten Daten — `NtBridgeDataProvider` schaltet
+die NT8-Historie fuer die Engine frei (MASTERPLAN X.1, P0), Chartmuster als
+Serie, Engine ~20x schneller, erste Messung des „W". Tests grün.)
 Davor Abschnitt 33 — Vollständige Formalisierung der Marktprimitive
 (FVG, Displacement, EQH/EQL, Liquidity Sweeps BSL/SSL, Reclaims, MSS/BOS/CHoCH)
 in `common/market_primitives.py`, Multi-Timeframe Resampling & 4h-Integration
@@ -3121,3 +3142,818 @@ Kontrakte, 1.954 Handelstage, Mai 2019 bis heute.
 
 Kleine Dateien (unter 40 Byte) sind Platzhalter ohne Kerzen und wuerden den
 Beginn faelschlich vorziehen; sie werden uebergangen.
+
+### 34.9 NT8-Historie importiert: 30 Kontrakte, Mai 2019 bis August 2026 (30.08.2026)
+
+Die Exporte lagen als `MNQ MM-YY.Last.txt` in `Documents/NinjaTrader 8/export/`
+(Minuten-OHLCV, Semikolon, `yyyyMMdd HHmmss`). Beim Import fielen vier Dinge
+auf, alle in `werkzeuge/nt8_import.py` behoben, jeweils mit Regressionstest
+(`tests/test_nt8_import.py`, jetzt 32 Tests).
+
+**1. Die Exporte sind in UTC, nicht `America/New_York`.** Der Kreuzvergleich
+gegen die Bridge-Kerzen war eindeutig: als UTC gelesen stimmen **99,31 % der
+9.310 gemeinsamen Kerzen bittgenau** (Return-Korrelation 0,9992); als
+`America/New_York` gelesen liegt die Reihe vier Stunden daneben
+(Niveau-Korrelation faellt von 1,000 auf 0,87, Return-Korrelation auf 0,05).
+NinjaTrader exportiert in seiner Anzeigezeitzone, und die steht auf dieser
+Installation auf UTC. **Jeder Import braucht `--zeitzone UTC`.** Der
+Formatnachweis (`data/nt8_import_nachweis.json`) haelt die Zeitzone pro Eintrag
+fest — ein Nachweis fuer `America/New_York` uebertraegt sich nicht auf UTC.
+
+**2. `rollplan_aus_nt8` (der Fund aus 34.8) war toter Code.** `main()` verglich
+das Dreitupel `(wurzel, jahr, monat)` gegen die `(jahr, monat)`-Schluessel des
+Plans — `if kennung in plan` traf nie zu, der Import fiel still auf die
+gerechnete Acht-Tage-Formel zurueck. Der Dry-Run sagte `(gerechnet, 8 Tage vor
+Verfall)` statt `(aus NinjaTraders Datenbestand)`. Kein Test deckte `main()`
+ab; die Tests aus 34.8 pruefen `rollplan_aus_nt8` und `rollfenster` einzeln.
+
+**3. Numerische Dateinamen (`MNQ 09-26.Last.txt`) wurden nicht erkannt** — nur
+`MNQ SEP26`. `kontrakt_aus_name` liest jetzt beide Schreibweisen; die
+`db/minute`-Ordner heissen ohnehin `MNQ MM-YY`.
+
+**4. Zwei Schutzpruefungen waren fuer die Realitaet zu streng.** Beide
+Aenderungen wurden Laurin am 30.08.2026 vorgelegt und von ihm freigegeben
+(Ausreisser-Toleranz: „einbauen"; die 2 stale Kerzen am 21.08. duerfen die
+Bridge-Kerzen ueberschreiben).
+
+- `kreuzvergleich` brach bei **jeder** Kerze ausserhalb 0,03 Punkten ab. Bei
+  MNQ 09-26 waren 64 von 9.310 daneben: 2 am 21.08.2026 (NT8s eigene
+  Lokaldatei fuer den Tag ist 935 Byte gross, quasi leer — die Bridge hat
+  1.260 Kerzen), 62 am 24./25.08. mit <= 5 Punkten, fast alle <= 1 Punkt, und
+  **ausschliesslich auf open/close, nie auf high/low** — Live-Tick gegen
+  Historien-Trade an der Minutengrenze. Neu: besteht bei **>= 99 % in
+  Toleranz** UND wenn keine +-1-Minuten-Verschiebung deutlich mehr Kerzen in
+  Toleranz bringt (Marge 2 Prozentpunkte gegen Rundungsflattern an den
+  Rand-Kerzen). Der Versatztest misst jetzt am **Anteil**, nicht am einzelnen
+  schlechtesten Balken. Die Zeitzonen-/Beschriftungs-/Kontraktabsicherung
+  bleibt voll erhalten — die scheitert bei ~100 % der Kerzen, nie bei 1 %.
+- `pruefe_anschluss` verglich den Rollsprung in **absoluten Punkten** gegen
+  400. MNQ stand 2019 bei 7.500 und 2026 bei 29.500 — 400 Punkte waren damals
+  5 %, heute 1,4 %. Ueber alle 29 echten Rollen JUN19–SEP26 lag der Sprung
+  zwischen **-0,55 % und +1,46 %**. Neu: relativ gegen **3 %**. Ausserdem nahm
+  die Pruefung stur die erste Kerze jenseits der Kontraktgrenze als Nachbarn
+  — beim ersten Alt-Import ist das der laufende Kontrakt, Jahre entfernt auf
+  einem ganz anderen Kursniveau, und **jeder Alt-Import brach ab**. Neu:
+  liegt der naechste Nachbar mehr als **4 Tage** entfernt, gibt es nichts
+  anzuschliessen.
+
+**Importreihenfolge:** MNQ 09-26 zuerst (schreibt den Formatnachweis), dann
+die uebrigen 29 **von alt nach neu**, damit jeder Kontrakt seinen bereits
+importierten Vorgaenger als Anschlussnachbarn sieht.
+
+**Ergebnis:** `data/ntbridge.sqlite3` haelt jetzt **2.573.719 MNQ-Minutenkerzen**
+(`source='nt8_export'` 2.572.461, `source='ninjatrader'` 1.258), von
+2019-05-06 bis 2026-08-28, null doppelte Zeitstempel. Rund 352.000 Kerzen je
+vollem Jahr. Die Luecken sind Wochenenden plus vereinzelte Duennmarkt-Minuten
+2019–2021 (das ist, was NinjaTrader lokal vorhaelt). Die Backtests rechnen ab
+jetzt auf sieben Jahren statt auf zehn Tagen — die p-Werte werden damit
+ueberhaupt erst aussagekraeftig, und die Mehrfachtestkorrektur wird noetig.
+
+Sicherung vor dem Import: `ntbridge.sqlite3` wurde vorher in den
+Scratchpad kopiert (nicht im Repo).
+
+## 35. TRADAYRI-Start: schwarzer Chart, volle Historie, Kerzenaggregation (30.08.2026)
+
+**Der Fund.** Laurin meldete, beim Doppelklick auf `start_TRADAYRI.bat` zeige
+die App nur einen „riesigen schwarzen Bildschirm". Nachgesehen: **kein
+Absturz.** `desktop_app.py` oeffnet ein pywebview-Fenster (WinForms/WebView2,
+`[pywebview] Using WinForms / Chromium`), die React-Oberflaeche rendert
+vollstaendig. Das schwarze Rechteck in der Mitte ist die **leere
+Chart-Flaeche**:
+
+1. Eine fruehere Sitzung hatte die Instrument-Vorauswahl beim Start bewusst
+   entfernt (`App.tsx`, „KEINE Vorauswahl … fuenfzehn Sekunden Rechenzeit").
+   Ohne gewaehltes Instrument laedt der Chart nichts.
+2. Selbst dann zeigte `/api/bars` nur ~1.500 Kerzen (`limit`-Vorgabe), und
+   `HISTORY_BARS = 30_000` (~3 Wochen) war als „der Chart ist nicht fuer
+   lange Zeitraeume da" dokumentiert.
+3. Seit dem NT8-Import (Abschnitt 34.9) liegt nur **1m** vollstaendig vor.
+   `5m/15m/1h` hatten nur die paar tausend Wochen-Kerzen der Bridge; `1d`
+   255. Ein Chart „2019 bis heute" war damit nur auf 1m ueberhaupt moeglich —
+   und 2,5 Mio Kerzen roh in den Browser gehen nicht.
+
+**Laurins Entscheidung (30.08.2026):** die eingebettete Web-Oberflaeche
+bleibt (kein nativer Umbau), und der Chart soll beim Start **grob** die volle
+Historie zeigen, Detail beim Reinzoomen.
+
+**Was gebaut wurde:**
+
+- **`werkzeuge/aggregiere_kerzen.py`** leitet `1h/4h/1d` aus 1m ab
+  (`common/timeframes.resample_ohlcv` — dieselbe Regel wie im Backtest,
+  Invariante 1) und speichert sie als eigene `timeframe`-Zeilen mit
+  `source='resampled_1m'` (Invariante 11: eine Ableitung, kein zweiter
+  Messwert). `--voll` rechnet von vorn, ohne Schalter nur die juengsten
+  Buckets. Ergebnis: 1h 45.538, 4h 11.836, 1d 2.187 Kerzen, 2019 bis heute.
+  Warum nur diese drei: 2,5 Mio 1m je Anfrage aggregieren dauert ~20 s; die
+  feinen Ebenen (`5m/15m`) zeigt die Oberflaeche nur als begrenztes Fenster
+  und aggregiert der Server bei Bedarf direkt aus 1m (schnell genug).
+  5 Tests (`tests/test_aggregiere_kerzen.py`).
+- **`execution/server.py`**: `_aggregat_schleife` (asyncio-Task im
+  `lifespan`) zieht `1h/4h/1d` alle 5 Minuten aus den hereinkommenden
+  1m-Kerzen nach. `lade_anzeige_kerzen(symbol, tf, limit, before_ns)` ist der
+  neue gemeinsame Kerzenlader fuer `/api/bars` **und** `_vorbereiteter_rahmen`
+  (Overlays/Analyse): `limit=0` = volle Historie, `before` = Fenster nach
+  hinten (Nachladen beim Zurueckscrollen). `/api/coverage` liefert jetzt echte
+  `first_ts`/`last_ts` (standen fest auf `0`).
+- **`ui/frontend`**: MNQ wird beim Start automatisch gewaehlt (das
+  handelbare Instrument), Vorgabe-Timeframe `1d` (Schluessel `chart.timeframe.v2`
+  — setzt die gespeicherte Vorliebe einmalig zurueck). Der 15-Sekunden-
+  Warmlauf beim Instrumentwechsel ist weg: Chart, Overlays und Analyse holen
+  sich ihre Daten je fuer sich, der Warmlauf ist nur noch fuer die Wiedergabe
+  da und laeuft im Hintergrund. `TradeChart` laedt beim Scrollen an den linken
+  Rand aeltere Kerzen nach (`onNeedOlder`), bei den feinen Timeframes; der
+  Zeitausschnitt bleibt dabei stehen. `1h/4h/1d` = volle Historie, `5m/15m` =
+  4.000er-Fenster.
+
+**Stale Bridge-Reihen entfernt:** die wochenweisen `5m/15m/1h`-Kerzen der
+Bridge (`source='ninjatrader'`, ~3.200 Zeilen) sind geloescht — 1m ist
+kanonisch, `1h/4h/1d` vorberechnet, `5m/15m` kommen bei Bedarf frisch aus 1m.
+
+**Warum SQLite-Lesen hier langsam ist:** ein `SELECT` von 2,5 Mio Zeilen mit
+`sqlite3.Row`-Factory dauert ~120 s, mit Tupeln ~20 s, `pd.to_datetime` ohne
+`format=` noch mal ~18 s. Deshalb liest `aggregiere_kerzen` mit eigener
+Verbindung ohne Row-Factory, und `_lies_bars` im Server mit
+`format="ISO8601"`. Merken fuer alles, was viele Kerzen liest.
+
+**Offen (P2, `docs/OFFENE_PUNKTE.md`):** `aggregiere_kerzen --voll` liest die
+1m-Reihe je Ziel-Timeframe neu; einmal lesen wuerde reichen. Und der
+`chart.timeframe.v2`-Schluesselwechsel ist eine Migration, die spaeter wieder
+raus kann.
+
+## 36. Forschung auf echten Daten: Provider, Musterserie, erste W-Messung (30.08.2026)
+
+Laurins Auftrag fuer diese Etappe: der Bot soll handeln wie ein sehr
+erfahrener Trader — der weiss aus Erfahrung, dass ein W „in acht von zehn
+Faellen funktioniert", und steigt am zweiten Tief ein. Muster, Strukturen und
+alle Faktoren sollen einfliessen, so dass am Ende **fuer jede sinnvolle
+Marktsituation** eine Hypothese mit dem hoechsten Erwartungswert bereitsteht.
+
+### 36.1 Die Zielarchitektur, die daraus folgt
+
+Nicht **eine** Universalregel, sondern ein **Ensemble aus Regime-Spezialisten**
+(von Laurin am 30.08.2026 so praezisiert):
+
+1. **Robustheit ueber Regimes ist die Eintrittshuerde, nicht das Endziel.**
+   Eine Hypothese muss ueber die Regimes hinweg tragen, um als *echt* zu
+   gelten — das ist der Beleg, dass der Effekt existiert und kein
+   Regime-Artefakt ist.
+2. **Danach Spezialisierung:** je Regime die Hypothese mit dem hoechsten
+   Erwartungswert *in diesem Regime*.
+3. **„Kein Rauschen":** ein Regime bekommt nur dann einen Spezialisten, wenn
+   es genug Daten und einen belegbaren Effekt hat. Sonst bleibt der robuste
+   Allrounder stehen — oder es wird dort nicht gehandelt.
+
+Schritt 2 ist per Konstruktion overfitting-anfaellig („bester Erwartungswert
+in diesem Regime" ist genau die Formulierung, mit der man Rauschen anfittet).
+**Absicherung, als Regel im Code, nicht als Faustregel in der Doku:** ein
+Spezialist loest den Allrounder nur ab, wenn er ihn in seinem Regime auch auf
+Validation-Daten schlaegt, mit Mindest-Tradezahl, gegen das globale
+Hypothesenbudget gerechnet.
+
+Ebenfalls von Laurin entschieden (30.08.2026):
+
+* **Globales Hypothesenbudget im Register.** Die Bonferroni-Schwelle wird
+  gegen die Gesamtzahl je gepruefter Hypothesen gerechnet, nicht gegen den
+  einzelnen Lauf. `Discoverylauf.bonferroni_schwelle` zaehlt bisher nur
+  laufintern — bei einem Dauerlauf ist das eine Fassade. **Noch nicht
+  gebaut.**
+* **OOS-Kontingent.** Der OOS-Block bekommt eine harte Obergrenze an
+  Confirmations und ist danach verbraucht; der Bot fasst ihn nicht
+  selbstaendig an. **Noch nicht gebaut.**
+* **Datenumfang:** erst die MNQ-Preisdaten ausschoepfen (2,57 Mio Kerzen,
+  intraday-aufloesend), Cross-Asset ueber FRED danach als Ausbaustufe.
+
+### 36.2 Der Blocker: die Engine kam an die Daten nicht heran
+
+`backtest/data/__init__.py::create_provider` kannte ausschliesslich `"csv"`,
+und in `data/` liegt als einzige CSV der **synthetische** `DEMO_1m.csv`. Jeder
+Forschungslauf dieses Projekts rechnete deshalb entweder darauf oder auf der
+Dukascopy-Naeherung — Index-CFD statt MNQ-Futures, laut Invariante 11 „rein
+informativ". Das ist MASTERPLAN X.1, dort seit dem 23.08.2026 als P0 gefuehrt.
+
+**`backtest/data/ntbridge_provider.py`** schliesst das. Er liest die 1m-Reihe
+und aggregiert Groeberes ueber `common.timeframes.resample_ohlcv`. Bewusst
+**nicht** aus den gespeicherten 1h/4h/1d-Zeilen: die sind eine Anzeigehilfe,
+nachgezogen von einer Schleife im Serverprozess, und ein Forschungsergebnis
+darf nicht davon abhaengen, ob die Oberflaeche lief.
+
+**Rollsprung als stiller Fehler:** die Reihe ist aus 30 Quartalskontrakten
+zusammengesetzt; an den 29 Nahtstellen springt der Preis um −0,55 % bis
++1,46 %. Fuer den Backtest sieht das aus wie eine Uebernachtluecke, ist aber
+keine — eine Gap-Strategie saehe dort 29 Scheinsignale. Der Provider weist die
+Nahtstellen ueber `.rollgrenzen` aus (bevorzugt aus NinjaTraders
+Kontraktbestand, ersatzweise aus dem Preissprung, und sagt im Log welche
+Quelle). Die Kurse werden **nicht** rueckangepasst: das machte Niveau-Aussagen
+(Vortageshoch, VWAP-Abstand in Punkten) unvergleichbar.
+
+### 36.3 Chartmuster als Serie
+
+`common/patterns.py::detect_double_top_bottom` ist **punktuell** — es sieht
+ans Ende eines Rahmens. Fuer die Frage „traegt ein W, und in wie vielen
+Faellen" braucht es fuer jede Kerze ein Urteil.
+
+**`common/muster_serie.py`** liefert das. Swing-Punkte werden **einmal** ueber
+die ganze Reihe gesucht statt je Kerze neu: aus O(n × lookback) wird O(n),
+gemessen 7 s auf 519.000 Kerzen. Keine zweite Musterdefinition — die Schwellen
+sind aus `detect_double_top_bottom` uebernommen, und ein Test prueft ueber die
+ganze Reihe, dass beide zum selben Urteil kommen.
+
+**Der Lookahead, der dabei verhindert wird:** ein Swing-Tief ist an seiner
+eigenen Kerze nicht erkennbar (`find_swing_points` sagt es selbst). Das zweite
+Tief bei Kerze *i* ist fruehestens bei *i + strength* bekannt. Wer „am zweiten
+Tief" einsteigt, handelt mit Wissen aus der Zukunft — und das Ergebnis sieht
+hervorragend aus, ohne dass an den Kursen etwas verdaechtig waere. Das Modul
+fuehrt `event_index` (wo das Muster LIEGT, fuer die Anzeige) und
+`verfuegbar_index` (ab wann bekannt) getrennt, wie
+`common/market_primitives.py`; alle Spalten stehen auf der Verfuegbarkeit.
+
+Zwei Strategien mit **einem einzigen Unterschied**:
+`doppelboden_bestaetigt` (frueh, unbestaetigt) gegen
+`doppelboden_nackenbruch` (spaet, bestaetigt, Lehrbuchvariante).
+
+### 36.4 Engine 20x schneller — und der Preis dafuer
+
+Die Hauptschleife baute je Kerze **zwei pandas-Series** ueber `data.iloc[i]`,
+bei inzwischen ueber vierzig Spalten. Auf 363.000 Kerzen waren das ~5 Minuten
+je Strategie und Block; mit den zwoelf neuen Musterspalten wurde es schlimmer.
+
+Neu: nur die Spalten, die `strategy.benoetigte_spalten()` nennt, werden als
+numpy-Arrays vorgehalten; je Kerze entsteht ein kleines Dict.
+`BarContext.value` greift ueber `.get()` zu, ein Dict genuegt dafuer.
+**Gemessen: ~5 min → ~15 s je In-Sample-Lauf.**
+
+**Das neue Risiko und seine Absicherung:** vorher bekam eine Regel *alle*
+Spalten; eine Regel mit unvollstaendigem `benoetigte_spalten()` funktionierte
+zufaellig mit. Jetzt liest sie NaN, feuert nie und liefert null Trades ohne
+Fehlermeldung — der `ib_breakout`-Fehlertyp. `tests/test_spaltenvertrag.py`
+schliesst die Luecke: fuer **jede** Strategie der Bibliothek muss der Lauf auf
+dem beschnittenen Rahmen dieselben Trades liefern wie auf dem vollen. Alle
+neun bestehen.
+
+### 36.5 Erste Messung des W — Zahlen in `docs/W_MESSUNG_2026-08-30.md`
+
+Erster Backtest dieses Projekts auf **echten MNQ-Futuresdaten**. 519.084
+5m-Kerzen, 2019–2026, nichts optimiert (OOS damit nicht verbraucht).
+
+| Strategie | Block | Trades | Treffer | PF | Ø/Trade |
+|---|---|---:|---:|---:|---:|
+| `doppelboden_bestaetigt` | IS | 2.252 | 34,8 % | 0,93 | −2,60 USD |
+| `doppelboden_bestaetigt` | OOS | 990 | 37,4 % | 1,05 | **+3,29 USD** |
+| `doppelboden_nackenbruch` | IS | 1.911 | 35,9 % | 0,97 | −1,08 USD |
+| `doppelboden_nackenbruch` | OOS | 813 | — | — | −3,50 USD |
+| `vwap_trend` | IS | 2.602 | 21,9 % | 0,86 | −4,09 USD |
+| `vwap_trend` | OOS | 1.010 | 22,3 % | 0,95 | −2,38 USD |
+
+**Die Trefferquote des W liegt bei ~35 %.** Laurins „acht von zehn Faellen"
+war ausdruecklich ein erfundenes Illustrationsbeispiel, keine Behauptung —
+hier wird also nichts widerlegt. Festzuhalten bleibt: eine Trefferquote ist
+**ohne Stop und Ziel nicht definiert**, und sie allein ist wertlos
+(MASTERPLAN J). Jede Aussage der Form „funktioniert in X von 10 Faellen" muss
+das Regelwerk mitnennen, sonst ist sie nicht ueberpruefbar.
+
+**Die beste Zahl der Tabelle ist auch die verdaechtigste.** Ein
+Vorzeichenwechsel zwischen IS und OOS ist kein Fund, sondern eine Warnung; und
+die Rangfolge der beiden Einstiege dreht sich zwischen den Bloecken ebenfalls.
+Ob das Regime oder Zufall ist, laesst sich ohne Regime-Engine und ohne
+t-/p-Werte nicht entscheiden. **Keine der beiden Hypothesen ist im Register
+eingetragen** — bis das nachgeholt ist, zaehlen sie nicht gegen das
+Hypothesenbudget.
+
+### 36.6 Regime-Engine und erster Discovery-Lauf — ein sauberes Negativ
+
+`common/regime.py` baut die drei Achsen aus MASTERPLAN I:
+
+| Achse | Groesse | Auspraegungen |
+|---|---|---|
+| `vola_regime` | ATR-Rang | niedrig / mittel / hoch |
+| `struktur_regime` | ADX-Rang | range / uebergang / trend |
+| `liquiditaet_regime` | relatives Volumen zur **selben Tageszeit** | duenn / normal / rege |
+
+**Grenzen aus der Verteilung, nicht aus einem Lehrbuch** — Terzile eines
+rollenden 60-Sessions-Fensters. „ADX ueber 25 heisst Trend" waere eine Zahl
+aus einem Buch; der `consolidation_max_atr = 1.2`-Fund vom 22.08.2026 zeigt,
+was solche Zahlen anrichten.
+
+**Rueckwaertsgerichtet, und ein Test haelt das fest.** Perzentile ueber die
+Gesamthistorie waeren bequem und falsch: das Regime einer Kerze von 2019
+haenge dann davon ab, wie volatil 2026 war.
+`test_spaetere_kerzen_aendern_ein_frueheres_regime_nicht` schneidet die Reihe
+ab und prueft, dass sich nichts aendert.
+
+**Warum relatives Volumen zur selben Tageszeit:** ein roher Volumenrang wuerde
+die Eroeffnung immer als „rege" und die Nacht immer als „duenn" einstufen —
+eine Aussage, die schon in der Session-Angabe steckt. Interessant ist, ob die
+10:00-Kerze *heute* belebter ist als die 10:00-Kerze ueblicherweise.
+
+**Verteilung auf echten Daten:** alle 27 Schubladen belegt (1,7 % bis 8,1 %).
+Die Achsen sind aber **nicht unabhaengig** — `niedrig|range|duenn` und
+`hoch|trend|rege` sind die groessten; ruhige Naechte und aktive Trendtage
+buendeln sich.
+
+**Discovery-Lauf** (`werkzeuge/regime_discovery.py`, nur Trainingsteil,
+`pruefe_nur_training` scharf): drei Strategien x fuenf Faktoren.
+
+```
+Gepruefte Hypothesen : 51
+Korrigierte Schwelle : 0,000980  (alpha / 51)
+Bester p-Wert        : 0,0071
+KEINE Gruppe unterschreitet die korrigierte Schwelle.
+```
+
+**Nach strengem Massstab ist nichts gefunden.** Das ist kein Fehlschlag,
+sondern der Zweck des Laufs: bei 51 Hypothesen und alpha = 0,05 sind rund 2,6
+„signifikante" Funde der Erwartungswert. Die beste positive Gruppe
+(`doppelboden_bestaetigt` / Struktur / `uebergang`, p = 0,050) waere
+unkorrigiert ein „Fund" gewesen.
+
+**Notiert, ohne Signifikanzanspruch:** beide Doppelboden-Varianten ordnen die
+Liquiditaetsachse identisch (rege > normal > duenn), obwohl sie sich im
+Einstieg unterscheiden. Auf der Strukturachse widersprechen sie sich dagegen
+(frueh traegt im Uebergang, spaet im Trend). Zahlen und Einordnung in
+`docs/REGIME_DISCOVERY_2026-08-30.md`.
+
+**Der Vorzeichenwechsel aus 36.5 ist damit nicht erklaert.** Die Achsen
+trennen zu schwach.
+
+### 36.7 Naechste Schritte
+
+1. Globales Hypothesenbudget + OOS-Kontingent im Register (36.1). **Bis dahin
+   darf aus mehreren Discovery-Laeufen keine Signifikanzaussage
+   zusammengesetzt werden** — die 51 Hypothesen dieses Laufs zaehlen nirgends.
+2. Ungeprueft gebliebene Faktoren: Position zu Vortagesmarken, Struktur der
+   uebergeordneten Zeitebene, Abstand zum VWAP.
+3. Achsen entkoppeln (Strukturrang *innerhalb* des Volatilitaetsterzils).
+4. Die vier offenen Hypothesen aus der Antigravity-Phase.
+5. Erst danach der autonome Kreislauf.
+
+### 36.8 Zu Laurins Zielbild „fallbasiertes Schliessen"
+
+Er hat es am 30.08.2026 praezisiert: der Bot soll erkennen „diese Situation
+kam schon mal vor, ist meist so und so verlaufen, also setze ich so" — Muster,
+Strukturen und Ereignisse zusammen. `common/market_state.py::MarketState` ist
+bereits die passende Fingerabdruck-Struktur dafuer.
+
+**Die eingebaute Gefahr, schaerfer als normales Overfitting:** bei 519.000
+Kerzen und reichem Merkmalsvektor findet man zu *jeder* Lage aehnliche
+historische Lagen. Die Bonferroni-Zaehlung greift dann nicht mehr, weil aus
+abzaehlbaren Hypothesen ein Kontinuum wird. Was dagegen wirkt: Merkmalsvektor
+vorher festlegen statt suchen; Mindestzahl an Analogfaellen, sonst „keine
+Meinung"; die Vorhersage muss eine naive Nulllinie schlagen; vorwaerts in der
+Zeit halten, nicht nur im Nachbarschaftsraum. Die Regime-Engine baut die
+ersten beiden als grobe Stufe — 27 abzaehlbare Schubladen statt eines
+Kontinuums.
+
+**Ereignisdaten, Bestandsaufnahme:** `ideas/kalender.py` (Forex Factory)
+liefert „im Wesentlichen die laufende Woche" — fuer 2019–2026 gibt es dort
+**keine Terminhistorie**. Historisch verfuegbar sind: FRED/ALFRED-Vintages
+(`macro/`, 8 Reihen, mit „was war wann bekannt"), `common/marktkalender.py`
+(Feiertage, Frueh-Schluesse), deterministisch ableitbare Termine (FOMC, NFP,
+Verfallstage, Monatsende) — und vor allem die Spuren der Ereignisse **im
+Kursverlauf selbst** (Volatilitaets- und Volumenanomalien), die in
+Minutenaufloesung schon vorliegen.
+
+---
+
+## 37. Ereignisdatenbank Etappe 1: serielle Erkenner, muster_serie-Fix, TRADAYRI-Zeitstempel (31.08.2026)
+
+Auftrag: Laurins umfassende empirische Untersuchung der 2,57 Mio
+MNQ-Minutenkerzen (`docs/FORSCHUNGSPLAN_EVENTDATENBANK.md`). **Keine
+Strategie** — eine reproduzierbare Wissensbasis: welche Situationen treten
+auf, wie oft, wie entwickeln sie sich. Diese Sitzung baut Etappe 1 (punktuelle
+Erkenner → Serien) weiter.
+
+### 37.1 `common/ereignisse/` — die serientauglichen Erkenner
+
+Alle liefern `list[Ereignis]` (aus `basis.py`) mit den vier getrennten
+Zeitpunkten. `Ereignis.__post_init__` bricht bei
+`entstehung ≤ bestaetigung ≤ verfuegbar`-Verletzung ab. Jeder Erkenner hat
+einen Lookahead-Test (Reihe abschneiden, neu rechnen, frueh verfuegbare
+Ereignisse identisch) und — wo es eine punktuelle Vorlage gibt — einen
+Gleichheitstest gegen sie.
+
+| Modul | Ereignisse | Vorlage | Laufzeit volle Historie |
+|---|---|---|---|
+| `swings.py` | `SwingSerie` (kein Ereignis, Basis) | `structure.find_swing_points` | ~0,7 s |
+| `struktur.py` | `bos_bullish/bearish`, `choch_*` + `struktur_spalten` (HH/HL/LH/LL, Trend) | `market_primitives.detect_structure_breaks` | ~16 s → 181k |
+| `niveaus.py` | `niveau_test` (n-ter Test), `ausbruch`, `fehlausbruch`, `ausbruch_retest` an PDH/PDL/PDC/IB + Swings | neu (Plan 4) | ~86 s → **829k** |
+| `fvg.py` | `fair_value_gap` (bullish/bearish) + Mitigation im Fenster + `fvg_spalten` | `market_primitives.detect_fair_value_gaps` | ~40 s |
+| `displacement.py` | `displacement` — **Adapter**, keine eigene Logik | `market_primitives.detect_displacements` (schon O(n)) | ~3 s |
+
+**`niveaus.py`, ein Entwurfsfehler unterwegs:** die erste Fassung zaehlte
+jeden Abpraller von einem Niveau als „Ausbruch" — vier saubere Tests eines
+Levels erzeugten vier Falschereignisse. Jetzt ist ein Ausbruch der **Wechsel
+der etablierten Seite**: der Kurs muss vorher klar auf einer Seite gestanden
+haben (`abs(close − L) > max(tol, puffer)`) und durch das Niveau schliessen.
+
+**`niveaus.py`, Beobachtung fuer Etappe 3:** die swing-basierten Niveaus
+machen ~800k der 829k Ereignisse aus (jeder der ~250k bestaetigten Swings wird
+ein aktives Niveau). Das ist vermutlich zu fein — beim Fuellen der
+`events`-Tabelle ist zu entscheiden, ob nur „bedeutende" Swings oder nur die
+juengsten N als Niveau gelten. Der Erkenner selbst ist korrekt.
+
+**`fvg.py`, bewusste Abweichung von der Vorlage:** der punktuelle Erkenner
+verfolgt die Mitigation bis ans Reihenende (fuer die Anzeige „ist dieses FVG
+noch offen"). Die Serie tut es in `mitigation_fenster` Kerzen (Vorgabe 240 =
+4 h, laengster Nicht-Session-Horizont im Plan). Test haelt fest, dass beide
+**innerhalb des Fensters** dasselbe Mitigation-Urteil faellen.
+
+**Noch nicht gebaut** (Plan Abschnitt 4, fuer die naechste Etappe): Liquidity
+Sweep (Sweep + Reclaim), Order Block, Equal Highs/Lows als Serie, Triple
+Top/Bottom, Bewegungsmuster (Impuls+Konsolidierung, Reversal nach Extrem,
+Kompression→Expansion), Opening Range. Diese sind definitionsempfindlicher —
+Laurin plante dafuer die Opus-5-Sitzung.
+
+### 37.2 `common/muster_serie.py`: O(n²) → O(n)
+
+`finde_doppelmuster` suchte je Paar gleichartiger Swings den Berg/Talpunkt
+dazwischen mit einer Komplettschleife ueber **alle** Gegen-Swings. Bei ~250k
+Swings auf 2,5 Mio Kerzen ≈ 77 min allein fuer diese Stufe von
+`Backtester.prepare` — der Grund, warum ein Forschungslauf ueber die volle
+Historie nie durchlief (in Abschnitt 36.4 unbemerkt geblieben, weil dort nur
+auf Ausschnitten gemessen wurde).
+
+Jetzt ueber `np.searchsorted` auf die aufsteigenden Gegen-Swing-Indizes: je
+Paar nur das kurze Fenster dazwischen. `argmax`/`argmin` waehlen bei
+Gleichstand wie Pythons `max`/`min` den ersten Treffer — **die
+Musterdefinition aendert sich nicht**, ein neuer Test vergleicht Fund fuer
+Fund gegen die alte volle Suche.
+
+Gemessen: doppelmuster-Stufe bei 200k Kerzen 29,6 s → 2,6 s. `prepare()` ueber
+die volle Historie jetzt **~85 s** (Laden 61 s, `niveau_ereignisse` 86 s,
+`pruefe_lookahead` 0,1 s — alles auf 1m, kein Kompromiss).
+
+### 37.3 TRADAYRI: schwarzer Chart, Zeitachse auf „1970"
+
+Laurin meldete am 31.08.2026: Chart schwarz, Zeitachse „21.01.1970", beim
+Umschalten auf 1d ein Absturz. Ursache: **pandas 3.0.5 parst ISO8601 zu
+`datetime64[us]`**, dann liefert `DatetimeIndex.asi8` Mikrosekunden.
+`_rahmen_zu_bars` gab die als „Nanosekunden" aus; das Frontend
+(`toChartTime` in `TradeChart.tsx`) teilt durch 1e9 und landet im Januar
+1970. Bei 1m kollidieren viele Kerzen auf dieselbe Sekunde →
+lightweight-charts bricht beim naechsten Update mit „data must be asc
+ordered" ab → schwarzer Screen.
+
+Fix: `_rahmen_zu_bars` erzwingt `df.index.as_unit("ns").asi8`.
+Regressionstest in `test_execution_server.py`. `desktop_app.py`:
+Serverstart-Timeout 30 s → 90 s (erster Start muss die 657-MB-Kerzen-DB
+oeffnen; der Launcher hatte den langsam startenden Server sonst getoetet und
+Prozess-Waisen hinterlassen, die den Port hielten).
+
+**Offen, nicht Code:** „keine neuen Kerzen" — die letzte 1m-Kerze ist vom
+28.08.2026 (Import-Ende). Die Live-Bruecke (`ClaudeBridge.cs`-Indikator in
+NinjaTrader → `python -m ntbridge` → sqlite) schreibt nichts nach, solange in
+NT8 kein Chart mit dem Indikator offen ist oder der Empfaenger nicht laeuft.
+
+### 37.4 Forschungsplan: fuenf Schema-Ergaenzungen (externe Pruefung)
+
+Eine externe Durchsicht (Gemini) nannte fuenf Luecken, alle berechtigt,
+eingearbeitet (`docs/FORSCHUNGSPLAN_EVENTDATENBANK.md` Abschnitt 16):
+
+- `triggers.order_art` + gemessene Limit-Nichtfuellung; Slippage bleibt
+  benanntes Szenario in der Auswertung (Invariante 10/11)
+- `outcomes.intrabar_ambig` + Doppelklassifikation stop-zuerst/ziel-zuerst
+- `events.cluster_id`: gleichzeitige Signale ueber Mustertypen/Zeitebenen
+  zaehlen in der Signifikanz als eine Beobachtung
+- `events.volumen_am_extremum_relativ` als Orderbuch-Ersatz
+- VIX taeglich ueber FRED als Merkmal; `smt_divergenz` im Schema, `NULL` bis
+  eine ES-Reihe angebunden ist
+
+Kernaussage im Plan festgehalten: diese Verschaerfungen machen die Messung
+ehrlicher, erzeugen aber **keinen** Vorteil. Die Grundratentabelle kann
+genauso gut zeigen, dass in 1m-OHLCV-Mustern nichts zu holen ist — ein
+zulaessiges Ergebnis.
+
+---
+
+## 38. Ereignisdatenbank Etappen 2 und 3: Schema, Schreibweg, erster Volllauf (31.08.2026)
+
+### 38.1 `common/ereignisse/datenbank.py`
+
+Vier Tabellen nach Plan (`events`, `outcomes`, `triggers`, `stop_szenarien`)
+plus `laeufe` fuer die Herkunft. **Kernmerkmale als echte Spalten**
+(`level_1/2/neckline`, Hoehe, Dauer), **Musterspezifisches zusaetzlich als
+`merkmale_json`** — nichts geht verloren, die haeufigen Abfragen bleiben
+schnell.
+
+`schreibe_events` reichert jedes Ereignis mit dem Kontext **am
+Verfuegbarkeitszeitpunkt** an: ATR, drei Regime-Achsen, Session, Wochentag,
+Minuten seit RTH-Open, Trendlage, Abstand zu VWAP/PDH/PDL, relatives Volumen,
+Rollnaehe, Datensatzblock, `cluster_id`.
+
+**Drei Entwurfsentscheidungen, die aus konkreten Fehlern stammen:**
+
+1. **Spaltennamen im INSERT ausdruecklich benannt.** Ein `?` zu wenig meldet
+   SQLite (passierte beim ersten Versuch: 38 Spalten, 36 Werte). Ein
+   *vertauschtes* Paar gleicher Typen meldet es **nicht** — dann stuende der
+   Kontext still in der falschen Spalte. Ein Test haelt `EVENT_SPALTEN` und
+   Schema deckungsgleich.
+
+2. **`vergib_cluster` mit festem Fenster statt transitiver Kette.** Die Kette
+   (A-B, B-C ⇒ A-B-C) klang richtiger, lief auf 1m-Daten mit sieben Erkennern
+   aber davon: gemessen **58 Ereignisse ueber mehrere Minuten** in einem
+   Cluster. Das waere keine Gleichzeitigkeit mehr, und die Stichprobe
+   schrumpfte zu stark. Mit festem Fenster: Median 4–5, Maximum 38.
+
+3. **Blockgrenzen fest verdrahtet** (`TRAINING_BIS`, `VALIDATION_BIS`). Sie
+   duerfen nicht mit dem Datenbestand wandern, sonst ist ein Ergebnis von
+   heute nicht mit einem von naechster Woche vergleichbar.
+
+### 38.2 Der Schreibweg war 45x zu langsam — und warum
+
+Der erste Volllauf schrieb 2,59 Mio Zeilen in **7.087 Sekunden**: 2,7 ms je
+Zeile, rund hundertmal langsamer als SQLite kann.
+
+**Erste Vermutung war falsch.** Ich hielt die fuenf Sekundaerindizes fuer die
+Ursache, baute `massenschreiben` (Indizes weg, einfuegen, Indizes neu) — und
+mass **keinen Unterschied** (3.595 gegen 3.563 Zeilen/s).
+
+**Dann profiliert statt geraten** (`cProfile`): **24 von 36 Sekunden** gingen
+in `index[i]`, das Herausgreifen einzelner `Timestamp`-Objekte aus dem
+`DatetimeIndex` — fuenf Zugriffe je Ereignis (drei `isoformat()`, zwei
+`tz_convert`). Jeder Zugriff baut ein Python-Objekt.
+
+Behoben, alles einmal vektorisiert:
+
+| Funktion | Was sie ersetzt |
+|---|---|
+| `_iso_strings` | `strftime` ueber den ganzen Index statt `isoformat()` je Zeile |
+| `_minuten_seit_open_serie` | eine `tz_convert` fuer alles |
+| `_session_serie` | Nachschlagecache ueber (Wochentag, Minute) — `primary_session` hat hoechstens 7 × 1440 Antworten |
+
+Ergebnis: **3.595 → 16.459 Zeilen/s**, hochgerechnet 157 s statt 7.087 s.
+Erst danach brachten die Indizes messbare 25 Prozent — vorher waren sie vom
+Timestamp-Overhead ueberdeckt.
+
+**Das Formatrisiko dabei:** `strftime("%Y-%m-%dT%H:%M:%S") + "+00:00"` muss
+auf das Zeichen genau dem entsprechen, was `Timestamp.isoformat()` liefert —
+sonst waeren zwei Laeufe nicht vergleichbar, **und man saehe es keiner
+einzelnen Zeile an**. Ein Test prueft vier Zeitraeume inklusive beider
+US-Zeitumstellungen; bei Bruchteilsekunden faellt die Funktion auf den
+langsamen, aber immer richtigen Weg zurueck.
+
+`_session_serie` benutzt bewusst **dieselbe** `primary_session` mit Cache und
+keine vektorisierte Neufassung — eine zweite Sessionlogik waere derselbe
+Fehler wie eine zweite Indikatorrechnung (Invariante 1).
+
+### 38.3 `werkzeuge/ereignisse_erkennen.py` und der erste Volllauf
+
+Der Lauf: laden → `prepare` → Regime → sieben Erkenner →
+Lookahead-Sammelpruefung → schreiben. `--probelauf` zaehlt ohne zu schreiben.
+**Alles auf 1m.**
+
+Das relative Volumen kommt aus derselben Funktion wie der Liquiditaetsrang der
+Regime-Engine — eine zweite Formel waere der Anfang davon, dass
+Ereignismerkmal und Regimeachse auseinanderlaufen. Bleibt das Regime leer
+(Zeitraum kuerzer als das rollende 60-Tage-Fenster), sagt der Lauf das
+ausdruecklich, statt still ohne Kontext zu schreiben.
+
+**Ergebnis (`L20260830-233449`):** 2.573.719 Kerzen → **2.592.334 Ereignisse**,
+Training 1.665.446 / Validation 352.175 / OOS 574.713. Regime-Kontext fuer
+98,7 % der Kerzen. Zahlen und Auswertung:
+`docs/EREIGNISDATENBANK_BESTAND_2026-08-31.md`.
+
+### 38.4 Der Befund, der eine Entscheidung erzwingt
+
+Der Plan rechnete mit **200.000–800.000** Ereignissen. Es sind **2,59 Mio** —
+und das ist erst die 1m-Ebene (Entscheidung 1 sieht zusaetzlich 5m/15m/1h vor).
+
+`outcomes` waere damit ~23 Mio Zeilen (× 9 Horizonte) — handhabbar.
+**`stop_szenarien` im vollen Raster (25 Positionen × 5 Entries) waeren ueber
+300 Mio Zeilen** — weder als SQLite-Tabelle noch in vertretbarer Rechenzeit
+machbar. Entscheidung 5 des Plans muss neu getroffen werden.
+
+Ein Grund dafuer ist benennbar: **59 % aller Niveau-Ereignisse haengen an
+Swing-Hochs und -Tiefs**, weil jeder der ~250.000 bestaetigten Swings als
+eigenes Niveau zaehlt. Drei Wege stehen Laurin vorgelegt in
+`docs/UEBERGABE_2026-08-31.md` Abschnitt 3; empfohlen ist, die Grundraten
+ueber alle Ereignisse zu messen und das volle Stop-Raster nur fuer die
+Mustertypen zu rechnen, die dort einen Effekt zeigen — mit Zaehlung des
+Auswahlschritts im Hypothesenregister.
+
+### 38.5 Zwei Beobachtungen aus dem Bestand
+
+**Der n-te Test eines Niveaus faellt bemerkenswert stabil ab:** nach jedem
+Test wird ein Niveau in rund **einem Drittel** der Faelle noch einmal
+getestet (32/31/30/31/33 % ueber sechs Stufen). Ob der zweite Test besser
+*haelt* als der erste, sagt das nicht — dafuer braucht es Etappe 4.
+
+**Sweeps gehen mit rund doppeltem Volumen einher** (1,85–2,11× je Session,
+sehr gleichmaessig), und die Richtungen sind in jeder Session bis auf unter
+3 % ausgeglichen. Das ist die einzige Aussage ueber "Liquiditaet", die diese
+Daten hergeben — gemessen am Umsatz, keine Aussage ueber Order-Tiefe.
+
+### 38.6 Live-Chart: warum keine Livedaten ankamen (31.08.2026)
+
+Laurins Frage. Drei Ursachen, zwei davon unfertiger Code:
+
+1. **Die Nachladeschleife lief nur bei `liveActive`** — also wenn
+   `/api/session` eine laufende Handelssitzung meldete. Dieser Endpunkt war
+   ein fest verdrahteter Platzhalter mit `running: false`. Ein Chart soll
+   ohnehin den neuesten Stand zeigen, ob dabei gehandelt wird oder nicht; die
+   Schleife haengt jetzt nur noch daran, ob die Boerse offen ist.
+2. **`/api/market` hatte `is_open` fest auf `true`.** Eine Kopfzeile, die
+   sonntags "MARKT OFFEN" meldet, ist eine Behauptung mit Autoritaet. Jetzt
+   aus `common/sessions.py`.
+3. **Der Empfaenger lief nicht.** Kein Codefehler — aber es war nirgends
+   sichtbar. `/api/market` liefert jetzt `letzte_kerze_ts`,
+   `datenalter_sekunden`, `daten_frisch`; die Kopfzeile zeigt "Letzte Kerze",
+   gelb wenn die Boerse offen ist und trotzdem nichts nachkommt. Bei
+   geschlossener Boerse **nicht** angemahnt — eine Warnung, die jede Nacht
+   leuchtet, wird ignoriert.
+
+`/api/session` meldet jetzt drei getrennte Aussagen: `running` (Bot
+arbeitet), `connected` (Kerzen kommen an), `active` (beides). Nur `active`
+zeigt "ECHTZEIT" — ein laufender Bot ohne Datenstrom ist kein
+Echtzeitbetrieb.
+
+Ebenfalls behoben: Serverstart-Timeout 30 s → 90 s. Der erste Start muss die
+657-MB-Kerzendatenbank oeffnen; unter Plattenlast reichte das nicht, und der
+Launcher hat den langsam startenden Server dann getoetet (Laurins
+Fehlermeldung vom 30.08.2026 abends).
+
+---
+
+## 39. Ereignisdatenbank Etappen 4 und 8: Outcomes und Grundraten (31.08.2026)
+
+### 39.1 `common/ereignisse/outcomes.py`
+
+MFE, MAE, Endergebnis je Ereignis und Horizont (1/3/5/10/20/30/60/120/240
+Kerzen).
+
+`backtest/excursions.py::compute_path_excursions` rechnet je Einstieg eine
+Python-Schleife ueber den Horizont: **O(Ereignisse × Horizont)**. Bei 2,59 Mio
+Ereignissen und Horizonten bis 240 waeren das Milliarden Iterationen.
+
+Hier stattdessen **rollende Fenster ueber die ganze Kursreihe** — einmal je
+Horizont gerechnet, danach ist alles Nachschlagen. Die Zeit-bis-Extremum
+kommt aus `sliding_window_view` + `argmax`, blockweise (200k Kerzen je
+Block, ~380 MB Fensterblick).
+
+**Gemessen: 4,4 s fuer 500k Ereignisse auf 500k Kerzen ueber alle neun
+Horizonte** — hochgerechnet 2 Minuten fuer die volle Historie.
+
+Ein Test vergleicht beide Fassungen ueber vier Horizonte × zwei Richtungen,
+Zeile fuer Zeile (Einstiegspreis, MFE, MAE, Ende, Zeit bis MFE/MAE).
+
+**Ein Unterschied ist Absicht:** `compute_path_excursions` setzt bei
+fehlendem ATR ersatzweise `5.0` ein (Zeile 104). Das ist eine erfundene Zahl,
+die aussieht wie eine Messung — fuer eine Anzeige verzeihlich, fuer eine
+Wissensbasis nicht (Invariante 11). In `outcomes.py` bleiben die R-Werte
+`NaN`.
+
+**Unvollstaendige Fenster werden verworfen, nicht gekuerzt.** Ein gekuerztes
+Fenster sieht aus wie ein vollstaendiges und verzerrt die Statistik zum
+Reihenende hin (Plan Abschnitt 10). Im Probelauf: bei H=240 fehlen genau die
+letzten 233 Ereignisse — plausibel.
+
+### 39.2 Schemakorrektur: Rohzahlen und Klassen getrennt
+
+Der Plan sah `outcomes` mit Primaerschluessel
+`(event_id, horizont_bars, schwelle_atr)` vor. Das ist falsch normalisiert:
+**MFE und MAE haengen nicht von der Klassifikationsschwelle ab**, nur die
+Klasse tut das. Bei drei Schwellen (0,25/0,5/1,0) waeren das 70 statt 23 Mio
+Zeilen fuer denselben Inhalt.
+
+Jetzt: `outcomes` traegt die Rohzahlen mit `(event_id, horizont_bars)`,
+`outcome_klassen` die Klassifikation mit
+`(event_id, horizont_bars, schwelle_atr)`.
+
+### 39.3 `common/ereignisse/grundraten.py` — die vier Fallen
+
+Die Tabelle, um die es Laurin von Anfang an ging. Jede der vier Vorkehrungen
+existiert wegen eines konkreten Fehlers, der sie sonst wertlos machte:
+
+1. **Nulllinie.** „In 62 % der Faelle ging es hoch" ist wertlos, wenn es ohne
+   das Muster in 61 % der Faelle hochgeht. Jede Zahl steht neben ihrer
+   Grundrate — und die wird **je Richtung** gerechnet: ein Muster, das nur
+   Shorts erzeugt, waere gegen eine gemischte Nulllinie systematisch falsch
+   bewertet.
+2. **Ueberschneidung.** `ueberschneidungsfrei()` waehlt gierig Ereignisse,
+   deren Fenster sich nicht ueberlappen. Der ueberschneidungsfreie p-Wert ist
+   der **massgebliche**, der ueberschneidende wird daneben ausgewiesen
+   (empirisch am 30.08.2026: t = 8,49 gegen t = 1,71, Faktor 4,98 ≈ √24).
+3. **Klumpen.** `cluster_id` wird mitgezaehlt (`n_cluster`).
+4. **Auswahl.** Alle Gruppen werden ausgegeben, und `bonferroni_schwelle()`
+   nennt die Zahl der Vergleiche.
+
+`wilson_intervall()` statt Normalapproximation: die faellt bei kleinen `n`
+oder Anteilen nahe 0/1 aus `[0, 1]` heraus und behauptet dann Unsinn mit
+Nachkommastellen.
+
+`lade_fuer_auswertung()` liest **nur den angegebenen Datensatzblock**,
+Vorgabe `train` — Validation und OOS werden nicht beilaeufig mitgelesen und
+ein unbekannter Blockname bricht ab.
+
+### 39.4 `werkzeuge/grundratenbericht.py`
+
+```
+python -m werkzeuge.grundratenbericht --horizont 60
+python -m werkzeuge.grundratenbericht --nach regime --block validation
+```
+
+Gruppierungen: `muster`, `variante`, `regime`, `session`, `struktur`.
+Kontraktnaehte werden **standardmaessig ausgeschlossen** (der Preissprung ist
+ein Artefakt der Verkettung); `--mit-rollnaht` zaehlt sie mit.
+
+Unter der Tabelle steht die Bonferroni-Schwelle. Haelt keine Zeile stand,
+sagt der Bericht das ausdruecklich als **Ergebnis**, nicht als Fehlschlag.
+
+### 39.5 Erste Plausibilitaetsprobe (zwei Wochen OOS, 13.777 Ereignisse)
+
+Zur Kontrolle der Mechanik, **nicht** als Befund:
+
+| H | MFE (R) | MAE (R) | E[R] | Zeit bis MFE |
+|---:|---:|---:|---:|---:|
+| 1 | 0,52 | 0,55 | −0,017 | 1,0 |
+| 10 | 1,67 | 1,70 | −0,007 | 5,3 |
+| 60 | 4,28 | 4,19 | +0,040 | 29,8 |
+| 240 | 8,83 | 8,89 | −0,097 | 112,5 |
+
+**MFE ≈ MAE ueber alle Horizonte, E[R] ≈ 0, Zeit bis MFE ≈ H/2.** Das ist
+exakt das Verhalten eines Zufallspfads. Auf zwei Wochen ist das kein Befund —
+aber es ist ein Vorgeschmack darauf, was der Volllauf zeigen koennte, und es
+belegt, dass die Mechanik rechnet, was sie soll.
+
+---
+
+## 40. Der erste Grundratenbericht war ein Fehlalarm - die fuenfte statistische Falle (31.08.2026)
+
+### 40.1 Was der Bericht anzeigte
+
+Erster Volllauf der Outcomes (23,3 Mio Zeilen), dann
+`werkzeuge/grundratenbericht.py --horizont 60 --block train`: **neun von zehn
+Long-Mustern** mit `kante_R` um +0,22 bis +0,30 und `p` praktisch null - alle
+unter der Bonferroni-Schwelle.
+
+### 40.2 Warum es nicht stimmte
+
+Wenn **jedes** Long-Muster denselben Vorteil zeigt, ist das kein Fund, sondern
+ein Fehler im Aufbau. `niveau_test [long]`: **E[R] = -3,03** bei **Median
++0,22** - der Mittelwert von einzelnen Extremwerten zertruemmert.
+
+`end_r = end_pkt / atr_referenz`. In der Datenbank fanden sich Ereignisse mit
+`atr_referenz` bis hinunter zu **0,0026 Punkten** - eingefrorene Kurse in der
+duennen Fruehhistorie (2019-2021, MNQ bei 7.500, tote Nachtstunden), kein
+handelbarer Zustand. Eine normale -156-Punkte-Bewegung ergibt dann
+`end_r = -9.440`. 6.273 der 69.126 niveau_test-long-Ereignisse (9 %) haben
+`atr_referenz < 1,5`, deren `end_r`-Mittel ist -33,8.
+
+**Der zweite Effekt, der es gefaehrlich macht:** `niveau_test [long]` ist 8 %
+aller Long-Ereignisse. Ihr Mittel von -3,03 zog die **Nulllinie aller Longs**
+auf -0,20. Dadurch sah jedes andere Long-Muster mit `E[R] ~ +0,05` wie ein
+Vorteil von +0,25 aus - reiner Vergleich gegen eine vergiftete Nulllinie.
+
+Getrimmtes Mittel (1-99 %) von `niveau_test [long]`: **+0,055**. In einer
+Reihe mit allem anderen.
+
+### 40.3 Der robuste Blick
+
+Der **Trefferanteil** (Vorzeichen von `end_pkt`, ohne ATR) je Muster: 0,509
+bis 0,520 fuer Longs, Nulllinie 0,516; 0,462 bis 0,476 fuer Shorts, Nulllinie
+0,473. **Jedes Muster sitzt auf seiner Nulllinie**, Wilson-Intervalle
+ueberlappen sie durchweg. Der einzige Ausreisser (`bos_bearish [short]` bei
+0,462) ist *schlechter* als Zufall.
+
+Die Long/Short-Asymmetrie selbst ist der MNQ-Aufwaertsdrift 2019-2023; die
+per-Richtung-Nulllinie korrigiert genau das.
+
+### 40.4 Haertung von `common/ereignisse/grundraten.py`
+
+Alles in der Auswertungsschicht, kein Datenneuschrieb:
+
+- `ATR_UNTERGRENZE = 1.0`: Ereignisse mit kleinerer ATR-Referenz werden
+  verworfen. MNQ-1m-ATR liegt praktisch immer ueber 2.
+- `WINSOR_R = 25.0`: der Rest wird gekappt.
+- **Massgeblich ist `anteil_kante` mit `anteil_p_wert`** - der
+  ueberschneidungsfreie Zwei-Anteile-Test (`zwei_anteile_p`, Normal-CDF ueber
+  `math.erf`) auf den Trefferanteil gegen die Nulllinie. Benutzt die ATR
+  nicht. `E[R]`/Median stehen daneben, mit `hinweis` wenn sie > 0,5 R
+  auseinanderliegen.
+- Die Nulllinie einer Gruppe ist jetzt "alle gleichgerichteten Ereignisse
+  **ohne diese Gruppe**" - ein grosses schiefes Muster kann die Nulllinie
+  nicht mehr in seine eigene Richtung ziehen.
+- Der deckende Index `idx_outcomes_auswertung` wurde um `atr_referenz`
+  erweitert (Neuaufbau noetig).
+- 27 Tests, u.a. `test_anteil_kante_ist_gegen_atr_muell_immun`, das die
+  vergiftete Nulllinie exakt nachstellt.
+
+### 40.5 Stand
+
+Nach der Haertung (aus Diagnose + CSV; der bestaetigende Vollrun ueber die
+7-GB-DB steht noch aus): **kein Muster mit belastbarem Vorteil im
+Trainingsblock**. Deckt sich mit Mesfin (2026) und der Zweiwochenprobe.
+
+Naechster sinnvoller Schritt vor einem "gescheitert": Gruppierung nach Regime
+und Session (`--nach regime`, `--nach session`) - ein Vorteil koennte nur in
+einer Marktlage auftreten und im Schnitt untergehen. Vollstaendig:
+`docs/GRUNDRATEN_H60_2026-08-31.md`.
+
+### 40.6 Datenbank an der Hardware-Grenze
+
+`data/eventdb.sqlite3` ist ~7 GB. Der erste Outcome-Schreiblauf brauchte 5 h
+(behoben: ereignisweise statt horizontweise, `INDIZES` erst nach allen
+INSERTs), der Auswertungs-Join lief 25 min ins Leere (behoben: getrennte
+Abfragen + deckender Index). Selbst danach ist jede Auswertung Gigabyte-Arbeit
+auf diesem Laptop. Weg 2 aus `docs/UEBERGABE_2026-08-31.md` Teil 3
+(Swing-Niveaus ausduennen, ~800 k Ereignisse weniger) ist auf dieser Hardware
+wohl noetig, nicht nur wuenschenswert - Laurins Entscheidung.

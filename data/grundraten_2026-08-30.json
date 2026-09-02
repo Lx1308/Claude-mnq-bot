@@ -1,0 +1,3729 @@
+{
+  "symbol": "MNQ",
+  "interval_minutes": 5,
+  "horizont_kerzen": 24,
+  "nur_training": true,
+  "kostenprofil": "private_ninjatrader",
+  "lagen": [
+    {
+      "bedingung": "w_erkannt (Doppelboden bestaetigt)",
+      "stichprobe": 6385,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.1596,
+      "median_r": 0.2237,
+      "edge_ueber_baseline_r": 0.0858,
+      "median_mfe_in_r": 2.09,
+      "median_mae_in_r": 1.95,
+      "t_statistik": 1.601,
+      "p_wert": 0.109537,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5147,
+          "ziel_erreicht": 3252,
+          "stop_erreicht": 3066,
+          "zeitablauf": 67,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.6025,
+          "ziel_erreicht": 3759,
+          "stop_erreicht": 2480,
+          "zeitablauf": 146,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6678,
+          "ziel_erreicht": 4086,
+          "stop_erreicht": 2033,
+          "zeitablauf": 266,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4309,
+          "ziel_erreicht": 2673,
+          "stop_erreicht": 3531,
+          "zeitablauf": 181,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5194,
+          "ziel_erreicht": 3137,
+          "stop_erreicht": 2903,
+          "zeitablauf": 345,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5886,
+          "ziel_erreicht": 3420,
+          "stop_erreicht": 2390,
+          "zeitablauf": 575,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.361,
+          "ziel_erreicht": 2181,
+          "stop_erreicht": 3861,
+          "zeitablauf": 343,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4461,
+          "ziel_erreicht": 2572,
+          "stop_erreicht": 3193,
+          "zeitablauf": 620,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5171,
+          "ziel_erreicht": 2813,
+          "stop_erreicht": 2627,
+          "zeitablauf": 945,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2551,
+          "ziel_erreicht": 1443,
+          "stop_erreicht": 4213,
+          "zeitablauf": 729,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3323,
+          "ziel_erreicht": 1739,
+          "stop_erreicht": 3495,
+          "zeitablauf": 1151,
+          "stichprobe": 6385
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.398,
+          "ziel_erreicht": 1900,
+          "stop_erreicht": 2874,
+          "zeitablauf": 1611,
+          "stichprobe": 6385
+        }
+      ]
+    },
+    {
+      "bedingung": "w_nackenbruch (Doppelboden, Nackenlinie gebrochen)",
+      "stichprobe": 3998,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.0537,
+      "median_r": 0.094,
+      "edge_ueber_baseline_r": -0.02,
+      "median_mfe_in_r": 2.17,
+      "median_mae_in_r": 2.06,
+      "t_statistik": -0.286,
+      "p_wert": 0.774981,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5161,
+          "ziel_erreicht": 2048,
+          "stop_erreicht": 1920,
+          "zeitablauf": 30,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.6025,
+          "ziel_erreicht": 2363,
+          "stop_erreicht": 1559,
+          "zeitablauf": 76,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6702,
+          "ziel_erreicht": 2579,
+          "stop_erreicht": 1269,
+          "zeitablauf": 150,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.434,
+          "ziel_erreicht": 1698,
+          "stop_erreicht": 2214,
+          "zeitablauf": 86,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5205,
+          "ziel_erreicht": 1992,
+          "stop_erreicht": 1835,
+          "zeitablauf": 171,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5911,
+          "ziel_erreicht": 2180,
+          "stop_erreicht": 1508,
+          "zeitablauf": 310,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3609,
+          "ziel_erreicht": 1381,
+          "stop_erreicht": 2446,
+          "zeitablauf": 171,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4454,
+          "ziel_erreicht": 1647,
+          "stop_erreicht": 2051,
+          "zeitablauf": 300,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5161,
+          "ziel_erreicht": 1807,
+          "stop_erreicht": 1694,
+          "zeitablauf": 497,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2621,
+          "ziel_erreicht": 950,
+          "stop_erreicht": 2674,
+          "zeitablauf": 374,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3348,
+          "ziel_erreicht": 1133,
+          "stop_erreicht": 2251,
+          "zeitablauf": 614,
+          "stichprobe": 3998
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4001,
+          "ziel_erreicht": 1244,
+          "stop_erreicht": 1865,
+          "zeitablauf": 889,
+          "stichprobe": 3998
+        }
+      ]
+    },
+    {
+      "bedingung": "m_erkannt (Doppeltop bestaetigt)",
+      "stichprobe": 7053,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.146,
+      "median_r": -0.2407,
+      "edge_ueber_baseline_r": -0.0723,
+      "median_mfe_in_r": 1.91,
+      "median_mae_in_r": 2.14,
+      "t_statistik": -1.468,
+      "p_wert": 0.142204,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.482,
+          "ziel_erreicht": 3366,
+          "stop_erreicht": 3617,
+          "zeitablauf": 70,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5684,
+          "ziel_erreicht": 3908,
+          "stop_erreicht": 2967,
+          "zeitablauf": 178,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6333,
+          "ziel_erreicht": 4256,
+          "stop_erreicht": 2464,
+          "zeitablauf": 333,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3917,
+          "ziel_erreicht": 2699,
+          "stop_erreicht": 4192,
+          "zeitablauf": 162,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4768,
+          "ziel_erreicht": 3185,
+          "stop_erreicht": 3495,
+          "zeitablauf": 373,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.545,
+          "ziel_erreicht": 3473,
+          "stop_erreicht": 2899,
+          "zeitablauf": 681,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3273,
+          "ziel_erreicht": 2215,
+          "stop_erreicht": 4552,
+          "zeitablauf": 286,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4072,
+          "ziel_erreicht": 2621,
+          "stop_erreicht": 3815,
+          "zeitablauf": 617,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4741,
+          "ziel_erreicht": 2859,
+          "stop_erreicht": 3172,
+          "zeitablauf": 1022,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2314,
+          "ziel_erreicht": 1489,
+          "stop_erreicht": 4945,
+          "zeitablauf": 619,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3004,
+          "ziel_erreicht": 1779,
+          "stop_erreicht": 4143,
+          "zeitablauf": 1131,
+          "stichprobe": 7053
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3612,
+          "ziel_erreicht": 1951,
+          "stop_erreicht": 3450,
+          "zeitablauf": 1652,
+          "stichprobe": 7053
+        }
+      ]
+    },
+    {
+      "bedingung": "m_nackenbruch (Doppeltop, Nackenlinie gebrochen)",
+      "stichprobe": 4037,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.1318,
+      "median_r": -0.328,
+      "edge_ueber_baseline_r": -0.0581,
+      "median_mfe_in_r": 2.18,
+      "median_mae_in_r": 2.28,
+      "t_statistik": -0.812,
+      "p_wert": 0.416907,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5046,
+          "ziel_erreicht": 2025,
+          "stop_erreicht": 1988,
+          "zeitablauf": 24,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5856,
+          "ziel_erreicht": 2329,
+          "stop_erreicht": 1648,
+          "zeitablauf": 60,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6489,
+          "ziel_erreicht": 2532,
+          "stop_erreicht": 1370,
+          "zeitablauf": 135,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4202,
+          "ziel_erreicht": 1671,
+          "stop_erreicht": 2306,
+          "zeitablauf": 60,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5027,
+          "ziel_erreicht": 1961,
+          "stop_erreicht": 1940,
+          "zeitablauf": 136,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5696,
+          "ziel_erreicht": 2147,
+          "stop_erreicht": 1622,
+          "zeitablauf": 268,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3507,
+          "ziel_erreicht": 1376,
+          "stop_erreicht": 2548,
+          "zeitablauf": 113,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4307,
+          "ziel_erreicht": 1631,
+          "stop_erreicht": 2156,
+          "zeitablauf": 250,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4982,
+          "ziel_erreicht": 1793,
+          "stop_erreicht": 1806,
+          "zeitablauf": 438,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2601,
+          "ziel_erreicht": 982,
+          "stop_erreicht": 2794,
+          "zeitablauf": 261,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3316,
+          "ziel_erreicht": 1174,
+          "stop_erreicht": 2366,
+          "zeitablauf": 497,
+          "stichprobe": 4037
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3951,
+          "ziel_erreicht": 1294,
+          "stop_erreicht": 1981,
+          "zeitablauf": 762,
+          "stichprobe": 4037
+        }
+      ]
+    },
+    {
+      "bedingung": "flag_breakout_up (Flaggenausbruch aufwaerts)",
+      "stichprobe": 1601,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.05,
+      "median_r": 0.0,
+      "edge_ueber_baseline_r": -0.0237,
+      "median_mfe_in_r": 1.8,
+      "median_mae_in_r": 1.85,
+      "t_statistik": -0.233,
+      "p_wert": 0.815901,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5025,
+          "ziel_erreicht": 800,
+          "stop_erreicht": 792,
+          "zeitablauf": 9,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5862,
+          "ziel_erreicht": 915,
+          "stop_erreicht": 646,
+          "zeitablauf": 40,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6602,
+          "ziel_erreicht": 991,
+          "stop_erreicht": 510,
+          "zeitablauf": 100,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4146,
+          "ziel_erreicht": 646,
+          "stop_erreicht": 912,
+          "zeitablauf": 43,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4963,
+          "ziel_erreicht": 739,
+          "stop_erreicht": 750,
+          "zeitablauf": 112,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5716,
+          "ziel_erreicht": 802,
+          "stop_erreicht": 601,
+          "zeitablauf": 198,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3382,
+          "ziel_erreicht": 510,
+          "stop_erreicht": 998,
+          "zeitablauf": 93,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4171,
+          "ziel_erreicht": 589,
+          "stop_erreicht": 823,
+          "zeitablauf": 189,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4892,
+          "ziel_erreicht": 636,
+          "stop_erreicht": 664,
+          "zeitablauf": 301,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2334,
+          "ziel_erreicht": 327,
+          "stop_erreicht": 1074,
+          "zeitablauf": 200,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.2939,
+          "ziel_erreicht": 370,
+          "stop_erreicht": 889,
+          "zeitablauf": 342,
+          "stichprobe": 1601
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3547,
+          "ziel_erreicht": 398,
+          "stop_erreicht": 724,
+          "zeitablauf": 479,
+          "stichprobe": 1601
+        }
+      ]
+    },
+    {
+      "bedingung": "flag_breakout_down (Flaggenausbruch abwaerts)",
+      "stichprobe": 938,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.0478,
+      "median_r": -0.2605,
+      "edge_ueber_baseline_r": 0.026,
+      "median_mfe_in_r": 1.88,
+      "median_mae_in_r": 2.12,
+      "t_statistik": 0.208,
+      "p_wert": 0.835638,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4871,
+          "ziel_erreicht": 453,
+          "stop_erreicht": 477,
+          "zeitablauf": 8,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5664,
+          "ziel_erreicht": 520,
+          "stop_erreicht": 398,
+          "zeitablauf": 20,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6227,
+          "ziel_erreicht": 553,
+          "stop_erreicht": 335,
+          "zeitablauf": 50,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3937,
+          "ziel_erreicht": 361,
+          "stop_erreicht": 556,
+          "zeitablauf": 21,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4758,
+          "ziel_erreicht": 422,
+          "stop_erreicht": 465,
+          "zeitablauf": 51,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5307,
+          "ziel_erreicht": 449,
+          "stop_erreicht": 397,
+          "zeitablauf": 92,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3244,
+          "ziel_erreicht": 289,
+          "stop_erreicht": 602,
+          "zeitablauf": 47,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4033,
+          "ziel_erreicht": 340,
+          "stop_erreicht": 503,
+          "zeitablauf": 95,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4588,
+          "ziel_erreicht": 362,
+          "stop_erreicht": 427,
+          "zeitablauf": 149,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2201,
+          "ziel_erreicht": 186,
+          "stop_erreicht": 659,
+          "zeitablauf": 93,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.2887,
+          "ziel_erreicht": 224,
+          "stop_erreicht": 552,
+          "zeitablauf": 162,
+          "stichprobe": 938
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3385,
+          "ziel_erreicht": 238,
+          "stop_erreicht": 465,
+          "zeitablauf": 235,
+          "stichprobe": 938
+        }
+      ]
+    },
+    {
+      "bedingung": "vola_regime=niedrig (long)",
+      "stichprobe": 124146,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.1403,
+      "median_r": 0.2203,
+      "edge_ueber_baseline_r": 0.0666,
+      "median_mfe_in_r": 2.35,
+      "median_mae_in_r": 2.18,
+      "t_statistik": 4.493,
+      "p_wert": 7e-06,
+      "signifikant_alpha_005": true,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5036,
+          "ziel_erreicht": 62365,
+          "stop_erreicht": 61478,
+          "zeitablauf": 303,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5889,
+          "ziel_erreicht": 72360,
+          "stop_erreicht": 50503,
+          "zeitablauf": 1283,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6571,
+          "ziel_erreicht": 79485,
+          "stop_erreicht": 41483,
+          "zeitablauf": 3178,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4245,
+          "ziel_erreicht": 52158,
+          "stop_erreicht": 70719,
+          "zeitablauf": 1269,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5102,
+          "ziel_erreicht": 61415,
+          "stop_erreicht": 58955,
+          "zeitablauf": 3776,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5805,
+          "ziel_erreicht": 67794,
+          "stop_erreicht": 48991,
+          "zeitablauf": 7361,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3591,
+          "ziel_erreicht": 43372,
+          "stop_erreicht": 77420,
+          "zeitablauf": 3354,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4428,
+          "ziel_erreicht": 51572,
+          "stop_erreicht": 64890,
+          "zeitablauf": 7684,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5137,
+          "ziel_erreicht": 57193,
+          "stop_erreicht": 54133,
+          "zeitablauf": 12820,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2595,
+          "ziel_erreicht": 29811,
+          "stop_erreicht": 85065,
+          "zeitablauf": 9270,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3342,
+          "ziel_erreicht": 35961,
+          "stop_erreicht": 71639,
+          "zeitablauf": 16546,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4004,
+          "ziel_erreicht": 40043,
+          "stop_erreicht": 59970,
+          "zeitablauf": 24133,
+          "stichprobe": 124146
+        }
+      ]
+    },
+    {
+      "bedingung": "vola_regime=niedrig (short)",
+      "stichprobe": 124146,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.1403,
+      "median_r": -0.2203,
+      "edge_ueber_baseline_r": -0.0666,
+      "median_mfe_in_r": 2.18,
+      "median_mae_in_r": 2.35,
+      "t_statistik": -4.493,
+      "p_wert": 7e-06,
+      "signifikant_alpha_005": true,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4945,
+          "ziel_erreicht": 61237,
+          "stop_erreicht": 62606,
+          "zeitablauf": 303,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5738,
+          "ziel_erreicht": 70502,
+          "stop_erreicht": 52375,
+          "zeitablauf": 1269,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6393,
+          "ziel_erreicht": 77228,
+          "stop_erreicht": 43564,
+          "zeitablauf": 3354,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4093,
+          "ziel_erreicht": 50291,
+          "stop_erreicht": 72572,
+          "zeitablauf": 1283,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4882,
+          "ziel_erreicht": 58763,
+          "stop_erreicht": 61607,
+          "zeitablauf": 3776,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5557,
+          "ziel_erreicht": 64719,
+          "stop_erreicht": 51743,
+          "zeitablauf": 7684,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3413,
+          "ziel_erreicht": 41287,
+          "stop_erreicht": 79681,
+          "zeitablauf": 3178,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.418,
+          "ziel_erreicht": 48814,
+          "stop_erreicht": 67971,
+          "zeitablauf": 7361,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4848,
+          "ziel_erreicht": 53975,
+          "stop_erreicht": 57351,
+          "zeitablauf": 12820,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2429,
+          "ziel_erreicht": 28186,
+          "stop_erreicht": 87868,
+          "zeitablauf": 8092,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3103,
+          "ziel_erreicht": 33837,
+          "stop_erreicht": 75226,
+          "zeitablauf": 15083,
+          "stichprobe": 124146
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3716,
+          "ziel_erreicht": 37639,
+          "stop_erreicht": 63646,
+          "zeitablauf": 22861,
+          "stichprobe": 124146
+        }
+      ]
+    },
+    {
+      "bedingung": "vola_regime=mittel (long)",
+      "stichprobe": 112870,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.0218,
+      "median_r": 0.2008,
+      "edge_ueber_baseline_r": -0.0519,
+      "median_mfe_in_r": 2.11,
+      "median_mae_in_r": 2.02,
+      "t_statistik": -2.672,
+      "p_wert": 0.007551,
+      "signifikant_alpha_005": true,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5033,
+          "ziel_erreicht": 56267,
+          "stop_erreicht": 55522,
+          "zeitablauf": 1081,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.59,
+          "ziel_erreicht": 64994,
+          "stop_erreicht": 45167,
+          "zeitablauf": 2709,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6587,
+          "ziel_erreicht": 71058,
+          "stop_erreicht": 36824,
+          "zeitablauf": 4988,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4209,
+          "ziel_erreicht": 46284,
+          "stop_erreicht": 63677,
+          "zeitablauf": 2909,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5074,
+          "ziel_erreicht": 54073,
+          "stop_erreicht": 52504,
+          "zeitablauf": 6293,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5791,
+          "ziel_erreicht": 59372,
+          "stop_erreicht": 43145,
+          "zeitablauf": 10353,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.353,
+          "ziel_erreicht": 37817,
+          "stop_erreicht": 69317,
+          "zeitablauf": 5736,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4365,
+          "ziel_erreicht": 44421,
+          "stop_erreicht": 57355,
+          "zeitablauf": 11094,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5085,
+          "ziel_erreicht": 48909,
+          "stop_erreicht": 47265,
+          "zeitablauf": 16696,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2462,
+          "ziel_erreicht": 24646,
+          "stop_erreicht": 75460,
+          "zeitablauf": 12764,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.318,
+          "ziel_erreicht": 29207,
+          "stop_erreicht": 62635,
+          "zeitablauf": 21028,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3842,
+          "ziel_erreicht": 32276,
+          "stop_erreicht": 51730,
+          "zeitablauf": 28864,
+          "stichprobe": 112870
+        }
+      ]
+    },
+    {
+      "bedingung": "vola_regime=mittel (short)",
+      "stichprobe": 112870,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.0218,
+      "median_r": -0.2008,
+      "edge_ueber_baseline_r": 0.0519,
+      "median_mfe_in_r": 2.02,
+      "median_mae_in_r": 2.11,
+      "t_statistik": 2.672,
+      "p_wert": 0.007551,
+      "signifikant_alpha_005": true,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.494,
+          "ziel_erreicht": 55223,
+          "stop_erreicht": 56566,
+          "zeitablauf": 1081,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5768,
+          "ziel_erreicht": 63430,
+          "stop_erreicht": 46531,
+          "zeitablauf": 2909,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.645,
+          "ziel_erreicht": 69104,
+          "stop_erreicht": 38030,
+          "zeitablauf": 5736,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4077,
+          "ziel_erreicht": 44909,
+          "stop_erreicht": 65252,
+          "zeitablauf": 2709,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4906,
+          "ziel_erreicht": 52290,
+          "stop_erreicht": 54287,
+          "zeitablauf": 6293,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5617,
+          "ziel_erreicht": 57172,
+          "stop_erreicht": 44604,
+          "zeitablauf": 11094,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3393,
+          "ziel_erreicht": 36602,
+          "stop_erreicht": 71280,
+          "zeitablauf": 4988,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.419,
+          "ziel_erreicht": 42958,
+          "stop_erreicht": 59559,
+          "zeitablauf": 10353,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4898,
+          "ziel_erreicht": 47104,
+          "stop_erreicht": 49070,
+          "zeitablauf": 16696,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2375,
+          "ziel_erreicht": 24316,
+          "stop_erreicht": 78063,
+          "zeitablauf": 10491,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3061,
+          "ziel_erreicht": 28823,
+          "stop_erreicht": 65348,
+          "zeitablauf": 18699,
+          "stichprobe": 112870
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3709,
+          "ziel_erreicht": 31795,
+          "stop_erreicht": 53934,
+          "zeitablauf": 27141,
+          "stichprobe": 112870
+        }
+      ]
+    },
+    {
+      "bedingung": "vola_regime=hoch (long)",
+      "stichprobe": 120785,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.0847,
+      "median_r": 0.2364,
+      "edge_ueber_baseline_r": 0.0109,
+      "median_mfe_in_r": 1.81,
+      "median_mae_in_r": 1.71,
+      "t_statistik": 1.151,
+      "p_wert": 0.249751,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5071,
+          "ziel_erreicht": 60031,
+          "stop_erreicht": 58339,
+          "zeitablauf": 2415,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.6009,
+          "ziel_erreicht": 69707,
+          "stop_erreicht": 46302,
+          "zeitablauf": 4776,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6733,
+          "ziel_erreicht": 75885,
+          "stop_erreicht": 36818,
+          "zeitablauf": 8082,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4151,
+          "ziel_erreicht": 47891,
+          "stop_erreicht": 67479,
+          "zeitablauf": 5415,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5087,
+          "ziel_erreicht": 56251,
+          "stop_erreicht": 54325,
+          "zeitablauf": 10209,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5848,
+          "ziel_erreicht": 61311,
+          "stop_erreicht": 43522,
+          "zeitablauf": 15952,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3411,
+          "ziel_erreicht": 37862,
+          "stop_erreicht": 73145,
+          "zeitablauf": 9778,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4302,
+          "ziel_erreicht": 44589,
+          "stop_erreicht": 59052,
+          "zeitablauf": 17144,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5067,
+          "ziel_erreicht": 48522,
+          "stop_erreicht": 47232,
+          "zeitablauf": 25031,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2224,
+          "ziel_erreicht": 22447,
+          "stop_erreicht": 78477,
+          "zeitablauf": 19861,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.2942,
+          "ziel_erreicht": 26422,
+          "stop_erreicht": 63388,
+          "zeitablauf": 30975,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.361,
+          "ziel_erreicht": 28669,
+          "stop_erreicht": 50749,
+          "zeitablauf": 41367,
+          "stichprobe": 120785
+        }
+      ]
+    },
+    {
+      "bedingung": "vola_regime=hoch (short)",
+      "stichprobe": 120785,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.0847,
+      "median_r": -0.2364,
+      "edge_ueber_baseline_r": -0.0109,
+      "median_mfe_in_r": 1.71,
+      "median_mae_in_r": 1.81,
+      "t_statistik": -1.151,
+      "p_wert": 0.249751,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4916,
+          "ziel_erreicht": 58185,
+          "stop_erreicht": 60185,
+          "zeitablauf": 2415,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5838,
+          "ziel_erreicht": 67353,
+          "stop_erreicht": 48017,
+          "zeitablauf": 5415,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.658,
+          "ziel_erreicht": 73047,
+          "stop_erreicht": 37960,
+          "zeitablauf": 9778,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.398,
+          "ziel_erreicht": 46176,
+          "stop_erreicht": 69833,
+          "zeitablauf": 4776,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4904,
+          "ziel_erreicht": 54222,
+          "stop_erreicht": 56354,
+          "zeitablauf": 10209,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.569,
+          "ziel_erreicht": 58967,
+          "stop_erreicht": 44674,
+          "zeitablauf": 17144,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3258,
+          "ziel_erreicht": 36717,
+          "stop_erreicht": 75986,
+          "zeitablauf": 8082,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4144,
+          "ziel_erreicht": 43442,
+          "stop_erreicht": 61391,
+          "zeitablauf": 15952,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4925,
+          "ziel_erreicht": 47160,
+          "stop_erreicht": 48594,
+          "zeitablauf": 25031,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2234,
+          "ziel_erreicht": 23553,
+          "stop_erreicht": 81865,
+          "zeitablauf": 15367,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.2966,
+          "ziel_erreicht": 27883,
+          "stop_erreicht": 66141,
+          "zeitablauf": 26761,
+          "stichprobe": 120785
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3658,
+          "ziel_erreicht": 30180,
+          "stop_erreicht": 52318,
+          "zeitablauf": 38287,
+          "stichprobe": 120785
+        }
+      ]
+    },
+    {
+      "bedingung": "struktur_regime=range (long)",
+      "stichprobe": 119455,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.1503,
+      "median_r": 0.2608,
+      "edge_ueber_baseline_r": 0.0765,
+      "median_mfe_in_r": 2.09,
+      "median_mae_in_r": 1.94,
+      "t_statistik": 6.273,
+      "p_wert": 0.0,
+      "signifikant_alpha_005": true,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5089,
+          "ziel_erreicht": 60195,
+          "stop_erreicht": 58100,
+          "zeitablauf": 1160,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5966,
+          "ziel_erreicht": 69573,
+          "stop_erreicht": 47038,
+          "zeitablauf": 2844,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6643,
+          "ziel_erreicht": 75780,
+          "stop_erreicht": 38295,
+          "zeitablauf": 5380,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4252,
+          "ziel_erreicht": 49419,
+          "stop_erreicht": 66817,
+          "zeitablauf": 3219,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.513,
+          "ziel_erreicht": 57791,
+          "stop_erreicht": 54855,
+          "zeitablauf": 6809,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5838,
+          "ziel_erreicht": 63133,
+          "stop_erreicht": 45010,
+          "zeitablauf": 11312,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3577,
+          "ziel_erreicht": 40467,
+          "stop_erreicht": 72679,
+          "zeitablauf": 6309,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4425,
+          "ziel_erreicht": 47526,
+          "stop_erreicht": 59870,
+          "zeitablauf": 12059,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5139,
+          "ziel_erreicht": 52076,
+          "stop_erreicht": 49254,
+          "zeitablauf": 18125,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2526,
+          "ziel_erreicht": 26627,
+          "stop_erreicht": 78797,
+          "zeitablauf": 14031,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.326,
+          "ziel_erreicht": 31515,
+          "stop_erreicht": 65155,
+          "zeitablauf": 22785,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.392,
+          "ziel_erreicht": 34650,
+          "stop_erreicht": 53752,
+          "zeitablauf": 31053,
+          "stichprobe": 119455
+        }
+      ]
+    },
+    {
+      "bedingung": "struktur_regime=range (short)",
+      "stichprobe": 119455,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.1503,
+      "median_r": -0.2608,
+      "edge_ueber_baseline_r": -0.0765,
+      "median_mfe_in_r": 1.94,
+      "median_mae_in_r": 2.09,
+      "t_statistik": -6.273,
+      "p_wert": 0.0,
+      "signifikant_alpha_005": true,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4888,
+          "ziel_erreicht": 57826,
+          "stop_erreicht": 60469,
+          "zeitablauf": 1160,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5728,
+          "ziel_erreicht": 66575,
+          "stop_erreicht": 49661,
+          "zeitablauf": 3219,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6405,
+          "ziel_erreicht": 72469,
+          "stop_erreicht": 40677,
+          "zeitablauf": 6309,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4013,
+          "ziel_erreicht": 46792,
+          "stop_erreicht": 69819,
+          "zeitablauf": 2844,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.485,
+          "ziel_erreicht": 54637,
+          "stop_erreicht": 58009,
+          "zeitablauf": 6809,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5557,
+          "ziel_erreicht": 59684,
+          "stop_erreicht": 47712,
+          "zeitablauf": 12059,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3337,
+          "ziel_erreicht": 38070,
+          "stop_erreicht": 76005,
+          "zeitablauf": 5380,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4144,
+          "ziel_erreicht": 44811,
+          "stop_erreicht": 63332,
+          "zeitablauf": 11312,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4844,
+          "ziel_erreicht": 49084,
+          "stop_erreicht": 52246,
+          "zeitablauf": 18125,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2345,
+          "ziel_erreicht": 25363,
+          "stop_erreicht": 82791,
+          "zeitablauf": 11301,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.304,
+          "ziel_erreicht": 30190,
+          "stop_erreicht": 69108,
+          "zeitablauf": 20157,
+          "stichprobe": 119455
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3677,
+          "ziel_erreicht": 33209,
+          "stop_erreicht": 57108,
+          "zeitablauf": 29138,
+          "stichprobe": 119455
+        }
+      ]
+    },
+    {
+      "bedingung": "struktur_regime=uebergang (long)",
+      "stichprobe": 119368,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.0867,
+      "median_r": 0.2219,
+      "edge_ueber_baseline_r": 0.013,
+      "median_mfe_in_r": 2.12,
+      "median_mae_in_r": 2.01,
+      "t_statistik": 1.042,
+      "p_wert": 0.297618,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5022,
+          "ziel_erreicht": 59306,
+          "stop_erreicht": 58792,
+          "zeitablauf": 1270,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5902,
+          "ziel_erreicht": 68856,
+          "stop_erreicht": 47808,
+          "zeitablauf": 2704,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6597,
+          "ziel_erreicht": 75461,
+          "stop_erreicht": 38918,
+          "zeitablauf": 4989,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4203,
+          "ziel_erreicht": 48917,
+          "stop_erreicht": 67465,
+          "zeitablauf": 2986,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5081,
+          "ziel_erreicht": 57508,
+          "stop_erreicht": 55673,
+          "zeitablauf": 6187,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5802,
+          "ziel_erreicht": 63271,
+          "stop_erreicht": 45779,
+          "zeitablauf": 10318,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3523,
+          "ziel_erreicht": 39950,
+          "stop_erreicht": 73458,
+          "zeitablauf": 5960,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4371,
+          "ziel_erreicht": 47303,
+          "stop_erreicht": 60927,
+          "zeitablauf": 11138,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5096,
+          "ziel_erreicht": 52108,
+          "stop_erreicht": 50142,
+          "zeitablauf": 17118,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2458,
+          "ziel_erreicht": 26086,
+          "stop_erreicht": 80047,
+          "zeitablauf": 13235,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3188,
+          "ziel_erreicht": 31170,
+          "stop_erreicht": 66606,
+          "zeitablauf": 21592,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3852,
+          "ziel_erreicht": 34429,
+          "stop_erreicht": 54961,
+          "zeitablauf": 29978,
+          "stichprobe": 119368
+        }
+      ]
+    },
+    {
+      "bedingung": "struktur_regime=uebergang (short)",
+      "stichprobe": 119368,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.0867,
+      "median_r": -0.2219,
+      "edge_ueber_baseline_r": -0.013,
+      "median_mfe_in_r": 2.01,
+      "median_mae_in_r": 2.12,
+      "t_statistik": -1.042,
+      "p_wert": 0.297618,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4957,
+          "ziel_erreicht": 58539,
+          "stop_erreicht": 59559,
+          "zeitablauf": 1270,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5779,
+          "ziel_erreicht": 67256,
+          "stop_erreicht": 49126,
+          "zeitablauf": 2986,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6462,
+          "ziel_erreicht": 73285,
+          "stop_erreicht": 40123,
+          "zeitablauf": 5960,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.408,
+          "ziel_erreicht": 47594,
+          "stop_erreicht": 69070,
+          "zeitablauf": 2704,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4903,
+          "ziel_erreicht": 55496,
+          "stop_erreicht": 57685,
+          "zeitablauf": 6187,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5615,
+          "ziel_erreicht": 60773,
+          "stop_erreicht": 47457,
+          "zeitablauf": 11138,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3387,
+          "ziel_erreicht": 38735,
+          "stop_erreicht": 75644,
+          "zeitablauf": 4989,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4184,
+          "ziel_erreicht": 45625,
+          "stop_erreicht": 63425,
+          "zeitablauf": 10318,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.489,
+          "ziel_erreicht": 50003,
+          "stop_erreicht": 52247,
+          "zeitablauf": 17118,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2383,
+          "ziel_erreicht": 25933,
+          "stop_erreicht": 82895,
+          "zeitablauf": 10540,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3064,
+          "ziel_erreicht": 30785,
+          "stop_erreicht": 69674,
+          "zeitablauf": 18909,
+          "stichprobe": 119368
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3704,
+          "ziel_erreicht": 33848,
+          "stop_erreicht": 57527,
+          "zeitablauf": 27993,
+          "stichprobe": 119368
+        }
+      ]
+    },
+    {
+      "bedingung": "struktur_regime=trend (long)",
+      "stichprobe": 118965,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.0152,
+      "median_r": 0.1783,
+      "edge_ueber_baseline_r": -0.0586,
+      "median_mfe_in_r": 2.0,
+      "median_mae_in_r": 1.92,
+      "t_statistik": -3.068,
+      "p_wert": 0.002158,
+      "signifikant_alpha_005": true,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5031,
+          "ziel_erreicht": 59158,
+          "stop_erreicht": 58438,
+          "zeitablauf": 1369,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5929,
+          "ziel_erreicht": 68628,
+          "stop_erreicht": 47117,
+          "zeitablauf": 3220,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6648,
+          "ziel_erreicht": 75182,
+          "stop_erreicht": 37904,
+          "zeitablauf": 5879,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4153,
+          "ziel_erreicht": 47994,
+          "stop_erreicht": 67583,
+          "zeitablauf": 3388,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5053,
+          "ziel_erreicht": 56437,
+          "stop_erreicht": 55246,
+          "zeitablauf": 7282,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5805,
+          "ziel_erreicht": 62069,
+          "stop_erreicht": 44860,
+          "zeitablauf": 12036,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3438,
+          "ziel_erreicht": 38632,
+          "stop_erreicht": 73734,
+          "zeitablauf": 6599,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4306,
+          "ziel_erreicht": 45751,
+          "stop_erreicht": 60489,
+          "zeitablauf": 12725,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5061,
+          "ziel_erreicht": 50437,
+          "stop_erreicht": 49224,
+          "zeitablauf": 19304,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2318,
+          "ziel_erreicht": 24189,
+          "stop_erreicht": 80147,
+          "zeitablauf": 14629,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3049,
+          "ziel_erreicht": 28903,
+          "stop_erreicht": 65890,
+          "zeitablauf": 24172,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3726,
+          "ziel_erreicht": 31906,
+          "stop_erreicht": 53726,
+          "zeitablauf": 33333,
+          "stichprobe": 118965
+        }
+      ]
+    },
+    {
+      "bedingung": "struktur_regime=trend (short)",
+      "stichprobe": 118965,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.0152,
+      "median_r": -0.1783,
+      "edge_ueber_baseline_r": 0.0586,
+      "median_mfe_in_r": 1.92,
+      "median_mae_in_r": 2.0,
+      "t_statistik": 3.068,
+      "p_wert": 0.002158,
+      "signifikant_alpha_005": true,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4955,
+          "ziel_erreicht": 58271,
+          "stop_erreicht": 59325,
+          "zeitablauf": 1369,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5835,
+          "ziel_erreicht": 67444,
+          "stop_erreicht": 48133,
+          "zeitablauf": 3388,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6551,
+          "ziel_erreicht": 73614,
+          "stop_erreicht": 38752,
+          "zeitablauf": 6599,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4059,
+          "ziel_erreicht": 46981,
+          "stop_erreicht": 68764,
+          "zeitablauf": 3220,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4936,
+          "ziel_erreicht": 55132,
+          "stop_erreicht": 56551,
+          "zeitablauf": 7282,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5684,
+          "ziel_erreicht": 60390,
+          "stop_erreicht": 45850,
+          "zeitablauf": 12725,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3342,
+          "ziel_erreicht": 37793,
+          "stop_erreicht": 75293,
+          "zeitablauf": 5879,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4187,
+          "ziel_erreicht": 44769,
+          "stop_erreicht": 62160,
+          "zeitablauf": 12036,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4931,
+          "ziel_erreicht": 49142,
+          "stop_erreicht": 50519,
+          "zeitablauf": 19304,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2316,
+          "ziel_erreicht": 24751,
+          "stop_erreicht": 82105,
+          "zeitablauf": 12109,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3032,
+          "ziel_erreicht": 29559,
+          "stop_erreicht": 67929,
+          "zeitablauf": 21477,
+          "stichprobe": 118965
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3707,
+          "ziel_erreicht": 32547,
+          "stop_erreicht": 55260,
+          "zeitablauf": 31158,
+          "stichprobe": 118965
+        }
+      ]
+    },
+    {
+      "bedingung": "liquiditaet_regime=duenn (long)",
+      "stichprobe": 121418,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.0896,
+      "median_r": 0.229,
+      "edge_ueber_baseline_r": 0.0159,
+      "median_mfe_in_r": 2.14,
+      "median_mae_in_r": 1.99,
+      "t_statistik": 1.096,
+      "p_wert": 0.272971,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5052,
+          "ziel_erreicht": 60637,
+          "stop_erreicht": 59388,
+          "zeitablauf": 1393,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5929,
+          "ziel_erreicht": 70207,
+          "stop_erreicht": 48204,
+          "zeitablauf": 3007,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6628,
+          "ziel_erreicht": 76898,
+          "stop_erreicht": 39117,
+          "zeitablauf": 5403,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4219,
+          "ziel_erreicht": 49843,
+          "stop_erreicht": 68291,
+          "zeitablauf": 3284,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5097,
+          "ziel_erreicht": 58449,
+          "stop_erreicht": 56219,
+          "zeitablauf": 6750,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5822,
+          "ziel_erreicht": 64221,
+          "stop_erreicht": 46093,
+          "zeitablauf": 11104,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3549,
+          "ziel_erreicht": 40867,
+          "stop_erreicht": 74296,
+          "zeitablauf": 6255,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4401,
+          "ziel_erreicht": 48232,
+          "stop_erreicht": 61350,
+          "zeitablauf": 11836,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5131,
+          "ziel_erreicht": 53133,
+          "stop_erreicht": 50427,
+          "zeitablauf": 17858,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2504,
+          "ziel_erreicht": 26978,
+          "stop_erreicht": 80783,
+          "zeitablauf": 13657,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3245,
+          "ziel_erreicht": 32162,
+          "stop_erreicht": 66949,
+          "zeitablauf": 22307,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3918,
+          "ziel_erreicht": 35541,
+          "stop_erreicht": 55172,
+          "zeitablauf": 30705,
+          "stichprobe": 121418
+        }
+      ]
+    },
+    {
+      "bedingung": "liquiditaet_regime=duenn (short)",
+      "stichprobe": 121418,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.0896,
+      "median_r": -0.229,
+      "edge_ueber_baseline_r": -0.0159,
+      "median_mfe_in_r": 1.99,
+      "median_mae_in_r": 2.14,
+      "t_statistik": -1.096,
+      "p_wert": 0.272971,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4925,
+          "ziel_erreicht": 59108,
+          "stop_erreicht": 60917,
+          "zeitablauf": 1393,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.576,
+          "ziel_erreicht": 68048,
+          "stop_erreicht": 50086,
+          "zeitablauf": 3284,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6433,
+          "ziel_erreicht": 74086,
+          "stop_erreicht": 41077,
+          "zeitablauf": 6255,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.405,
+          "ziel_erreicht": 47958,
+          "stop_erreicht": 70453,
+          "zeitablauf": 3007,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4884,
+          "ziel_erreicht": 56001,
+          "stop_erreicht": 58667,
+          "zeitablauf": 6750,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5581,
+          "ziel_erreicht": 61163,
+          "stop_erreicht": 48419,
+          "zeitablauf": 11836,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3352,
+          "ziel_erreicht": 38891,
+          "stop_erreicht": 77124,
+          "zeitablauf": 5403,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.416,
+          "ziel_erreicht": 45892,
+          "stop_erreicht": 64422,
+          "zeitablauf": 11104,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4853,
+          "ziel_erreicht": 50257,
+          "stop_erreicht": 53303,
+          "zeitablauf": 17858,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2368,
+          "ziel_erreicht": 26163,
+          "stop_erreicht": 84342,
+          "zeitablauf": 10913,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3064,
+          "ziel_erreicht": 31216,
+          "stop_erreicht": 70664,
+          "zeitablauf": 19538,
+          "stichprobe": 121418
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3693,
+          "ziel_erreicht": 34313,
+          "stop_erreicht": 58606,
+          "zeitablauf": 28499,
+          "stichprobe": 121418
+        }
+      ]
+    },
+    {
+      "bedingung": "liquiditaet_regime=normal (long)",
+      "stichprobe": 111803,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.0742,
+      "median_r": 0.2263,
+      "edge_ueber_baseline_r": 0.0005,
+      "median_mfe_in_r": 2.05,
+      "median_mae_in_r": 1.95,
+      "t_statistik": 0.042,
+      "p_wert": 0.966716,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5078,
+          "ziel_erreicht": 56209,
+          "stop_erreicht": 54474,
+          "zeitablauf": 1120,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5957,
+          "ziel_erreicht": 65035,
+          "stop_erreicht": 44136,
+          "zeitablauf": 2632,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.665,
+          "ziel_erreicht": 71036,
+          "stop_erreicht": 35779,
+          "zeitablauf": 4988,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4232,
+          "ziel_erreicht": 46078,
+          "stop_erreicht": 62799,
+          "zeitablauf": 2926,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.511,
+          "ziel_erreicht": 53958,
+          "stop_erreicht": 51634,
+          "zeitablauf": 6211,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5835,
+          "ziel_erreicht": 59136,
+          "stop_erreicht": 42214,
+          "zeitablauf": 10453,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3529,
+          "ziel_erreicht": 37375,
+          "stop_erreicht": 68532,
+          "zeitablauf": 5896,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4372,
+          "ziel_erreicht": 43980,
+          "stop_erreicht": 56604,
+          "zeitablauf": 11219,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5103,
+          "ziel_erreicht": 48296,
+          "stop_erreicht": 46339,
+          "zeitablauf": 17168,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2437,
+          "ziel_erreicht": 24014,
+          "stop_erreicht": 74526,
+          "zeitablauf": 13263,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3156,
+          "ziel_erreicht": 28479,
+          "stop_erreicht": 61755,
+          "zeitablauf": 21569,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3818,
+          "ziel_erreicht": 31300,
+          "stop_erreicht": 50676,
+          "zeitablauf": 29827,
+          "stichprobe": 111803
+        }
+      ]
+    },
+    {
+      "bedingung": "liquiditaet_regime=normal (short)",
+      "stichprobe": 111803,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.0742,
+      "median_r": -0.2263,
+      "edge_ueber_baseline_r": -0.0005,
+      "median_mfe_in_r": 1.95,
+      "median_mae_in_r": 2.05,
+      "t_statistik": -0.042,
+      "p_wert": 0.966716,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4899,
+          "ziel_erreicht": 54224,
+          "stop_erreicht": 56459,
+          "zeitablauf": 1120,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5748,
+          "ziel_erreicht": 62579,
+          "stop_erreicht": 46298,
+          "zeitablauf": 2926,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6453,
+          "ziel_erreicht": 68342,
+          "stop_erreicht": 37565,
+          "zeitablauf": 5896,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4023,
+          "ziel_erreicht": 43922,
+          "stop_erreicht": 65249,
+          "zeitablauf": 2632,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4872,
+          "ziel_erreicht": 51447,
+          "stop_erreicht": 54145,
+          "zeitablauf": 6211,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5611,
+          "ziel_erreicht": 56442,
+          "stop_erreicht": 44142,
+          "zeitablauf": 11219,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3333,
+          "ziel_erreicht": 35600,
+          "stop_erreicht": 71215,
+          "zeitablauf": 4988,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.415,
+          "ziel_erreicht": 42060,
+          "stop_erreicht": 59290,
+          "zeitablauf": 10453,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4882,
+          "ziel_erreicht": 46200,
+          "stop_erreicht": 48435,
+          "zeitablauf": 17168,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2334,
+          "ziel_erreicht": 23607,
+          "stop_erreicht": 77516,
+          "zeitablauf": 10680,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.303,
+          "ziel_erreicht": 28099,
+          "stop_erreicht": 64626,
+          "zeitablauf": 19078,
+          "stichprobe": 111803
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3695,
+          "ziel_erreicht": 30955,
+          "stop_erreicht": 52813,
+          "zeitablauf": 28035,
+          "stichprobe": 111803
+        }
+      ]
+    },
+    {
+      "bedingung": "liquiditaet_regime=rege (long)",
+      "stichprobe": 120561,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.0648,
+      "median_r": 0.1984,
+      "edge_ueber_baseline_r": -0.0089,
+      "median_mfe_in_r": 2.01,
+      "median_mae_in_r": 1.93,
+      "t_statistik": -0.508,
+      "p_wert": 0.611622,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5013,
+          "ziel_erreicht": 59804,
+          "stop_erreicht": 59496,
+          "zeitablauf": 1261,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5911,
+          "ziel_erreicht": 69477,
+          "stop_erreicht": 48053,
+          "zeitablauf": 3031,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6609,
+          "ziel_erreicht": 75939,
+          "stop_erreicht": 38957,
+          "zeitablauf": 5665,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4157,
+          "ziel_erreicht": 48764,
+          "stop_erreicht": 68528,
+          "zeitablauf": 3269,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5057,
+          "ziel_erreicht": 57397,
+          "stop_erreicht": 56106,
+          "zeitablauf": 7058,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5787,
+          "ziel_erreicht": 63003,
+          "stop_erreicht": 45861,
+          "zeitablauf": 11697,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3459,
+          "ziel_erreicht": 39450,
+          "stop_erreicht": 74615,
+          "zeitablauf": 6496,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4325,
+          "ziel_erreicht": 46767,
+          "stop_erreicht": 61363,
+          "zeitablauf": 12431,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5058,
+          "ziel_erreicht": 51423,
+          "stop_erreicht": 50247,
+          "zeitablauf": 18891,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2352,
+          "ziel_erreicht": 24937,
+          "stop_erreicht": 81067,
+          "zeitablauf": 14557,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3084,
+          "ziel_erreicht": 29799,
+          "stop_erreicht": 66818,
+          "zeitablauf": 23944,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3747,
+          "ziel_erreicht": 32877,
+          "stop_erreicht": 54858,
+          "zeitablauf": 32826,
+          "stichprobe": 120561
+        }
+      ]
+    },
+    {
+      "bedingung": "liquiditaet_regime=rege (short)",
+      "stichprobe": 120561,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.0648,
+      "median_r": -0.1984,
+      "edge_ueber_baseline_r": 0.0089,
+      "median_mfe_in_r": 1.93,
+      "median_mae_in_r": 2.01,
+      "t_statistik": 0.508,
+      "p_wert": 0.611622,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4973,
+          "ziel_erreicht": 59333,
+          "stop_erreicht": 59967,
+          "zeitablauf": 1261,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5832,
+          "ziel_erreicht": 68402,
+          "stop_erreicht": 48890,
+          "zeitablauf": 3269,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6533,
+          "ziel_erreicht": 74513,
+          "stop_erreicht": 39552,
+          "zeitablauf": 6496,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4077,
+          "ziel_erreicht": 47918,
+          "stop_erreicht": 69612,
+          "zeitablauf": 3031,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4934,
+          "ziel_erreicht": 56003,
+          "stop_erreicht": 57500,
+          "zeitablauf": 7058,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5667,
+          "ziel_erreicht": 61274,
+          "stop_erreicht": 46856,
+          "zeitablauf": 12431,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3381,
+          "ziel_erreicht": 38844,
+          "stop_erreicht": 76052,
+          "zeitablauf": 5665,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4205,
+          "ziel_erreicht": 45773,
+          "stop_erreicht": 63091,
+          "zeitablauf": 11697,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4934,
+          "ziel_erreicht": 50166,
+          "stop_erreicht": 51504,
+          "zeitablauf": 18891,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2347,
+          "ziel_erreicht": 25496,
+          "stop_erreicht": 83124,
+          "zeitablauf": 11941,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3049,
+          "ziel_erreicht": 30299,
+          "stop_erreicht": 69073,
+          "zeitablauf": 21189,
+          "stichprobe": 120561
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.371,
+          "ziel_erreicht": 33324,
+          "stop_erreicht": 56507,
+          "zeitablauf": 30730,
+          "stichprobe": 120561
+        }
+      ]
+    },
+    {
+      "bedingung": "w_erkannt & struktur=range",
+      "stichprobe": 3008,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.1617,
+      "median_r": 0.2244,
+      "edge_ueber_baseline_r": 0.088,
+      "median_mfe_in_r": 2.11,
+      "median_mae_in_r": 2.02,
+      "t_statistik": 1.118,
+      "p_wert": 0.263744,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5239,
+          "ziel_erreicht": 1559,
+          "stop_erreicht": 1417,
+          "zeitablauf": 32,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.6086,
+          "ziel_erreicht": 1791,
+          "stop_erreicht": 1152,
+          "zeitablauf": 65,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6646,
+          "ziel_erreicht": 1922,
+          "stop_erreicht": 970,
+          "zeitablauf": 116,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4389,
+          "ziel_erreicht": 1279,
+          "stop_erreicht": 1635,
+          "zeitablauf": 94,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5247,
+          "ziel_erreicht": 1495,
+          "stop_erreicht": 1354,
+          "zeitablauf": 159,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5847,
+          "ziel_erreicht": 1608,
+          "stop_erreicht": 1142,
+          "zeitablauf": 258,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3693,
+          "ziel_erreicht": 1044,
+          "stop_erreicht": 1783,
+          "zeitablauf": 181,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4521,
+          "ziel_erreicht": 1222,
+          "stop_erreicht": 1481,
+          "zeitablauf": 305,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5132,
+          "ziel_erreicht": 1319,
+          "stop_erreicht": 1251,
+          "zeitablauf": 438,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2675,
+          "ziel_erreicht": 710,
+          "stop_erreicht": 1944,
+          "zeitablauf": 354,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3434,
+          "ziel_erreicht": 850,
+          "stop_erreicht": 1625,
+          "zeitablauf": 533,
+          "stichprobe": 3008
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4016,
+          "ziel_erreicht": 918,
+          "stop_erreicht": 1368,
+          "zeitablauf": 722,
+          "stichprobe": 3008
+        }
+      ]
+    },
+    {
+      "bedingung": "w_erkannt & struktur=uebergang",
+      "stichprobe": 1854,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.296,
+      "median_r": 0.2876,
+      "edge_ueber_baseline_r": 0.2223,
+      "median_mfe_in_r": 2.2,
+      "median_mae_in_r": 1.94,
+      "t_statistik": 2.142,
+      "p_wert": 0.032348,
+      "signifikant_alpha_005": true,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5079,
+          "ziel_erreicht": 932,
+          "stop_erreicht": 903,
+          "zeitablauf": 19,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5999,
+          "ziel_erreicht": 1087,
+          "stop_erreicht": 725,
+          "zeitablauf": 42,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6736,
+          "ziel_erreicht": 1195,
+          "stop_erreicht": 579,
+          "zeitablauf": 80,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4276,
+          "ziel_erreicht": 774,
+          "stop_erreicht": 1036,
+          "zeitablauf": 44,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5196,
+          "ziel_erreicht": 915,
+          "stop_erreicht": 846,
+          "zeitablauf": 93,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5969,
+          "ziel_erreicht": 1010,
+          "stop_erreicht": 682,
+          "zeitablauf": 162,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3573,
+          "ziel_erreicht": 632,
+          "stop_erreicht": 1137,
+          "zeitablauf": 85,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4473,
+          "ziel_erreicht": 759,
+          "stop_erreicht": 938,
+          "zeitablauf": 157,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5269,
+          "ziel_erreicht": 841,
+          "stop_erreicht": 755,
+          "zeitablauf": 258,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2506,
+          "ziel_erreicht": 415,
+          "stop_erreicht": 1241,
+          "zeitablauf": 198,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3353,
+          "ziel_erreicht": 517,
+          "stop_erreicht": 1025,
+          "zeitablauf": 312,
+          "stichprobe": 1854
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4101,
+          "ziel_erreicht": 575,
+          "stop_erreicht": 827,
+          "zeitablauf": 452,
+          "stichprobe": 1854
+        }
+      ]
+    },
+    {
+      "bedingung": "w_erkannt & struktur=trend",
+      "stichprobe": 1435,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": -0.0089,
+      "median_r": 0.1241,
+      "edge_ueber_baseline_r": -0.0826,
+      "median_mfe_in_r": 1.93,
+      "median_mae_in_r": 1.86,
+      "t_statistik": -0.791,
+      "p_wert": 0.429212,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5077,
+          "ziel_erreicht": 721,
+          "stop_erreicht": 699,
+          "zeitablauf": 15,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5961,
+          "ziel_erreicht": 834,
+          "stop_erreicht": 565,
+          "zeitablauf": 36,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6696,
+          "ziel_erreicht": 916,
+          "stop_erreicht": 452,
+          "zeitablauf": 67,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.42,
+          "ziel_erreicht": 585,
+          "stop_erreicht": 808,
+          "zeitablauf": 42,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5093,
+          "ziel_erreicht": 685,
+          "stop_erreicht": 660,
+          "zeitablauf": 90,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5883,
+          "ziel_erreicht": 756,
+          "stop_erreicht": 529,
+          "zeitablauf": 150,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.35,
+          "ziel_erreicht": 477,
+          "stop_erreicht": 886,
+          "zeitablauf": 72,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4335,
+          "ziel_erreicht": 557,
+          "stop_erreicht": 728,
+          "zeitablauf": 150,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5142,
+          "ziel_erreicht": 615,
+          "stop_erreicht": 581,
+          "zeitablauf": 239,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2382,
+          "ziel_erreicht": 302,
+          "stop_erreicht": 966,
+          "zeitablauf": 167,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3063,
+          "ziel_erreicht": 351,
+          "stop_erreicht": 795,
+          "zeitablauf": 289,
+          "stichprobe": 1435
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3759,
+          "ziel_erreicht": 383,
+          "stop_erreicht": 636,
+          "zeitablauf": 416,
+          "stichprobe": 1435
+        }
+      ]
+    },
+    {
+      "bedingung": "w_erkannt & liquiditaet=duenn",
+      "stichprobe": 2724,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.113,
+      "median_r": 0.2851,
+      "edge_ueber_baseline_r": 0.0393,
+      "median_mfe_in_r": 2.14,
+      "median_mae_in_r": 1.95,
+      "t_statistik": 0.46,
+      "p_wert": 0.645406,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.5319,
+          "ziel_erreicht": 1432,
+          "stop_erreicht": 1260,
+          "zeitablauf": 32,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.6139,
+          "ziel_erreicht": 1631,
+          "stop_erreicht": 1026,
+          "zeitablauf": 67,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6785,
+          "ziel_erreicht": 1775,
+          "stop_erreicht": 841,
+          "zeitablauf": 108,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4491,
+          "ziel_erreicht": 1187,
+          "stop_erreicht": 1456,
+          "zeitablauf": 81,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5307,
+          "ziel_erreicht": 1366,
+          "stop_erreicht": 1208,
+          "zeitablauf": 150,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5984,
+          "ziel_erreicht": 1493,
+          "stop_erreicht": 1002,
+          "zeitablauf": 229,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3773,
+          "ziel_erreicht": 969,
+          "stop_erreicht": 1599,
+          "zeitablauf": 156,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4573,
+          "ziel_erreicht": 1124,
+          "stop_erreicht": 1334,
+          "zeitablauf": 266,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5272,
+          "ziel_erreicht": 1231,
+          "stop_erreicht": 1104,
+          "zeitablauf": 389,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2679,
+          "ziel_erreicht": 641,
+          "stop_erreicht": 1752,
+          "zeitablauf": 331,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3422,
+          "ziel_erreicht": 762,
+          "stop_erreicht": 1465,
+          "zeitablauf": 497,
+          "stichprobe": 2724
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4078,
+          "ziel_erreicht": 836,
+          "stop_erreicht": 1214,
+          "zeitablauf": 674,
+          "stichprobe": 2724
+        }
+      ]
+    },
+    {
+      "bedingung": "w_erkannt & liquiditaet=normal",
+      "stichprobe": 1988,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.0515,
+      "median_r": 0.1205,
+      "edge_ueber_baseline_r": -0.0222,
+      "median_mfe_in_r": 1.99,
+      "median_mae_in_r": 2.02,
+      "t_statistik": -0.232,
+      "p_wert": 0.816657,
+      "signifikant_alpha_005": false,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.498,
+          "ziel_erreicht": 981,
+          "stop_erreicht": 989,
+          "zeitablauf": 18,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5932,
+          "ziel_erreicht": 1155,
+          "stop_erreicht": 792,
+          "zeitablauf": 41,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6499,
+          "ziel_erreicht": 1238,
+          "stop_erreicht": 667,
+          "zeitablauf": 83,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.413,
+          "ziel_erreicht": 800,
+          "stop_erreicht": 1137,
+          "zeitablauf": 51,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5087,
+          "ziel_erreicht": 960,
+          "stop_erreicht": 927,
+          "zeitablauf": 101,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5691,
+          "ziel_erreicht": 1029,
+          "stop_erreicht": 779,
+          "zeitablauf": 180,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3404,
+          "ziel_erreicht": 645,
+          "stop_erreicht": 1250,
+          "zeitablauf": 93,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4321,
+          "ziel_erreicht": 776,
+          "stop_erreicht": 1020,
+          "zeitablauf": 192,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4947,
+          "ziel_erreicht": 836,
+          "stop_erreicht": 854,
+          "zeitablauf": 298,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2423,
+          "ziel_erreicht": 431,
+          "stop_erreicht": 1348,
+          "zeitablauf": 209,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3252,
+          "ziel_erreicht": 532,
+          "stop_erreicht": 1104,
+          "zeitablauf": 352,
+          "stichprobe": 1988
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.3809,
+          "ziel_erreicht": 566,
+          "stop_erreicht": 920,
+          "zeitablauf": 502,
+          "stichprobe": 1988
+        }
+      ]
+    },
+    {
+      "bedingung": "w_erkannt & liquiditaet=rege",
+      "stichprobe": 1519,
+      "baseline_stichprobe": 363333,
+      "horizont_kerzen": 24,
+      "erwartungswert_r": 0.3657,
+      "median_r": 0.2588,
+      "edge_ueber_baseline_r": 0.292,
+      "median_mfe_in_r": 2.13,
+      "median_mae_in_r": 1.87,
+      "t_statistik": 2.862,
+      "p_wert": 0.004262,
+      "signifikant_alpha_005": true,
+      "target_stop_matrix": [
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.51,
+          "ziel_erreicht": 767,
+          "stop_erreicht": 737,
+          "zeitablauf": 15,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5983,
+          "ziel_erreicht": 889,
+          "stop_erreicht": 597,
+          "zeitablauf": 33,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 1.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6754,
+          "ziel_erreicht": 980,
+          "stop_erreicht": 471,
+          "zeitablauf": 68,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.4251,
+          "ziel_erreicht": 627,
+          "stop_erreicht": 848,
+          "zeitablauf": 44,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.5157,
+          "ziel_erreicht": 740,
+          "stop_erreicht": 695,
+          "zeitablauf": 84,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 1.5,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.6001,
+          "ziel_erreicht": 821,
+          "stop_erreicht": 547,
+          "zeitablauf": 151,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.3628,
+          "ziel_erreicht": 521,
+          "stop_erreicht": 915,
+          "zeitablauf": 83,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.4476,
+          "ziel_erreicht": 615,
+          "stop_erreicht": 759,
+          "zeitablauf": 145,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 2.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.5319,
+          "ziel_erreicht": 683,
+          "stop_erreicht": 601,
+          "zeitablauf": 235,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.0,
+          "trefferquote": 0.2519,
+          "ziel_erreicht": 339,
+          "stop_erreicht": 1007,
+          "zeitablauf": 173,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 1.5,
+          "trefferquote": 0.3248,
+          "ziel_erreicht": 404,
+          "stop_erreicht": 840,
+          "zeitablauf": 275,
+          "stichprobe": 1519
+        },
+        {
+          "ziel_in_r": 3.0,
+          "stop_in_r": 2.0,
+          "trefferquote": 0.4039,
+          "ziel_erreicht": 452,
+          "stop_erreicht": 667,
+          "zeitablauf": 400,
+          "stichprobe": 1519
+        }
+      ]
+    }
+  ]
+}

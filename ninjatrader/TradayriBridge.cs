@@ -964,6 +964,19 @@ namespace NinjaTrader.NinjaScript.AddOns
             double limitPrice = ExtractDouble(line, "limit_price");
             double stopPrice = ExtractDouble(line, "stop_price");
             string kind = ExtractString(line, "kind");
+
+            // ABSTAENDE statt Kurse. Das Order-Panel kennt beim Absenden einer
+            // Marktorder den Einstiegskurs noch nicht und kann "20 Punkte
+            // Stop" deshalb gar nicht in einen Kurs umrechnen - nur hier ist
+            // der Markt bekannt.
+            //
+            // Am 02.09.2026 schickte der Server diese 20 und 40 als KURSE.
+            // NinjaTrader legte ein Verkaufslimit bei Kurs 40 an, das bei
+            // einem Markt von 29430 sofort ausfuehrbar war und die Position
+            // eine Sekunde nach dem Einstieg wieder schloss. Der Stop bei
+            // Kurs 20 haette nie ausgeloest - die Position war ungeschuetzt.
+            double stopLossPoints = ExtractDouble(line, "stop_loss_points");
+            double takeProfitPoints = ExtractDouble(line, "take_profit_points");
             
             OrderType orderType = OrderType.Market;
             if (kind == "LIMIT") orderType = OrderType.Limit;
@@ -978,6 +991,67 @@ namespace NinjaTrader.NinjaScript.AddOns
             {
                 Reject(key, "bracket_invalid", "STOP ohne stop_price");
                 return;
+            }
+
+            // Abstaende in Kurse umrechnen. Bezug ist der Kurs, zu dem der
+            // Einstieg voraussichtlich zustande kommt: bei LIMIT und STOP ist
+            // das exakt bekannt, bei MARKET der zuletzt gehandelte Preis.
+            if (stopLossPoints > 0 || takeProfitPoints > 0)
+            {
+                double reference = orderType == OrderType.Limit ? limitPrice
+                    : orderType == OrderType.StopMarket ? stopPrice
+                    : LastTradePrice(instrument);
+                if (reference <= 0)
+                {
+                    // Lieber gar keine Order als eine mit geratenem Stop. Ein
+                    // Bracket auf einem erfundenen Bezugskurs ist schlimmer
+                    // als kein Bracket: es sieht nach Schutz aus.
+                    Reject(key, "bracket_no_reference",
+                        "Abstand angegeben, aber kein Marktpreis fuer " + symbol
+                        + " verfuegbar - Order nicht angelegt");
+                    return;
+                }
+                double sign = side == "SELL" ? -1.0 : 1.0;
+                if (stopLossPoints > 0 && stopLoss <= 0)
+                {
+                    stopLoss = instrument.MasterInstrument.RoundToTickSize(
+                        reference - sign * stopLossPoints);
+                }
+                if (takeProfitPoints > 0 && takeProfit <= 0)
+                {
+                    takeProfit = instrument.MasterInstrument.RoundToTickSize(
+                        reference + sign * takeProfitPoints);
+                }
+            }
+
+            // Letzte Plausibilitaet: ein Stop auf der falschen Seite des
+            // Einstiegs schliesst sofort, ein Ziel auf der falschen Seite
+            // ebenso. Beides ist genau der Schaden vom 02.09.2026.
+            if (stopLoss > 0 || takeProfit > 0)
+            {
+                double bezug = orderType == OrderType.Limit ? limitPrice
+                    : orderType == OrderType.StopMarket ? stopPrice
+                    : LastTradePrice(instrument);
+                if (bezug > 0)
+                {
+                    bool kauf = side != "SELL";
+                    if (stopLoss > 0 && ((kauf && stopLoss >= bezug)
+                        || (!kauf && stopLoss <= bezug)))
+                    {
+                        Reject(key, "bracket_invalid",
+                            "Stop " + Num(stopLoss) + " liegt auf der falschen "
+                            + "Seite von " + Num(bezug));
+                        return;
+                    }
+                    if (takeProfit > 0 && ((kauf && takeProfit <= bezug)
+                        || (!kauf && takeProfit >= bezug)))
+                    {
+                        Reject(key, "bracket_invalid",
+                            "Ziel " + Num(takeProfit) + " liegt auf der falschen "
+                            + "Seite von " + Num(bezug));
+                        return;
+                    }
+                }
             }
 
             var created = new List<Order>();
@@ -1362,6 +1436,38 @@ namespace NinjaTrader.NinjaScript.AddOns
             long value;
             return long.TryParse(json.Substring(start, end - start),
                 NumberStyles.Integer, CultureInfo.InvariantCulture, out value) ? value : 0;
+        }
+
+        /// <summary>
+        /// Zuletzt gehandelter Preis, sonst die Mitte aus Bid und Ask.
+        /// </summary>
+        /// <remarks>
+        /// Bezugskurs, um einen Stop-ABSTAND in einen Stop-KURS umzurechnen.
+        /// Liefert 0, wenn nichts Belastbares da ist - der Aufrufer lehnt die
+        /// Order dann ab, statt einen Kurs zu raten. Ein geratener Stop ist
+        /// schlimmer als gar keiner: er sieht nach Schutz aus.
+        ///
+        /// `Last` kann ausserhalb der Handelszeiten oder direkt nach dem
+        /// Verbindungsaufbau leer sein, deshalb der Rueckfall auf die Mitte.
+        /// </remarks>
+        private static double LastTradePrice(Instrument instrument)
+        {
+            if (instrument == null || instrument.MarketData == null) return 0;
+            try
+            {
+                if (instrument.MarketData.Last != null
+                    && instrument.MarketData.Last.Price > 0)
+                {
+                    return instrument.MarketData.Last.Price;
+                }
+                double bid = instrument.MarketData.Bid != null
+                    ? instrument.MarketData.Bid.Price : 0;
+                double ask = instrument.MarketData.Ask != null
+                    ? instrument.MarketData.Ask.Price : 0;
+                if (bid > 0 && ask > 0) return (bid + ask) / 2.0;
+            }
+            catch { }
+            return 0;
         }
 
         /// <summary>Wie `ExtractLong`, aber mit Nachkommastellen.</summary>

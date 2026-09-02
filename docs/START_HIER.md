@@ -34,12 +34,18 @@ Stacktrace; Handlungsanweisungen müssen ohne Vorwissen ausführbar sein.
 
 | Was | Wo | Zustand |
 |---|---|---|
-| Kerzen-Empfänger | `python -m ntbridge`, Port 8787 | läuft im Hintergrund |
+| Kerzen-Empfänger | `python -m ntbridge`, Port 8787 | **muss Laurin starten** (31.08.2026 nicht gelaufen) |
 | Order-Kanal | in demselben Prozess, TCP zu NT8 39473 | verbunden |
-| NinjaTrader 8 | mit `ClaudeBridge`-Indikator im Chart | läuft |
+| NinjaTrader 8 | mit `ClaudeBridge`-Indikator im Chart | läuft; **Indikator muss im Chart liegen**, sonst kommen keine Kerzen |
 | Execution-Server + UI | `start_TRADAYRI.bat`, Port 8790 | startet Laurin selbst |
 | Autonomer Bot | in `execution/server.py` | **scharf** (`ausfuehrung.enabled: true`) |
 | Watchdog | Windows-Aufgabe `ClaudeChartBot-Watchdog` | stündlich |
+
+> **Stand 31.08.2026:** Die jüngste Kerze in der Datenbank ist vom 28.08. —
+> dem Ende des NT8-Exports. Seither kam nichts nach, weil der Empfänger nicht
+> lief. Die Kopfzeile der Oberfläche zeigt das jetzt selbst an („Letzte
+> Kerze", gelb bei offener Börse ohne Datenstrom). Was zu tun ist, steht in
+> `docs/UEBERGABE_2026-08-31.md` Abschnitt 1.3.
 
 **Der Bot handelt echt** — auf einem Simulationskonto, 03:00–16:00 ET,
 Montag bis Freitag. Kontoprofil `frei` mit selbst gesetzten Grenzen
@@ -120,6 +126,7 @@ mehrere Bausteine gleichzeitig berühren.
 | Bereich | Ort |
 |---|---|
 | Indikatoren, Levels, Marktprimitive, Struktur | `common/` |
+| Ereignis-Erkenner + Ereignisdatenbank | `common/ereignisse/` |
 | Backtest-Engine, Strategien, Kosten, Splits | `backtest/` |
 | Ideen-Protokollierung | `ideas/` |
 | Ausführung: Speicher, Risiko, Bot, Server | `execution/` |
@@ -130,8 +137,16 @@ mehrere Bausteine gleichzeitig berühren.
 
 ## 9. Der nächste Schritt
 
-Steht in `docs/OFFENE_PUNKTE.md` unter **P0**. Stand 30.08.2026:
+**Stand 31.08.2026 — lies zuerst `docs/UEBERGABE_2026-08-31.md`.** Dort steht,
+was Laurin selbst tun muss und welche Entscheidung offen ist.
 
-1. Ende-zu-Ende-Probe des Orderwegs, sobald die Börse offen ist
-2. Lucid-Zahlen bestätigen (alle sind derzeit **Annahmen**)
-3. NT8-Historie importieren — das Werkzeug steht, der Export fehlt noch
+1. **Ende-zu-Ende-Probe des Orderwegs**, sobald Laurin wach ist und die Börse
+   offen — nie unbeaufsichtigt, das ist eine Handlung nach außen.
+2. **Etappe 4 der Ereignisdatenbank**: Outcomes über alle Horizonte
+   (`docs/FORSCHUNGSPLAN_EVENTDATENBANK.md`). Erst danach lassen sich Sätze
+   sagen wie „nach einem Sweep des Vortagestiefs lief der Kurs in X % der
+   Fälle mindestens 1 ATR nach oben". **Opus-Arbeit.**
+3. **Laurins offene Entscheidung**: es sind ~2,5 Mio Ereignisse statt der
+   geplanten 200–800 k. Das volle Stop-Raster aus Etappe 7 wären damit über
+   300 Mio Zeilen. Drei Wege stehen in der Übergabe, Abschnitt 3.
+4. Lucid-Zahlen bestätigen (alle sind derzeit **Annahmen**)

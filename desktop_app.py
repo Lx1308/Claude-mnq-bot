@@ -13,7 +13,7 @@ import socket
 import subprocess
 
 
-def wait_until_ready(host: str, port: int, server_proc: subprocess.Popen, timeout: float = 30.0) -> bool:
+def wait_until_ready(host: str, port: int, server_proc: subprocess.Popen, timeout: float = 90.0) -> bool:
     deadline = time.time() + timeout
     while time.time() < deadline:
         if server_proc.poll() is not None:
@@ -50,7 +50,7 @@ def main():
 
     print(f"Warte auf Server (Port {port})...")
     if not wait_until_ready(host, port, server_process):
-        print(f"FEHLER: Server ist nicht innerhalb von 30s auf Port {port} gestartet.")
+        print(f"FEHLER: Server ist nicht innerhalb von 90s auf Port {port} gestartet.")
         print("Pruefe execution/server.py auf Fehler.")
         server_process.kill()
         input("Druecke Enter zum Schliessen...")

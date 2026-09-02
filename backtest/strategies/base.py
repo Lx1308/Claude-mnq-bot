@@ -32,10 +32,15 @@ class BarContext:
 
     Bewusst nur die aktuelle und die vorherige Zeile - damit ist es
     strukturell unmoeglich, versehentlich in die Zukunft zu schauen.
+
+    ``row`` ist alles, was ``.get(name)`` beantwortet: eine ``pd.Series``
+    oder ein einfaches Dict. Die Engine reicht ein Dict der Spalten durch,
+    die die jeweilige Strategie braucht - eine Series je Kerze ueber
+    vierzig Spalten zu bauen war der Engpass des ganzen Laufs.
     """
 
-    row: pd.Series
-    previous: pd.Series | None
+    row: "Mapping[str, Any] | pd.Series"
+    previous: "Mapping[str, Any] | pd.Series | None"
     timestamp: pd.Timestamp
     position: int  # +1 long, -1 short, 0 flach
     bars_in_trade: int = 0
@@ -623,6 +628,45 @@ class SessionTimeWindow(Rule):
         return f"Uhrzeit {self._start:%H:%M}-{self._end:%H:%M} ({self._tz_name})"
 
 
+class IstGesetzt(Rule):
+    """Eine Ereignisspalte ist auf dieser Kerze wahr.
+
+    Fuer Musterspalten aus ``common/muster_serie.py`` (``w_erkannt``,
+    ``w_nackenbruch``, ...). Die sind bereits **Flanken**: sie stehen auf
+    genau einer Kerze, naemlich der, auf der das Ereignis bekannt wurde.
+    Deshalb braucht es hier keine Kreuzungslogik - eine Zustandsabfrage auf
+    einer Flankenspalte ist selbst eine Flanke.
+
+    Wichtig: Die Spalten der Musterserie stehen auf dem
+    **Verfuegbarkeitszeitpunkt**, nicht auf dem Extrem selbst. Eine Regel auf
+    ``w_erkannt`` handelt also nicht "am zweiten Tief" - das waere Lookahead,
+    weil ein Swing-Tief an seiner eigenen Kerze noch nicht bestaetigt ist.
+    """
+
+    def __init__(self, column: str) -> None:
+        self._column = column
+
+    def evaluate(self, ctx: BarContext) -> bool:
+        wert = ctx.value(self._column)
+        return _valid(wert) and wert > 0.5
+
+    def benoetigte_spalten(self) -> set[str]:
+        return {self._column}
+
+    def nach_pine(self, spalten):
+        # Musterspalten entstehen aus einer Swing-Punkt-Analyse ueber die
+        # ganze Reihe. Sie in Pine nachzubauen hiesse, die Erkennung ein
+        # zweites Mal zu schreiben - und dann vergleicht man zwei
+        # verschiedene Muster, ohne es zu merken.
+        raise NichtUebersetzbar(
+            f"{self._column} kommt aus der Musterserie und hat keine "
+            "Pine-Entsprechung."
+        )
+
+    def describe(self) -> str:
+        return f"{self._column} ist gesetzt"
+
+
 class MinBarsInTrade(Rule):
     """Verhindert Ausstiege in den ersten N Kerzen nach dem Einstieg."""
 
@@ -668,6 +712,39 @@ class RuleStrategy:
     stop_loss_atr: float | None = None
     #: Take-Profit in ATR-Vielfachen (None = kein Ziel)
     take_profit_atr: float | None = None
+
+    #: Strukturneller Stop: Spaltenname des Niveaus, hinter das der Stop
+    #: gehoert (z.B. "letztes_swing_tief", "prev_session_low",
+    #: "w_zweites_tief"). Ist er gesetzt, hat er Vorrang vor
+    #: ``stop_loss_atr``.
+    #:
+    #: WARUM ES DAS GIBT: ein Stop bei 1,5 x ATR ist strukturell blind - mal
+    #: sitzt er mitten in einer Zone, mal weit dahinter. Ein Stop unterhalb
+    #: des letzten Tiefs hat dagegen eine Begruendung: dort ist der Halt weg,
+    #: der die Bewegung getragen hat. Welcher besser ist, ist eine Messfrage
+    #: (Laurin, 30.08.2026).
+    stop_loss_spalte: str | None = None
+    #: Dieselbe Angabe fuer die SHORT-Seite. Ein Short-Stop gehoert ueber das
+    #: entsprechende HOCH, nicht unter ein Tief - mit nur einer Spalte waere
+    #: die halbe Strategie falsch abgesichert, und zwar unauffaellig. Bleibt
+    #: sie leer, gilt fuer Shorts der ATR-Rueckfall.
+    stop_loss_spalte_short: str | None = None
+    #: Wie viele Ticks JENSEITS des Niveaus der Stop sitzt. Genau auf dem
+    #: Niveau wird er vom Rauschen abgeraeumt, das jeder Test einer Marke
+    #: erzeugt.
+    stop_loss_puffer_ticks: float = 2.0
+    #: Wenn das Strukturniveau fehlt (NaN): auf ``stop_loss_atr``
+    #: zurueckfallen. Alternative waere, den Trade auszulassen - dann haetten
+    #: die Varianten aber verschiedene Trade-Mengen und waeren nicht mehr
+    #: vergleichbar. Wie oft der Rueckfall griff, weist das Ergebnis aus.
+    stop_rueckfall_auf_atr: bool = True
+
+    #: Strukturelles Ziel: Spaltenname. Wie ``stop_loss_spalte``, nur fuer
+    #: den Take-Profit; Vorrang vor ``take_profit_atr``.
+    take_profit_spalte: str | None = None
+    #: Ticks DIESSEITS des Zielniveaus - ein Ziel genau auf der Marke wird
+    #: oft knapp verfehlt.
+    take_profit_puffer_ticks: float = 2.0
     #: Zwangsausstieg nach N Kerzen (None = kein Zeitstop)
     max_bars_in_trade: int | None = None
     #: Alle offenen Positionen am Sessionende schliessen
@@ -688,6 +765,16 @@ class RuleStrategy:
         for regel in (self.long_entry, self.long_exit, self.short_entry, self.short_exit):
             if regel is not None:
                 spalten |= regel.benoetigte_spalten()
+        # Strukturelle Stops und Ziele lesen ebenfalls Spalten - und zwar in
+        # der Engine, nicht in einer Regel. Ohne sie hier fiele der Stop
+        # still auf den Rueckfall zurueck, statt dass der Lauf abbricht.
+        for spalte in (
+            self.stop_loss_spalte,
+            self.stop_loss_spalte_short,
+            self.take_profit_spalte,
+        ):
+            if spalte:
+                spalten.add(spalte)
         return spalten
 
     def describe(self) -> str:

@@ -56,3 +56,6 @@ data/DUKA_5m.csv.HERKUNFT.txt
 node_modules/
 dist/
 
+
+# Arbeitsdateien einzelner Sitzungen - nie ins Repo.
+.scratch/

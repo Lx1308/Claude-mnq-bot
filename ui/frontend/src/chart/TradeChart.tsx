@@ -44,6 +44,11 @@ interface Props {
   liveBar?: Bar | null;
   /** IANA-Zeitzone der Achsenbeschriftung. Intern bleibt alles UTC. */
   timeZone: string;
+  /** Wird gerufen, wenn der Betrachter bis an den linken Rand scrollt und
+   *  aeltere Kerzen gebraucht werden. Argument ist der Zeitstempel (ns) der
+   *  aeltesten gerade gezeichneten Kerze. Fehlt der Callback, gibt es nichts
+   *  nachzuladen (grobe Timeframes zeigen ohnehin die volle Historie). */
+  onNeedOlder?: (oldestTs: number) => void;
 }
 
 /** Engine-Timestamps sind Nanosekunden UTC, lightweight-charts erwartet Sekunden. */
@@ -210,9 +215,23 @@ export function TradeChart({
   priceDecimals,
   liveBar,
   timeZone,
+  onNeedOlder,
 }: Props) {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
+
+  // Fuer den Nachlade-Haken: die Callback-Registrierung am Chart lebt laenger
+  // als ein Render, muss aber den jeweils aktuellen Stand sehen.
+  const barsRef = useRef<BarsResponse | null>(bars);
+  barsRef.current = bars;
+  const onNeedOlderRef = useRef(onNeedOlder);
+  onNeedOlderRef.current = onNeedOlder;
+  /** Zeitstempel der aeltesten Kerze, fuer die schon nachgeladen wurde -
+   *  gegen eine Schleife aus wiederholten Anfragen fuer denselben Rand. */
+  const zuletztNachgeladenRef = useRef<number>(0);
+  /** Zeit (Sekunden) der ersten Kerze im vorigen Render - um ein Voranstellen
+   *  aelterer Kerzen zu erkennen. */
+  const vorherErsteZeitRef = useRef<number | null>(null);
 
   const smaSeriesRef = useRef<ISeriesApi<'Line'> | null>(null);
   const seriesRef = useRef<ISeriesApi<'Candlestick', Time> | null>(null);
@@ -267,6 +286,21 @@ export function TradeChart({
     seriesRef.current = series;
     primitiveRef.current = primitive;
     markersRef.current = createSeriesMarkers(series, []);
+
+    // Nachladen, sobald der Betrachter an den linken Rand kommt. `from` ist
+    // ein logischer Index in die Datenreihe; wird er klein (oder negativ,
+    // weil ueber den Anfang hinaus gescrollt), sind aeltere Kerzen faellig.
+    chart.timeScale().subscribeVisibleLogicalRangeChange((range) => {
+      if (!range) return;
+      const melden = onNeedOlderRef.current;
+      const reihe = barsRef.current?.bars;
+      if (!melden || !reihe || reihe.length === 0) return;
+      if (range.from > 12) return;
+      const aeltester = reihe[0].ts;
+      if (aeltester === zuletztNachgeladenRef.current) return;
+      zuletztNachgeladenRef.current = aeltester;
+      melden(aeltester);
+    });
 
     return () => {
       markersRef.current = null;
@@ -335,18 +369,36 @@ export function TradeChart({
         smaData.push({ time: data[i].time, value: sum / period });
       }
     }
+    const kennung = `${bars.symbol}-${bars.timeframe}`;
+    const neuerDatensatz = kennung !== datensatzRef.current;
+
+    // Wurden am linken Rand aeltere Kerzen vorangestellt (gleicher Datensatz,
+    // erste Kerze jetzt frueher), soll die Ansicht dort bleiben, wo der
+    // Betrachter sie hat - `setData` wuerde sonst auf den logischen Index
+    // zurueckspringen und den Chart nach links reissen. Der ZEIT-Bereich ist
+    // stabil, der logische nicht.
+    const zeitfensterHalten =
+      !neuerDatensatz &&
+      vorherErsteZeitRef.current != null &&
+      data.length > 0 &&
+      (data[0].time as number) < vorherErsteZeitRef.current;
+    const gemerktesFenster = zeitfensterHalten
+      ? chartRef.current?.timeScale().getVisibleRange()
+      : null;
+
     smaSeriesRef.current?.setData(smaData);
     series.setData(data);
+    vorherErsteZeitRef.current = data.length > 0 ? (data[0].time as number) : null;
 
-    // Nur bei einem WIRKLICH neuen Datenbestand einpassen - nicht bei jeder
-    // Aktualisierung. Vorher sprang der Chart im Echtbetrieb alle fuenf
-    // Sekunden auf die Gesamtansicht zurueck, und man konnte nicht
-    // hineinzoomen, ohne sofort wieder herausgerissen zu werden. Wer den
-    // Ausschnitt gewaehlt hat, will ihn behalten; die Ansicht gehoert dem
-    // Betrachter, nicht dem Aktualisierungstakt.
-    const kennung = `${bars.symbol}-${bars.timeframe}`;
-    if (kennung !== datensatzRef.current) {
+    if (gemerktesFenster) {
+      chartRef.current?.timeScale().setVisibleRange(gemerktesFenster);
+    } else if (neuerDatensatz) {
+      // Nur bei einem WIRKLICH neuen Datenbestand einpassen - nicht bei jeder
+      // Aktualisierung. Vorher sprang der Chart im Echtbetrieb alle fuenf
+      // Sekunden auf die Gesamtansicht zurueck, und man konnte nicht
+      // hineinzoomen, ohne sofort wieder herausgerissen zu werden.
       datensatzRef.current = kennung;
+      zuletztNachgeladenRef.current = 0;
       chartRef.current?.timeScale().fitContent();
     }
   }, [bars]);

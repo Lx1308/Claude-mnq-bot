@@ -33,27 +33,32 @@ import { StatusBar } from './panels/StatusBar';
 import { StrategyPanel } from './panels/StrategyPanel';
 import { SystemPanel } from './panels/SystemPanel';
 
-const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h'];
+const TIMEFRAMES = ['1m', '5m', '15m', '1h', '4h', '1d'];
 const ENTRY_TIMEFRAME = '1m';
 const PLAY_INTERVAL_MS = 400;
 
-/** Wie viele Basis-Bars beim Symbolwechsel geladen UND analysiert werden.
+/** Wie viele Basis-Bars der Wiedergabe-Vorlauf (Bar fuer Bar vorwaerts) in
+ *  den Server laedt.
  *
- *  Der Chart soll ein Chart sein: hinschauen, schieben, zoomen. Dazu muessen
- *  Bars und Muster denselben Bereich abdecken - ein Chart, der weiter reicht
- *  als die Analyse, zeigt Kerzen ohne die Kursluecken und Sweeps, die dort
- *  tatsaechlich liegen, und das ist schlimmer als ein kuerzerer Chart.
- *
- *  Deshalb eine feste, ueberschaubare Menge statt des ganzen Bestands: 30.000
- *  Minutenbars sind rund drei Wochen und kosten gemessene ~15 Sekunden. Die
- *  vollen 200.000 waeren ~105 Sekunden gewesen - bei jedem Symbolwechsel. Fuer
- *  laengere Zeitraeume ist der Backtest zustaendig, nicht der Chart. */
+ *  Nur noch fuer die Wiedergabe - der Chart selbst holt seine Kerzen
+ *  unabhaengig davon und zeigt die volle Historie (grobe Timeframes) bzw. ein
+ *  begrenztes, nachladbares Fenster (feine Timeframes). 30.000 Minutenbars
+ *  sind rund drei Wochen; bar-fuer-bar durch mehr als das zu klicken ergibt
+ *  keinen Sinn. */
 const HISTORY_BARS = 30_000;
 
-/** Portionsgroesse des Warmlaufs. Klein genug, dass die Anzeige sichtbar
- *  vorankommt, gross genug, dass der Verwaltungsaufwand nicht ins Gewicht
- *  faellt. */
-const WARMUP_CHUNK = 5_000;
+/** Wie viele Kerzen der Chart bei den feinen Timeframes zeigt (die groben
+ *  laden die volle Historie). Aeltere holt er beim Zurueckscrollen nach. */
+const FEIN_TF_KERZEN = 4_000;
+
+/** Timeframes, die als vollstaendige Historie (2019 bis heute) geladen
+ *  werden - der Server haelt sie dafuer vorberechnet. Alles Feinere (5m, 15m)
+ *  kommt als begrenztes, beim Zurueckscrollen nachladbares Fenster. */
+const GROBE_TIMEFRAMES = new Set(['1h', '4h', '1d']);
+
+function chartKerzenLimit(tf: string): number {
+  return GROBE_TIMEFRAMES.has(tf) ? 0 : FEIN_TF_KERZEN;
+}
 
 /** Wie oft der Chart im Echtzeitbetrieb nachgefuehrt wird.
  *
@@ -110,13 +115,17 @@ export default function App() {
   const [instruments, setInstruments] = useState<Instrument[]>([]);
   const [coverage, setCoverage] = useState<Coverage[]>([]);
   const [symbol, setSymbol] = useState<string>('');
-  // Die gewaehlte Zeitebene ist dieselbe Sorte Einstellung wie die Overlays -
-  // eine Anzeigevorliebe. Das Symbol dagegen NICHT: es beim Start
-  // wiederherzustellen hiesse, ungefragt einen Datenbestand zu laden und zu
-  // analysieren. Gewaehlt wird bewusst.
+  // Die gewaehlte Zeitebene ist eine Anzeigevorliebe und wird
+  // wiederhergestellt. Vorgabe beim allerersten Start: die Tageskerze - so
+  // steht sofort die ganze Historie 2019 bis heute im Chart statt eines
+  // schwarzen Rechtecks.
+  // Schluessel mit ".v2": bis zum NT8-Import gab es nur Wochen an Historie und
+  // die Vorgabe war "5m". Jetzt liegen sieben Jahre vor, und der Start soll
+  // sie zeigen. Ein neuer Schluessel setzt die gespeicherte Vorliebe einmalig
+  // zurueck; danach merkt sich die Oberflaeche die Wahl wieder.
   const [timeframe, setTimeframe] = useGespeicherteEinstellung<string>(
-    'chart.timeframe',
-    '5m',
+    'chart.timeframe.v2',
+    '1d',
     (wert): wert is string => typeof wert === 'string' && TIMEFRAMES.includes(wert),
   );
 
@@ -194,10 +203,16 @@ export default function App() {
         setInstruments(instrumentData);
         setCoverage(coverageData);
 
-        // KEINE Vorauswahl. Vorher lud der Start von selbst ein Instrument -
-        // fuenfzehn Sekunden Rechenzeit fuer etwas, das man vielleicht gar
-        // nicht sehen wollte, und beim Hinsehen weiss man nicht sofort, was
-        // da eigentlich steht. Gewaehlt wird bewusst.
+        // Vorauswahl beim Start. Frueher gab es keine - der Start lud sonst
+        // ungefragt einen Datenbestand und rechnete fuenfzehn Sekunden daran.
+        // Dieser Warmlauf ist weg (der Chart holt seine Kerzen direkt), und
+        // ohne Vorauswahl steht beim Doppelklick nur ein schwarzes Rechteck.
+        // Genommen wird das handelbare Instrument - hier immer MNQ.
+        setSymbol((vorher) => {
+          if (vorher) return vorher;
+          const handelbar = instrumentData.find((i) => i.live_capable);
+          return handelbar?.symbol ?? instrumentData[0]?.symbol ?? '';
+        });
       } catch (err) {
         if (!cancelled) setError(err instanceof Error ? err.message : String(err));
       }
@@ -240,7 +255,7 @@ export default function App() {
       // waere gar nichts angekommen. Was da ist, wird angezeigt.
       const [barsData, overlayData, snapshotData, strategyData, logData, _tradesData] =
         await Promise.allSettled([
-          api.bars(targetSymbol, targetTimeframe),
+          api.bars(targetSymbol, targetTimeframe, chartKerzenLimit(targetTimeframe)),
           api.overlays(targetSymbol, targetTimeframe),
           api.analysis(targetSymbol),
           api.strategy(targetSymbol),
@@ -255,6 +270,46 @@ export default function App() {
         if (_tradesData && _tradesData.status === 'fulfilled') setTrades(_tradesData.value);
     },
     [],
+  );
+
+  // --- Aeltere Kerzen nachladen (feine Timeframes) ------------------------
+  // Die groben Ebenen (1h/4h/1d) zeigen ohnehin die volle Historie. Fuer 5m
+  // und 15m kommt ein begrenztes Fenster; scrollt der Betrachter an den
+  // linken Rand, wird davor angestueckt.
+  const aeltereRef = useRef({ key: '', laedt: false, erschoepft: false });
+  const handleNeedOlder = useCallback(
+    async (oldestTs: number) => {
+      if (GROBE_TIMEFRAMES.has(timeframe) || !symbol) return;
+      const key = `${symbol}-${timeframe}`;
+      const g = aeltereRef.current;
+      if (g.key !== key) {
+        g.key = key;
+        g.laedt = false;
+        g.erschoepft = false;
+      }
+      if (g.laedt || g.erschoepft) return;
+      g.laedt = true;
+      try {
+        const aeltere = await api.bars(symbol, timeframe, FEIN_TF_KERZEN, oldestTs);
+        const zusatz = aeltere.bars.filter((b) => b.ts < oldestTs);
+        if (zusatz.length === 0) {
+          g.erschoepft = true;
+          return;
+        }
+        setBars((vorher) => {
+          if (!vorher) return vorher;
+          const grenze = vorher.bars.length ? vorher.bars[0].ts : Number.POSITIVE_INFINITY;
+          const davor = zusatz.filter((b) => b.ts < grenze);
+          if (davor.length === 0) return vorher;
+          return { ...vorher, bars: [...davor, ...vorher.bars] };
+        });
+      } catch {
+        /* Nachladen ist eine Bequemlichkeit - ein Aussetzer ist kein Fehler. */
+      } finally {
+        g.laedt = false;
+      }
+    },
+    [symbol, timeframe],
   );
 
   // --- Symbolwechsel: laden, aber noch nicht analysieren -------------------
@@ -281,40 +336,28 @@ export default function App() {
         setCursor(0);
         setTotal(0);
 
-        // MNQ und NQ haben keine gespeicherte Historie - ihre Bars kommen
-        // live von NinjaTrader. Fuer sie wird gar nicht erst geladen: der
-        // Versuch endete in "Keine 1m-Daten im lokalen Speicher", und das ist
-        // eine Fehlermeldung fuer einen Zustand, der voellig in Ordnung ist.
-        // Eine Meldung, die bei normalem Verhalten erscheint, bringt einem bei,
-        // Meldungen zu ignorieren - und dann wird auch die echte uebersehen.
-        if (!symbolsWithDataRef.current.has(symbol)) {
-          if (!cancelled) await refreshView(symbol, timeframe).catch(() => undefined);
-          return;
-        }
-
-        // feedAll=false und danach portionsweise selbst durchlaufen: nur so
-        // laesst sich der Fortschritt anzeigen. `feedAll: true` rechnet im
-        // Server durch und meldet sich erst, wenn es fertig ist - fuenfzehn
-        // Sekunden ohne ein Lebenszeichen sehen aus wie ein Absturz.
-        const loaded = await api.load(symbol, { maxBars: HISTORY_BARS, feedAll: false });
+        // Erst die Ansicht - der Chart, die Muster und die Analyse holen sich
+        // ihre Daten je fuer sich aus der Kerzendatenbank und brauchen keinen
+        // Warmlauf. So steht sofort etwas da statt eines schwarzen Rechtecks.
+        if (!cancelled) await refreshView(symbol, timeframe).catch(() => undefined);
         if (cancelled) return;
-        setTotal(loaded.base_bars);
-        setCursor(loaded.cursor);
-        setIntegrity(loaded.integrity);
 
-        // Den GANZEN geladenen Bereich analysieren, damit Chart und Muster
-        // denselben Zeitraum abdecken.
-        let done = loaded.cursor;
-        while (done < loaded.base_bars) {
-          const stepped = await api.step(symbol, Math.min(WARMUP_CHUNK, loaded.base_bars - done));
-          if (cancelled) return;
-          done = stepped.cursor;
-          setCursor(done);
-          setProgress({ done, total: loaded.base_bars });
-          if (stepped.exhausted) break;
+        // Der Warmlauf ist nur noch fuer die Wiedergabe (Bar fuer Bar
+        // vorwaerts) da und laeuft im Hintergrund - er sperrt die Oberflaeche
+        // nicht mehr. Fuer Instrumente ohne gespeicherte Historie entfaellt
+        // er (ihre Bars kommen live von NinjaTrader).
+        if (symbolsWithDataRef.current.has(symbol)) {
+          try {
+            const loaded = await api.load(symbol, { maxBars: HISTORY_BARS, feedAll: true });
+            if (cancelled) return;
+            setTotal(loaded.base_bars);
+            setCursor(loaded.cursor);
+            setIntegrity(loaded.integrity);
+          } catch {
+            /* Die Wiedergabe ist eine Nebenfunktion - scheitert ihr Vorlauf,
+               bleibt der Chart trotzdem stehen. */
+          }
         }
-        setProgress(null);
-        await refreshView(symbol, timeframe);
       } catch (err) {
         if (cancelled) return;
         // Fuer die echten Futures (MNQ, NQ) liegt keine Historie auf der
@@ -541,7 +584,7 @@ export default function App() {
     const holen = async () => {
       try {
         const [barsData, overlayData] = await Promise.all([
-          api.bars(symbol, timeframe),
+          api.bars(symbol, timeframe, chartKerzenLimit(timeframe)),
           api.overlays(symbol, timeframe),
         ]);
         if (cancelled) return;
@@ -559,19 +602,29 @@ export default function App() {
     };
   }, [watchActive, symbol, timeframe]);
 
-  // --- Echtzeit: der Chart folgt der laufenden Sitzung ---------------------
-  // Laeuft eine Sitzung fuer dieses Symbol, liefert `/api/bars` deren Bars -
-  // die Auswahl trifft der Server (`TradexService.chart_context`). Hier muss
-  // nur regelmaessig nachgefragt werden. Der Zustandsstrom (SSE) meldet
-  // Zaehler, keine Kursreihen; die waeren fuer einen Dauerstrom zu gross und
-  // wuerden bei jeder Bar das ganze Chart neu schicken.
+  // --- Der Chart folgt dem Datenbestand ------------------------------------
+  // Bis zum 31.08.2026 lief diese Schleife NUR bei `liveActive` - also wenn
+  // eine Handelssitzung lief. Der Server meldete dafuer aber einen
+  // Platzhaltezustand (`running: false`), und `/api/session` ist ohnehin die
+  // falsche Bedingung: ein Chart soll den neuesten Stand der Kerzendatenbank
+  // zeigen, ob dabei gehandelt wird oder nicht. Laurins Frage vom 31.08.2026
+  // ("wieso zeigt der Chart keine Livedaten?") hatte genau hier ihre Ursache.
+  //
+  // Nachgefuehrt wird, solange der Markt offen ist. Bei geschlossener Boerse
+  // kommt ohnehin nichts nach - dann waere die Abfrage nur Last, und die
+  // Kopfzeile sagt sowieso, wie alt der Bestand ist.
+  //
+  // Nur ANHAENGEN, nie den ganzen Chart ersetzen: `setBars` mit dem vollen
+  // Ergebnis wuerde bei 1d die gesamte Historie neu schicken und die
+  // Scrollposition zuruecksetzen.
+  const marktOffen = market?.is_open ?? false;
   useEffect(() => {
-    if (!liveActive || !symbol) return;
+    if (!symbol || !marktOffen) return;
     let cancelled = false;
     const holen = async () => {
       try {
         const [barsData, overlayData] = await Promise.all([
-          api.bars(symbol, timeframe),
+          api.bars(symbol, timeframe, chartKerzenLimit(timeframe)),
           api.overlays(symbol, timeframe),
         ]);
         if (cancelled) return;
@@ -583,13 +636,12 @@ export default function App() {
            ohnehin schon in der Betriebsanzeige. */
       }
     };
-    void holen();
     const timer = window.setInterval(() => void holen(), LIVE_REFRESH_MS);
     return () => {
       cancelled = true;
       window.clearInterval(timer);
     };
-  }, [liveActive, symbol, timeframe]);
+  }, [symbol, timeframe, marktOffen]);
 
   /** Historie aus NinjaTrader nachladen und danach ganz normal analysieren.
    *
@@ -769,6 +821,7 @@ export default function App() {
               // Bis /health da ist UTC: eine geratene Zone waere schlimmer als
               // eine erkennbar unlokalisierte.
               timeZone={health?.display_timezone ?? 'UTC'}
+              onNeedOlder={GROBE_TIMEFRAMES.has(timeframe) ? undefined : handleNeedOlder}
             />
             {/* ECHTZEIT bedeutet Handelsbetrieb, BEOBACHTUNG nur Zusehen. Der
                 Unterschied muss sichtbar sein: im einen Fall koennen Orders

@@ -49,6 +49,18 @@ export interface MarketStatus {
   is_rth: boolean;
   /** Boersenzeitzone - die Zone, in der diese Aussage gilt. */
   timezone: string;
+
+  /** Zeitstempel der juengsten gespeicherten Kerze, in Nanosekunden. `0`,
+   *  wenn es keine gibt. */
+  letzte_kerze_ts?: number;
+  /** Alter dieser Kerze in Sekunden, `null` wenn es keine gibt.
+   *
+   *  Ob ueberhaupt Kerzen hereinkommen, sieht man sonst nur, indem man den
+   *  Chart mit der Uhr vergleicht - und ein Chart, der stillsteht, sieht
+   *  genauso aus wie einer bei ruhigem Markt. */
+  datenalter_sekunden?: number | null;
+  /** Kommen gerade Kerzen an? (juengste Kerze juenger als die Grenze) */
+  daten_frisch?: boolean;
 }
 
 /** Eine Meldung des Kursstroms (`/api/ticks`). Bewusst winzig: nur der

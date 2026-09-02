@@ -293,3 +293,91 @@ def test_risiko_endpunkt_weist_die_regeln_als_annahme_aus(client):
     assert antwort["kontoprofil"] == "lucid_pro_50k"
     assert antwort["regeln_sind_annahme"] is True
     assert "ANNAHME" in antwort["regeln_zeile"]
+
+
+# -- Marktzustand und Datenfrische ----------------------------------------
+
+def test_marktzustand_kommt_aus_dem_kalender_nicht_aus_einer_konstanten(client):
+    """``is_open`` stand fest auf ``True`` - eine Kopfzeile, die sonntags
+    "MARKT OFFEN" meldet, ist eine Behauptung mit Autoritaet, keine Auskunft.
+
+    Der Endpunkt fragt die Wanduhr, deshalb wird hier der **Vertrag** geprueft
+    und daneben, dass die Quelle (``globex_state``) den Wochenendfall
+    ueberhaupt kennt. Waere ``is_open`` weiterhin eine Konstante, faellt der
+    zweite Teil nicht auf - der erste schon, sobald jemand den Endpunkt an
+    einem Samstag aufruft.
+    """
+    from datetime import datetime, timezone as tz
+
+    from common.sessions import globex_state
+
+    antwort = client.get("/api/market?symbol=MNQ").json()
+    assert isinstance(antwort["is_open"], bool)
+    assert isinstance(antwort["is_rth"], bool)
+    assert antwort["session"] in {
+        "asia", "london", "new_york", "open", "maintenance", "closed",
+    }
+    # Der Endpunkt spiegelt genau diese Quelle.
+    assert antwort["is_open"] == (globex_state(datetime.now(tz.utc)) == "open")
+    # Und die Quelle kennt das Wochenende.
+    assert globex_state(datetime(2026, 8, 29, 12, 0, tzinfo=tz.utc)) == "weekend"
+
+
+def test_datenfrische_wird_ausgewiesen(client):
+    """Ob Kerzen hereinkommen, sieht man sonst nur, indem man den Chart mit
+    der Uhr vergleicht - ein stillstehender Chart sieht aus wie ein ruhiger
+    Markt (Laurins Frage vom 31.08.2026)."""
+    antwort = client.get("/api/market?symbol=MNQ").json()
+    assert "letzte_kerze_ts" in antwort
+    assert "datenalter_sekunden" in antwort
+    assert "daten_frisch" in antwort
+    assert isinstance(antwort["daten_frisch"], bool)
+    if antwort["letzte_kerze_ts"]:
+        # Nanosekunden, nicht Mikro- oder Millisekunden.
+        assert len(str(antwort["letzte_kerze_ts"])) == 19
+        assert antwort["datenalter_sekunden"] is not None
+    else:
+        assert antwort["datenalter_sekunden"] is None
+        assert antwort["daten_frisch"] is False
+
+
+def test_session_meldet_bot_und_datenstrom_getrennt(client):
+    """Ein laufender Bot ohne Datenstrom ist kein Echtzeitbetrieb - und die
+    Anzeige darf das nicht behaupten. ``active`` verlangt beides."""
+    antwort = client.get("/api/session").json()
+    assert antwort["active"] == (antwort["running"] and antwort["connected"])
+    # Laeuft der Bot ohne Kerzen, muss die Ursache dastehen statt still zu
+    # bleiben.
+    if antwort["running"] and not antwort["connected"]:
+        assert antwort["warnings"], "kein Hinweis auf den fehlenden Datenstrom"
+        assert "ntbridge" in " ".join(antwort["warnings"])
+
+
+# -- Chart-Kerzen: Zeitstempel-Einheit ------------------------------------
+
+def test_bars_kommen_in_echten_nanosekunden():
+    """pandas 3 parst ISO8601 als datetime64[us]. ``DatetimeIndex.asi8`` gab
+    dann Mikrosekunden - das Frontend teilt durch 1e9 und landet im Januar
+    1970 (der schwarze Chart, den Laurin am 31.08.2026 meldete).
+    """
+    import pandas as pd
+
+    index = pd.to_datetime(
+        pd.Series(["2026-08-30T13:00:00+00:00", "2026-08-30T13:01:00+00:00"]),
+        utc=True,
+        format="ISO8601",
+    )
+    rahmen = pd.DataFrame(
+        {"open": [1.0, 2.0], "high": [1.0, 2.0], "low": [1.0, 2.0],
+         "close": [1.0, 2.0], "volume": [10.0, 20.0]},
+        index=pd.DatetimeIndex(index),
+    )
+
+    bars = server._rahmen_zu_bars(rahmen)
+
+    assert [b["ts"] for b in bars] == [1788094800_000_000_000, 1788094860_000_000_000]
+    # Die Sekunden, die das Frontend daraus macht, muessen 2026 ergeben.
+    zurueck = pd.Timestamp(bars[0]["ts"] // 1_000_000_000, unit="s", tz="UTC")
+    assert zurueck.year == 2026
+    # streng aufsteigend und je Minute verschieden (sonst wirft die Chart-Lib)
+    assert bars[1]["ts"] - bars[0]["ts"] == 60_000_000_000

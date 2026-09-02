@@ -27,7 +27,7 @@ from backtest.compare import (
     render_table,
     run_on_split,
 )
-from backtest.data import BarRequest, create_provider
+from backtest.data import PROVIDER, BarRequest, create_provider
 from backtest.data.csv_provider import CsvDataProvider
 from backtest.engine import Backtester, CostModel
 from backtest.kosten import PROFILE, profil_aus_config
@@ -94,10 +94,13 @@ def load_data(config: Config, args: argparse.Namespace) -> pd.DataFrame:
 
     if provider_name == "csv":
         provider = create_provider("csv", directory=config.backtest.csv_directory, path=args.csv)
+    elif provider_name == "ntbridge":
+        # Die echte NT8-Historie. Der Pfad kommt aus der Config, damit
+        # Forschung und Betrieb dieselbe Datei lesen.
+        provider = create_provider("ntbridge", database=config.ntbridge.database)
     else:
-        # Seit dem 22.08.2026 gibt es nur noch "csv". create_provider wirft
-        # mit einer Liste der verfuegbaren Quellen, statt still etwas anderes
-        # zu nehmen.
+        # create_provider wirft mit einer Liste der verfuegbaren Quellen,
+        # statt still etwas anderes zu nehmen.
         provider = create_provider(provider_name)
 
     request = BarRequest(
@@ -321,7 +324,12 @@ def build_parser() -> argparse.ArgumentParser:
         # Nur registrierte Quellen anbieten. "tradovate" stand hier noch, nachdem
         # der Provider mit dem Legacy-Pfad entfallen war - die Option lief in
         # einen DataProviderError statt gar nicht erst waehlbar zu sein.
-        target.add_argument("--provider", choices=("csv",))
+        target.add_argument(
+            "--provider",
+            choices=tuple(sorted(PROVIDER)),
+            help="'ntbridge' = die echte NT8-Historie aus ntbridge.sqlite3, "
+                 "'csv' = eine Datei aus data/",
+        )
         target.add_argument("--csv", help="Expliziter Pfad zu einer CSV-Datei")
         target.add_argument("--start", help="ISO-Datum, z.B. 2025-01-01")
         target.add_argument("--end", help="ISO-Datum")

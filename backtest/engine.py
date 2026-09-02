@@ -33,10 +33,13 @@ import pandas as pd
 from backtest.kosten import Kostenprofil
 from backtest.strategies.base import BarContext, RuleStrategy
 from common.config import IndicatorConfig, MarketConfig, SessionConfig
+from common.ereignisse.opening_range import opening_range_spalten
 from common.indicators import compute_indicators
 from common.instruments import get_instrument
 from common.levels import initial_balance_per_session
+from common.muster_serie import doppelmuster_spalten
 from common.sessions import session_dates
+from common.strukturniveaus import strukturniveau_spalten
 
 log = logging.getLogger(__name__)
 
@@ -102,6 +105,22 @@ class BacktestResult:
     #: voellig anderes Geschaeft, und ein Ergebnis ohne diese Angabe laesst
     #: sich nicht einordnen.
     kosten: dict[str, Any] = field(default_factory=dict)
+
+    #: Wie oft der Stop tatsaechlich auf einem Strukturniveau sass und wie
+    #: oft auf das ATR-Vielfache zurueckgefallen wurde.
+    #:
+    #: WARUM DAS IM ERGEBNIS STEHT: ohne diese Zahl liesse sich eine
+    #: Stop-Variante nicht beurteilen. Griff das Niveau nur bei einem Zehntel
+    #: der Trades, misst man ueberwiegend den Rueckfall und nennt es "Stop am
+    #: letzten Tief".
+    strukturstops: int = 0
+    stop_rueckfaelle: int = 0
+
+    @property
+    def strukturstop_anteil(self) -> float | None:
+        """Anteil der Trades mit echtem Strukturstop. ``None`` ohne Trades."""
+        gesamt = self.strukturstops + self.stop_rueckfaelle
+        return self.strukturstops / gesamt if gesamt else None
 
     def trades_dataframe(self) -> pd.DataFrame:
         if not self.trades:
@@ -232,6 +251,31 @@ class Backtester:
         ib = initial_balance_per_session(enriched, instrument, self._market.session)
         for spalte in ib.columns:
             enriched[spalte] = ib[spalte]
+
+        # Opening Range (5/15/30 Minuten) - dieselbe Bauart wie die Initial
+        # Balance, nur kuerzere Fenster. Sie sind Niveauquellen fuer die
+        # Ereignis-Erkenner, kein eigenes Muster.
+        opening = opening_range_spalten(enriched, instrument, self._market.session)
+        for spalte in opening.columns:
+            enriched[spalte] = opening[spalte]
+
+        # Chartmuster als Serie (Doppelboden/Doppeltop). Aus
+        # common/muster_serie.py, das dieselben Schwellen benutzt wie der
+        # punktuelle Erkenner in common/patterns.py - ein Test haelt fest,
+        # dass beide zum selben Urteil kommen.
+        #
+        # Die Spalten stehen auf dem Verfuegbarkeitszeitpunkt, nicht auf dem
+        # Extrem: ein Swing-Tief ist an seiner eigenen Kerze nicht erkennbar.
+        muster = doppelmuster_spalten(enriched, atr=enriched.get("atr"))
+        for spalte in muster.columns:
+            enriched[spalte] = muster[spalte]
+
+        # Strukturniveaus - wohin ein Stop chartlich gehoert. Auch hier auf
+        # dem Verfuegbarkeitszeitpunkt: ein Stop auf einem Tief, das beim
+        # Einstieg noch nicht bestaetigt war, ist Wissen aus der Zukunft.
+        niveaus = strukturniveau_spalten(enriched)
+        for spalte in niveaus.columns:
+            enriched[spalte] = niveaus[spalte]
         return enriched
 
     # -- Hauptschleife -----------------------------------------------------
@@ -268,6 +312,54 @@ class Backtester:
         atrs = data["atr"].to_numpy(dtype=float)
         sessions = data["session_date"].to_numpy()
         timestamps = data.index
+
+        # Nur die Spalten als Arrays vorhalten, die diese Strategie
+        # tatsaechlich liest.
+        #
+        # WARUM: die Schleife baute je Kerze zwei pandas-Series ueber
+        # data.iloc[i]. Bei einem vorbereiteten Rahmen mit ueber vierzig
+        # Spalten ist das der Engpass des ganzen Laufs - und er waechst mit
+        # jeder Spalte, die irgendwo dazukommt, auch wenn die Strategie sie
+        # gar nicht braucht. Ueber sieben Jahre 5m-Daten (519.000 Kerzen)
+        # macht das Minuten aus.
+        #
+        # BarContext.value greift ueber .get() zu; ein Dict genuegt dafuer.
+        gebraucht = sorted(strategy.benoetigte_spalten() & set(data.columns))
+        spaltenwerte = {
+            name: data[name].to_numpy() for name in gebraucht
+        }
+
+        def zeile(index: int) -> dict[str, Any]:
+            return {name: werte[index] for name, werte in spaltenwerte.items()}
+
+        # Strukturelle Stops und Ziele lesen ihr Niveau aus einer Spalte.
+        tick_size = self._costs.tick_size
+        strukturstops = 0
+        stop_rueckfaelle = 0
+
+        def _strukturniveau(
+            spalte: str | None, index: int, richtung: int, *, puffer: float
+        ) -> float | None:
+            """Das Niveau der Entscheidungskerze, um ``puffer`` verschoben.
+
+            ``puffer`` ist bereits vorzeichenbehaftet gedacht: negativ heisst
+            "jenseits des Niveaus in Positionsrichtung" (Stop), positiv
+            heisst "diesseits" (Ziel). Multipliziert wird mit der Richtung,
+            damit dieselbe Angabe fuer Long und Short passt.
+            """
+            if not spalte or index < 0:
+                return None
+            werte = spaltenwerte.get(spalte)
+            if werte is None:
+                return None
+            roh = werte[index]
+            try:
+                niveau = float(roh)
+            except (TypeError, ValueError):
+                return None
+            if np.isnan(niveau):
+                return None
+            return niveau + richtung * puffer
 
         trades: list[Trade] = []
         equity_values = np.zeros(len(data), dtype=float)
@@ -308,8 +400,6 @@ class Backtester:
             target_price = None
 
         for i in range(len(data)):
-            row = data.iloc[i]
-            previous_row = data.iloc[i - 1] if i > 0 else None
             is_last_bar = i == len(data) - 1
             last_bar_of_session = (
                 is_last_bar or sessions[i] != sessions[i + 1]
@@ -327,11 +417,58 @@ class Backtester:
                     entry_price = fill
                     entry_index = i
                     reference_atr = atrs[i - 1] if i > 0 else atrs[i]
-                    if not np.isnan(reference_atr):
-                        if strategy.stop_loss_atr:
-                            stop_price = fill - direction * strategy.stop_loss_atr * reference_atr
-                        if strategy.take_profit_atr:
-                            target_price = fill + direction * strategy.take_profit_atr * reference_atr
+
+                    # Strukturelles Niveau VOR ATR: der Stop gehoert hinter
+                    # den Halt, der die Bewegung getragen hat, nicht auf ein
+                    # Vielfaches der Schwankungsbreite.
+                    #
+                    # Gelesen wird das Niveau der ENTSCHEIDUNGSKERZE (i-1),
+                    # nicht der Ausfuehrungskerze. Das Niveau bei i kennt der
+                    # Handelnde beim Setzen des Auftrags noch nicht.
+                    stop_spalte = (
+                        strategy.stop_loss_spalte
+                        if direction == LONG
+                        else strategy.stop_loss_spalte_short
+                    )
+                    stop_price = _strukturniveau(
+                        stop_spalte, i - 1, direction,
+                        puffer=-strategy.stop_loss_puffer_ticks * tick_size,
+                    )
+                    if stop_price is None and (
+                        stop_spalte is None or strategy.stop_rueckfall_auf_atr
+                    ):
+                        if strategy.stop_loss_atr and not np.isnan(reference_atr):
+                            stop_price = (
+                                fill - direction * strategy.stop_loss_atr * reference_atr
+                            )
+                            if stop_spalte is not None:
+                                stop_rueckfaelle += 1
+                    elif stop_price is not None:
+                        strukturstops += 1
+
+                    # Ein Stop auf der falschen Seite des Einstiegs waere kein
+                    # Stop. Das passiert, wenn das Niveau beim Einstieg schon
+                    # ueberschritten war - dann greift der Rueckfall.
+                    if stop_price is not None and (fill - stop_price) * direction <= 0:
+                        stop_price = None
+                        if strategy.stop_loss_atr and not np.isnan(reference_atr):
+                            stop_price = (
+                                fill - direction * strategy.stop_loss_atr * reference_atr
+                            )
+                            stop_rueckfaelle += 1
+                            strukturstops -= 1
+
+                    target_price = _strukturniveau(
+                        strategy.take_profit_spalte, i - 1, direction,
+                        puffer=strategy.take_profit_puffer_ticks * tick_size,
+                    )
+                    if target_price is None and strategy.take_profit_atr:
+                        if not np.isnan(reference_atr):
+                            target_price = (
+                                fill + direction * strategy.take_profit_atr * reference_atr
+                            )
+                    if target_price is not None and (target_price - fill) * direction <= 0:
+                        target_price = None
                 pending = None
 
             # --- 2. Stop / Ziel innerhalb der Kerze -----------------------
@@ -365,8 +502,8 @@ class Backtester:
             # --- 4. Signale auf Schlusskurs auswerten ---------------------
             if not is_last_bar and not last_bar_of_session:
                 ctx = BarContext(
-                    row=row,
-                    previous=previous_row,
+                    row=zeile(i),
+                    previous=zeile(i - 1) if i > 0 else None,
                     timestamp=timestamps[i],
                     position=position,
                     bars_in_trade=(i - entry_index) if position != FLAT else 0,
@@ -389,13 +526,20 @@ class Backtester:
             period_end=timestamps[-1].to_pydatetime(),
             label=label,
             kosten=self._costs.herkunft(),
+            strukturstops=strukturstops,
+            stop_rueckfaelle=stop_rueckfaelle,
         )
         log.info(
-            "Backtest '%s'%s: %d Trades, Netto %.2f USD",
+            "Backtest '%s'%s: %d Trades, Netto %.2f USD%s",
             strategy.name,
             f" ({label})" if label else "",
             len(trades),
             realized,
+            (
+                f" (Strukturstop bei {result.strukturstop_anteil:.0%} der Trades)"
+                if result.strukturstop_anteil is not None
+                else ""
+            ),
         )
         return result
 
