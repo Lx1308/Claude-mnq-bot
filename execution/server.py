@@ -209,8 +209,22 @@ class OrderRequest(BaseModel):
     qty: int = 1
     price: Optional[float] = None
     stop_price: Optional[float] = None
+
+    #: ABSOLUTE Kurse. So liefert sie der Bot aus der Ideen-Tabelle.
     stop_loss: Optional[float] = None
     take_profit: Optional[float] = None
+
+    #: ABSTAENDE in Punkten. Das Order-Panel zeigt "SL 20 / TP 40" und meint
+    #: 20 bzw. 40 Punkte vom Einstieg weg. Bei einer Marktorder ist der
+    #: Einstiegskurs hier noch unbekannt, der Abstand laesst sich also gar
+    #: nicht in einen Kurs umrechnen - das kann nur NinjaTrader.
+    #:
+    #: Bis zum 02.09.2026 schickte das Panel diese 20 im Feld ``stop_loss``.
+    #: Der Server reichte sie als Kurs weiter, NinjaTrader legte ein
+    #: Verkaufslimit bei Kurs 40 an, und die Position schloss eine Sekunde
+    #: nach dem Einstieg. Deshalb sind es jetzt zwei getrennte Felder.
+    stop_loss_points: Optional[float] = None
+    take_profit_points: Optional[float] = None
     kind: Optional[str] = "MARKET"
     #: Freitext aus dem Order-Panel bzw. Hypothese des Bots.
     grund: Optional[str] = None
@@ -314,6 +328,8 @@ def submit_order(anfrage: OrderRequest):
             stop_preis=anfrage.stop_price if art == "STOP" else None,
             stop_loss=anfrage.stop_loss or None,
             take_profit=anfrage.take_profit or None,
+            stop_loss_punkte=anfrage.stop_loss_points or None,
+            take_profit_punkte=anfrage.take_profit_points or None,
             idee_id=anfrage.idee_id,
             hypothese=anfrage.hypothese,
             begruendung={
@@ -362,8 +378,13 @@ def get_pending_orders():
             "order_type": o["art"],
             "limit_price": o["limit_preis"] or 0.0,
             "stop_price": o["stop_preis"] or 0.0,
+            # Beide Bedeutungen getrennt auf die Leitung. Das AddOn nimmt den
+            # Kurs, wenn einer da ist, und rechnet sonst den Abstand gegen den
+            # Markt um - nur es kennt den Einstiegskurs einer Marktorder.
             "stop_loss_price": o["stop_loss"] or 0.0,
             "take_profit_price": o["take_profit"] or 0.0,
+            "stop_loss_points": o["stop_loss_punkte"] or 0.0,
+            "take_profit_points": o["take_profit_punkte"] or 0.0,
             "account_name": o["konto"],
         }
         for o in STORE.zu_senden()

@@ -52,8 +52,21 @@ CREATE TABLE IF NOT EXISTS orders (
     menge           INTEGER NOT NULL,
     limit_preis     REAL,
     stop_preis      REAL,
+    -- ABSOLUTE Kurse. So liefert sie der Bot aus der Ideen-Tabelle
+    -- (entry 29130.75, stop 29173.40) und so erwartet sie das NinjaScript.
     stop_loss       REAL,
     take_profit     REAL,
+    -- ABSTAENDE in Punkten. So bedient der Mensch das Order-Panel ("SL 20").
+    -- Bei einer Marktorder ist der Einstiegskurs beim Absenden noch nicht
+    -- bekannt, der Abstand laesst sich hier also gar nicht in einen Kurs
+    -- umrechnen - das kann nur NinjaTrader, das den Markt sieht.
+    --
+    -- Genau diese Verwechslung hat am 02.09.2026 eine Order zerstoert: das
+    -- Panel schickte 20/40, der Server reichte sie als KURSE weiter, und
+    -- NinjaTrader legte ein Verkaufslimit bei Kurs 40 an. Das war sofort
+    -- ausfuehrbar und schloss die Position eine Sekunde nach dem Einstieg.
+    stop_loss_punkte    REAL,
+    take_profit_punkte  REAL,
     status          TEXT NOT NULL,
     nt_zustand      TEXT,                   -- letzter Zustand laut NinjaTrader
     fehler          TEXT,
@@ -168,11 +181,25 @@ class Order:
     konto: str = "Sim101"
     limit_preis: float | None = None
     stop_preis: float | None = None
+
+    #: ABSOLUTE Kurse - so liefert sie der Bot aus der Ideen-Tabelle.
     stop_loss: float | None = None
     take_profit: float | None = None
+
+    #: ABSTAENDE in Punkten - so bedient der Mensch das Order-Panel.
+    #: Entweder das eine Paar oder das andere, nie beide: sonst gaebe es
+    #: zwei Wahrheiten darueber, wo der Stop liegt.
+    stop_loss_punkte: float | None = None
+    take_profit_punkte: float | None = None
+
     idee_id: str | None = None
     hypothese: str | None = None
     begruendung: dict[str, Any] = field(default_factory=dict)
+
+    @property
+    def hat_schutz(self) -> bool:
+        """Ist ueberhaupt ein Stop angegeben - als Kurs oder als Abstand?"""
+        return bool(self.stop_loss) or bool(self.stop_loss_punkte)
 
     def __post_init__(self) -> None:
         self.richtung = str(self.richtung).strip().lower()
@@ -192,6 +219,23 @@ class Order:
             raise ValueError("LIMIT-Order ohne limit_preis.")
         if self.art == "STOP" and not self.stop_preis:
             raise ValueError("STOP-Order ohne stop_preis.")
+        # Kurs UND Abstand gleichzeitig waeren zwei Wahrheiten darueber, wo
+        # der Stop liegt. Welche davon NinjaTrader nimmt, waere Auslegung -
+        # und beim Stop ist Auslegung das Letzte, was man will.
+        if self.stop_loss and self.stop_loss_punkte:
+            raise ValueError(
+                "stop_loss (Kurs) und stop_loss_punkte (Abstand) sind beide "
+                "gesetzt. Genau eins von beidem angeben."
+            )
+        if self.take_profit and self.take_profit_punkte:
+            raise ValueError(
+                "take_profit (Kurs) und take_profit_punkte (Abstand) sind "
+                "beide gesetzt. Genau eins von beidem angeben."
+            )
+        for name in ("stop_loss_punkte", "take_profit_punkte"):
+            wert = getattr(self, name)
+            if wert is not None and float(wert) < 0:
+                raise ValueError(f"{name} ist ein Abstand und darf nicht negativ sein.")
 
 
 def _jetzt() -> str:
@@ -215,7 +259,27 @@ class ExecutionStore:
         # WAL: der Bot schreibt, waehrend die Oberflaeche liest.
         self._conn.execute("PRAGMA journal_mode=WAL")
         self._conn.executescript(SCHEMA)
+        self._ergaenze_spalten()
         self._conn.commit()
+
+    #: Spalten, die nach der ersten Fassung dazugekommen sind. ``CREATE TABLE
+    #: IF NOT EXISTS`` legt eine bestehende Tabelle nicht neu an, also fehlen
+    #: sie in Datenbanken, die vorher entstanden sind - und ein INSERT liefe
+    #: dort in einen OperationalError.
+    _NACHGEREICHT = (
+        ("orders", "stop_loss_punkte", "REAL"),
+        ("orders", "take_profit_punkte", "REAL"),
+    )
+
+    def _ergaenze_spalten(self) -> None:
+        for tabelle, spalte, typ in self._NACHGEREICHT:
+            vorhanden = {
+                r[1] for r in self._conn.execute(f"PRAGMA table_info({tabelle})")
+            }
+            if spalte not in vorhanden:
+                self._conn.execute(
+                    f"ALTER TABLE {tabelle} ADD COLUMN {spalte} {typ}"
+                )
 
     def close(self) -> None:
         with self._lock:
@@ -229,13 +293,15 @@ class ExecutionStore:
             self._conn.execute(
                 "INSERT INTO orders (order_id, erstellt_utc, zuletzt_utc, quelle, "
                 "konto, instrument, richtung, art, menge, limit_preis, stop_preis, "
-                "stop_loss, take_profit, status, idee_id, hypothese, begruendung) "
-                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
+                "stop_loss, take_profit, stop_loss_punkte, take_profit_punkte, "
+                "status, idee_id, hypothese, begruendung) "
+                "VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
                 (
                     order_id, jetzt, jetzt, order.quelle, order.konto,
                     order.instrument, order.richtung, order.art, order.menge,
                     order.limit_preis, order.stop_preis, order.stop_loss,
-                    order.take_profit, OrderStatus.ANGELEGT, order.idee_id,
+                    order.take_profit, order.stop_loss_punkte,
+                    order.take_profit_punkte, OrderStatus.ANGELEGT, order.idee_id,
                     order.hypothese, json.dumps(order.begruendung, default=str),
                 ),
             )
