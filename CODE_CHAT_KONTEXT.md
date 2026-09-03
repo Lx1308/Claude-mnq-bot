@@ -4243,3 +4243,37 @@ dieselbe Kontrolle, andere Kerzen — das ist die nächste Messung.
 
 `data/w_kandidaten.npz` (Zwischenspeicher) und `data/w_stufenmessung.csv`
 (Rohtabelle) sind gitignoriert und aus der Kerzenhistorie reproduzierbar.
+
+
+## 43. Der Order-Bracket-Fix war nie ausgeliefert (03.09.2026)
+
+Laurin am 03.09.: *"der order bug in tradayri ist immernoch nicht behoben
+obwohl ich neugestartet, kompiliert etc hab."*
+
+**Ursache:** Der Fix vom 02.09. stand im Quelltext
+(`ui/frontend/src/panels/OrderPanel.tsx` schickt seither `stop_loss_points`),
+aber die Oberflaeche wird aus `ui/frontend/dist/` ausgeliefert - und dort lag
+noch der Bundle vom **31.08.2026, 00:52**. Im ausgelieferten JavaScript stand
+unveraendert `stop_loss:`, das Kursfeld.
+
+NinjaScript neu kompilieren und die App neu starten half deshalb nichts: das
+Frontend muss **gebaut** werden, nicht kompiliert.
+
+    cd uirontend && npm run build
+
+**Warum das keiner gemerkt hat:** `dist/` ist gitignoriert, es gab keinen
+Test ueber den ausgelieferten Stand, und der Server sagt beim Start nur
+etwas, wenn `dist/` ganz fehlt - nicht, wenn es veraltet ist. Ein Fix, der
+im Quelltext steht und in der Realitaet nicht wirkt, ist von innen
+unsichtbar.
+
+**Neu: `tests/test_ui_bundle_aktuell.py`.** Zwei Pruefungen:
+
+1. Keine Datei unter `ui/frontend/src` darf neuer sein als der neueste Stand
+   in `dist/` (120 Sekunden Toleranz wegen frischer Clones). Das faengt
+   JEDE ungebaute Aenderung, nicht nur diese eine.
+2. Der ausgelieferte Bundle muss `stop_loss_points` enthalten und darf
+   `stop_loss:` nicht mehr enthalten.
+
+Gegengeprueft: mit einem um zwei Stunden vorgestellten Zeitstempel schlaegt
+der Waechter an und nennt den Build-Befehl im Fehlertext.
