@@ -59,3 +59,9 @@ dist/
 
 # Arbeitsdateien einzelner Sitzungen - nie ins Repo.
 .scratch/
+
+# Bilder des Musterreferenzsatzes - aus der Kerzenhistorie jederzeit neu zu
+# erzeugen. Laurins URTEILE dagegen sind nicht reproduzierbar und liegen
+# deshalb als Text in data/w_referenz_urteile.csv, das versioniert wird.
+data/w_referenz_bilder/
+*.sqlite3-journal

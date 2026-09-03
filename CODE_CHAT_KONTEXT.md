@@ -2,6 +2,21 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
+Stand: 2026-09-03 (Abschnitt 41 - **W-Erkennung: Kalibrierung statt Raten.**
+Der Formtest ist jetzt EINE Kennzahl (`common/w_schablone.py`, Schablonen-
+vergleich nach Laurins eigenem Kriterium) statt dreier Einzelregeln; das
+zweite Tief wird nicht mehr beim ersten Ruecklauf genommen, sondern als
+Minimum bis zur bestaetigten Umkehr, und pro erstem Tief entstehen mehrere
+Kandidaten. Schwellen liegen in `config.yaml` unter `patterns.doppelboden`.
+**Nichts davon ist gemessen - die Definition ist nicht freigegeben.** Neu:
+der Referenzsatz (`werkzeuge/w_referenz.py` + `_server.py`), 150 Kandidaten
+und 100 Zufallsfenster zur Beurteilung durch Laurin, damit Schwellen messbar
+werden statt erfragt. **Zwei Befunde warten auf seine Entscheidung**
+(`docs/OFFENE_FRAGEN.md`): `max_unter = 0,15` verwirft sein eigenes W, und
+der Formfehler bevorzugt bei genau diesem W den abgeschnittenen Kandidaten -
+beides als bestehende Tests festgehalten, die Schablone bewusst NICHT
+angepasst.)
+
 Stand: 2026-08-31 (Abschnitte 37–40 — **Ereignisdatenbank Etappen 1–4 und 8
 gebaut, erster Befund steht**: 2.592.334 Ereignisse + 23,3 Mio Outcome-Zeilen
 in `data/eventdb.sqlite3` (~7 GB), sieben serielle Erkenner in
@@ -3957,3 +3972,148 @@ Abfragen + deckender Index). Selbst danach ist jede Auswertung Gigabyte-Arbeit
 auf diesem Laptop. Weg 2 aus `docs/UEBERGABE_2026-08-31.md` Teil 3
 (Swing-Niveaus ausduennen, ~800 k Ereignisse weniger) ist auf dieser Hardware
 wohl noetig, nicht nur wuenschenswert - Laurins Entscheidung.
+
+## 41. W-Erkennung: Kalibrierung statt Raten (03.09.2026)
+
+Vier Anläufe an der W-Definition sind daran gescheitert, dass die Schwellen aus
+**zwei** Beispielen von Laurin stammten. Damit ließ sich kein Kandidat prüfen —
+jede Frage ging an Laurin zurück, und jede Antwort galt für genau ein Bild.
+Diese Sitzung baut die Grundlage, auf der Schwellen *messbar* werden.
+
+**Nichts davon ist gemessen. Die Definition ist nicht freigegeben.**
+
+### 41.1 Neu: `common/w_schablone.py` — die Form als eine Kennzahl
+
+Ersetzt drei Einzelregeln (`max_rueckschlag`, Gipfel-Mittigkeit,
+Schenkelverhältnis) durch den **Formfehler**, nach Laurins Kriterium: *„am
+einfachsten ist, wenn man ein W drüberlegt und das ca. passt."*
+
+Geglättetes Segment Tief 1 → Tief 2, Zeit und Preis je per Min-Max auf [0,1],
+darüber eine W-Schablone aus fünf Ankerpunkten
+`(0,0) · (p/2,½) · (p,1) · ((1+p)/2,½) · (1,0)`, Gipfellage `p` von 0,10 bis
+0,90 in 2-%-Schritten durchgeschoben. Die kleinste RMS-Abweichung ist der
+Formfehler, das zugehörige `p` die Gipfellage. Verglichen wird auf einem festen
+Raster von 101 Punkten, damit ein 15-Kerzen- und ein 200-Kerzen-Muster
+vergleichbar bleiben.
+
+Einordnung: perfektes W ≈ 0 · Gerade 0,20 · Plateau 0,35 · Rauschen 0,42 ·
+Laurins echtes W 0,085.
+
+**Das löst die Plateau-Frage ohne eigene Regel.** Die Schablone steigt und fällt
+durchgehend; ein Plateau tut weder das eine noch das andere und bekommt
+automatisch einen großen Fehler.
+
+**Bekannte Schwäche, gemessen und festgenagelt:** ein *perfektes* W bekommt
+0,082 bei 8 Stützstellen und 0,001 bei 400. Ursache ist die Min-Max-Normierung:
+liegt die Spitze zwischen zwei Kerzen, wird das beobachtete Maximum auf 1,0
+gestreckt und die ganze Linie mit hochgezogen. Kurze Muster tragen also einen
+Aufschlag in der Größenordnung des Signals. `docs/OFFENE_FRAGEN.md` Punkt 2;
+Vorschlag ist eine affine Anpassung per kleinster Quadrate statt Min-Max —
+**nicht umgesetzt**, weil die Vorgabe Min-Max lautete.
+
+### 41.2 `common/muster_w.py` neu geschrieben — das zweite Tief
+
+Der bestätigte Fehler vom 02.09.: die Schleife brach bei der **ersten** Kerze
+ab, die ins Tiefband zurückkam. Bei Laurins W lieferte das die 13:50 bei
+29.041,75 statt der 13:56 bei 29.017,25 — sechs Kerzen zu früh, 24 Punkte zu
+hoch.
+
+Korrektur:
+
+- weiterlaufen, bis die Umkehr **bestätigt** ist (Schluss ≥
+  `bestaetigung_anteil` der Musterhöhe über dem laufenden Minimum)
+- als `tief2` gilt das **Minimum** des Abschnitts, nicht der erste Treffer
+- **kein `break` mehr**: ein späteres, tieferes Minimum ergibt einen *zweiten*
+  Kandidaten zum selben ersten Tief. Welcher gilt, entscheidet die Form
+- der Bestätigungsindex ist der früheste zulässige Einstieg; ausgeführt wird
+  zur Eröffnung der Folgekerze
+
+Das Band wird immer aus `(Hoch − erstes Tief)` gebildet, nie unter Einbezug des
+laufenden Minimums — sonst zöge ein langsames Abrutschen das Band mit sich nach
+unten und erlaubte sich selbst.
+
+Weggefallen: `n_gruen`/`max_warten` (der Bestätigungszeitpunkt ersetzt sie),
+`max_rueckschlag`, `max_schenkel_verhaeltnis`, die Gipfel-Mittigkeit.
+
+**Nebenbefund beim Nachlesen: der Abbruch am Nackenlinienbruch war toter
+Code.** Verglichen wurde `close > hoch` gegen das *laufende* Hoch — das in
+derselben Kerze schon mitgezogen worden war. Ein Schlusskurs liegt nie über
+dem eigenen Hoch, die Bedingung konnte also nie zutreffen. Jetzt wird gegen
+die beim Beginn des Rücklaufs **eingefrorene** Nackenlinie verglichen.
+Festgehalten in `test_nach_dem_nackenlinienbruch_kommt_kein_kandidat_mehr`.
+
+`bester_je_tief()` wählt je erstem Tief den kleinsten Formfehler — im Docstring
+ausdrücklich als **Auswertungsfunktion, nicht live-tauglich** markiert: sie
+vergleicht Kandidaten mit verschiedenen Bestätigungszeitpunkten.
+
+### 41.3 Schwellen aus dem Code in `config.yaml`
+
+Neu `patterns.doppelboden` mit `DoppelbodenConfig`/`PatternsConfig` in
+`common/config.py`, inklusive abbrechender Startprüfungen (Anteile zwischen 0
+und 1, `max_dauer > min_dauer`, `min_dauer ≥ 4`). `max_formfehler` ist bewusst
+`null`: die Schranke kommt aus der Kalibrierung, nicht aus einer Schätzung, und
+solange sie fehlt, gibt der Erkenner den Wert nur aus.
+
+### 41.4 Zwei Befunde, die Laurin entscheiden muss
+
+Beide in `docs/OFFENE_FRAGEN.md`, beide als bestehende Tests festgehalten.
+
+**`max_unter = 0,15` verwirft Laurins eigenes W.** Sein zweites Tief liegt
+19,50 Punkte unter dem ersten = **23,7 %** der damals bekannten Spanne
+(29.119,00 − 29.036,75 = 82,25). Der Kandidat mit dem richtigen Tief entsteht
+gar nicht. `test_konflikt_max_unter_verwirft_laurins_w2` schlägt fehl, sobald
+der Widerspruch behoben ist — dann ist er zu löschen.
+
+**Die Gegenprobe aus AP2b ist nicht bestanden.** Zum selben ersten Tief hat der
+zu frühe Kandidat (13:50) Formfehler 0,040, Laurins richtiger (13:56) 0,085 —
+die Form bevorzugt den abgeschnittenen. Ursache ist 41.1. Die Schablone wurde
+bewusst **nicht** angepasst.
+
+### 41.5 Neu: der Referenzsatz — `werkzeuge/w_referenz.py` + `_server.py`
+
+150 Kandidaten aus der ganzen Historie und 100 Zufallsfenster mit derselben
+Längenverteilung, gemischt, identisch gerendert, per lokaler HTML-Seite
+beurteilt. Ablage `data/w_referenz.sqlite3`.
+
+Entwurfsentscheidungen, jede gegen eine konkrete Verfälschung:
+
+- **Negativbeispiele.** Ohne sie misst der Sweep nur die Trefferquote innerhalb
+  der Kandidaten; die Frage „wie viel Rauschen lässt diese Schwelle durch" wäre
+  nicht stellbar.
+- **Nach Monaten gleichmäßig ziehen**, nicht aus der Gesamtmenge — sonst wäre
+  der Satz eine Aussage über die volatilen Jahre.
+- **Kein Nachlauf im Bild.** Sonst beschriftet Laurin Gewinner statt Ws.
+- **Kein Datum, kein Kursniveau.** Sonst ließe sich der Chart nachschlagen und
+  der Ausgang doch sehen. Die y-Achse zeigt Punkte über dem Fenstertief.
+- **Marker für beide Klassen nach derselben rein geometrischen Regel**
+  (höchstes Hoch, tiefstes Tief davor, tiefstes Tief danach) statt aus den
+  Feldern des Erkenners — sonst wären die Klassen am Bild unterscheidbar. Bei
+  86 % der Kandidaten liefert die Regel exakt dieselben drei Punkte.
+- **`art` wird der Seite nicht ausgeliefert**, und die Tabelle `urteile` hängt
+  am Zeitfenster, nicht an der Klasse.
+- Spalte `musterart` von Anfang an — dasselbe Werkzeug gilt später für
+  M-Formation, Keil und Flagge.
+- **Abweichung von der Vorgabe:** der Vorlauf ist nicht fest 40 Kerzen, sondern
+  80 % der Formationsdauer (15 bis 60). Bei einer 10-Kerzen-Formation hätten
+  feste 40 Kerzen vier Fünftel des Bildes gefüllt, und beurteilt worden wäre
+  der Vorlauf.
+
+Die Kandidaten werden mit **bewusst weiten** Schwellen gezogen (`max_unter`
+0,35, `min_hoehe_atr` 1,0, kein Formfehler-Filter), damit der Satz den
+Grenzbereich abdeckt und der Sweep später nicht nur sich selbst misst.
+
+### 41.6 Neue Dateien und Tests
+
+| Datei | Zweck |
+|---|---|
+| `common/w_schablone.py` | Formfehler und Gipfellage |
+| `common/muster_w.py` | neu geschrieben (siehe 41.2) |
+| `werkzeuge/w_referenz.py` | Referenzsatz bauen, Bilder rendern |
+| `werkzeuge/w_referenz_server.py` | Beurteilungsseite, Port 8795 |
+| `tests/test_w_schablone.py` | 16 Tests |
+| `tests/test_muster_w.py` | 16 Tests, darunter die Abschneide-Probe |
+| `tests/daten/laurins_w2_2026-09-02.csv` | 101 echte Minutenkerzen als Fixture |
+| `docs/OFFENE_FRAGEN.md` | Entscheidungen, die bei Laurin liegen |
+
+`tests/test_muster_handelbar.py` bleibt bestehen; `common/muster_handelbar.py`
+ist damit überholt, aber noch nicht entfernt — erst wenn die W-Definition steht.

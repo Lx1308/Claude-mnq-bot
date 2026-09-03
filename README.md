@@ -28,8 +28,9 @@ Dazu ein getrenntes Backtesting-Framework.
 9. [Backtesting](#9-backtesting)
 10. [Konfiguration im Detail](#10-konfiguration-im-detail)
 11. [Logging](#11-logging)
-12. [Tests](#12-tests)
-13. [Bekannte Grenzen](#13-bekannte-grenzen)
+12. [Musterreferenzsatz beurteilen](#12-musterreferenzsatz-beurteilen)
+13. [Tests](#13-tests)
+14. [Bekannte Grenzen](#14-bekannte-grenzen)
 
 ---
 
@@ -784,7 +785,45 @@ Payload. Wichtige Typen: `ntbridge.started`, `ntbridge.bars.accepted`,
 
 ---
 
-## 12. Tests
+## 12. Musterreferenzsatz beurteilen
+
+Bevor auf einer Musterdefinition gemessen wird, muss sie **freigegeben** sein.
+Grundlage der Freigabe ist kein einzelnes Beispiel, sondern ein Referenzsatz:
+150 Kandidaten aus der ganzen Historie und 100 Zufallsfenster, gemischt und
+äußerlich nicht unterscheidbar.
+
+Bauen (dauert einige Minuten, schreibt 250 PNGs nach `data/w_referenz_bilder/`):
+
+```bash
+.venv\Scripts\python.exe -m werkzeuge.w_referenz
+```
+
+Beurteilen:
+
+```bash
+.venv\Scripts\python.exe -m werkzeuge.w_referenz_server
+```
+
+Die Seite öffnet sich unter <http://127.0.0.1:8795>. Tastatur: `1` = Ja,
+`2` = Nein, `3` = Unklar, Pfeil links = zurück. Jedes Urteil wird sofort
+gespeichert; Schließen und später weitermachen ist vorgesehen.
+
+Die Bilder zeigen **bewusst nicht**, wie es weiterging, und weder Datum noch
+Kursniveau. Beurteilt wird die Form, nicht der Ausgang — sonst würden Gewinner
+beschriftet statt Muster.
+
+Die Urteile liegen in `data/w_referenz.sqlite3` und zusätzlich als Text in
+`data/w_referenz_urteile.csv`. Nur das CSV wird versioniert: die Bilder sind
+jederzeit neu zu erzeugen, die Urteile nicht.
+
+```bash
+.venv\Scripts\python.exe -m werkzeuge.w_referenz --export          # CSV neu schreiben
+.venv\Scripts\python.exe -m werkzeuge.w_referenz --import-urteile  # CSV zurücklesen
+```
+
+---
+
+## 13. Tests
 
 ```bash
 .venv\Scripts\python.exe -m pytest              # alles (316)
@@ -825,7 +864,7 @@ statt als „keine Termine".
 
 ---
 
-## 13. Bekannte Grenzen
+## 14. Bekannte Grenzen
 
 **Antwortzeit 10–30 Sekunden.** Für den Auslöser eines 1-Minuten-Einstiegs zu
 langsam. Der Nutzen liegt in der Vorbereitung und in der späteren Auswertung.

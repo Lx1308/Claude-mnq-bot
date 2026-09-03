@@ -2,58 +2,70 @@
 
 STAND: WARTET AUF LAURINS BESTAETIGUNG
 --------------------------------------
-Dieses Modul ist noch nicht freigegeben. Es ersetzt ``muster_handelbar``,
-sobald Laurin bestaetigt hat, dass die gefundenen Formen Ws sind. Bis dahin
-wird darauf NICHT gemessen - der Fehler vom 02.09.2026 war, zu messen, bevor
-die Definition stand.
-
-WAS AN DEN VORGAENGERN FALSCH WAR
----------------------------------
-``muster_serie`` und ``muster_handelbar`` verlangen beide keinen Formtest.
-``muster_handelbar`` etwa nur: ein bestaetigtes Tief, irgendwann danach ein
-Hoch, ein Ruecklauf auf Tiefniveau. Zwischen den Tiefs durfte alles
-passieren - eine 300 Kerzen lange Seitwaertsphase mit zufaelligem Hoch zaehlte
-genauso wie ein sauberes W. Laurins Urteil ueber die Beispiele: "das sind
-alle keine Ws."
+Dieses Modul ist nicht freigegeben. Es wird erst gemessen, wenn Laurin die
+Definition gegen den Referenzsatz (``werkzeuge/w_referenz.py``) bestaetigt
+hat. Der Fehler vom 02.09.2026 war, dreimal vor der Definition zu messen.
 
 SEINE DEFINITION
 ----------------
 "Es heisst W, weil wenn man eine Durchschnittslinie durchlegen wuerde, es
-aussieht wie ein W."
+aussieht wie ein W." Und dazu: "am einfachsten ist, wenn man ein W drueberlegt
+und das ca. passt."
 
-Der Formtest laeuft deshalb auf der GEGLAETTETEN Linie, nicht auf den
-Rohkursen. Das ist keine Feinheit: sein erstes Beispiel steigt von 29290 auf
+Beides zusammen ist der Formtest: die Kurslinie wird geglaettet und gegen eine
+W-Schablone gelegt (``common/w_schablone.py``). Er laeuft auf der GEGLAETTETEN
+Linie, nicht auf den Rohkursen - sein erstes Beispiel steigt von 29290 auf
 29330, faellt auf 29300 zurueck, laeuft seitwaerts und geht erst dann auf
-29360. Roh gerechnet waere das ein Rueckschlag von 75 % des Aufschenkels -
+29360. Roh gerechnet waere das ein Rueckschlag von 75 % des Aufschenkels;
 jeder strenge Formtest auf Rohkursen haette sein eigenes W verworfen.
 
 SEINE BEIDEN BEISPIELE, NACHGEMESSEN
 ------------------------------------
-                          W 1 (01.09.)      W 2 (02.09., 09:38-09:56)
+                          W 1 (01.09.)      W 2 (02.09., 09:38-09:56 ET)
     Hoehe                 ~70 Punkte        101,75 Punkte
     Dauer                 ~105 Kerzen        18 Kerzen
-    Tiefs auseinander     ~0                 19,50 Pkt = 19 % der Hoehe
+    Tiefs auseinander     ~0                 19,50 Pkt
     zweites Tief          gleich             TIEFER als das erste
     Schenkelverhaeltnis   2,15               2,60
 
-Daraus folgen drei Regeln, die keiner der Vorgaenger hatte:
+Daraus folgen drei Regeln, die die Vorgaenger nicht hatten:
 
 1. Das zweite Tief darf das erste UNTERSCHREITEN. Genau das ist die starke
-   Variante - das erste Tief wird abgeraeumt, und DANN dreht es. Beide
-   Vorgaenger hielten so etwas fuer ein kaputtes Muster und brachen ab.
+   Variante - das erste Tief wird abgeraeumt, und DANN dreht es.
 2. Die Dauer reicht von rund 15 bis rund 200 Kerzen. Eine Swing-Staerke von
    30 kann ein 18-Kerzen-W gar nicht sehen; gefiltert wird ueber die HOEHE,
    nicht ueber die Staerke.
-3. Die Schenkel duerfen deutlich ungleich sein - bei beiden Beispielen ist
-   der eine mehr als doppelt so lang wie der andere.
+3. Die Schenkel duerfen deutlich ungleich sein. Eine eigene Schwelle dafuer
+   gibt es nicht mehr - die Schablone verschiebt ihren Gipfel selbst.
+
+DAS ZWEITE TIEF - DER FEHLER VOM 02.09.2026
+-------------------------------------------
+Die Vorgaengerfassung brach bei der ERSTEN Kerze ab, die in das Tiefband
+zurueckkam. Bei Laurins eigenem W lieferte das die 09:50 bei 29.041,75 statt
+der 09:56 bei 29.017,25 - sechs Kerzen zu frueh und 24 Punkte zu hoch.
+
+Hier laeuft die Schleife weiter, bis die Umkehr BESTAETIGT ist: der
+Schlusskurs steigt um ``bestaetigung_anteil`` der Musterhoehe ueber das
+laufende Minimum. Als zweites Tief gilt dann das MINIMUM dieses Abschnitts,
+nicht der erste Treffer.
+
+Und - wichtiger - es wird nicht mehr abgebrochen: macht der Kurs danach ein
+neues, tieferes Minimum und dreht wieder, entsteht ein ZWEITER Kandidat zum
+selben ersten Tief. Welcher davon die W-Form trifft, entscheidet der
+Formfehler und nicht die Reihenfolge.
 
 LOOKAHEAD
 ---------
-Jede Pruefung benutzt ausschliesslich Kerzen bis zum Ruecklauf. Das erste
-Tief traegt seine Bestaetigungsverzoegerung von ``strength`` Kerzen, das Hoch
-ist das LAUFENDE Maximum bis zu diesem Moment - nicht das spaetere Hoch des
-ganzen Fensters. An genau dieser Stelle ist die erste Fassung des
-Vorgaengers durch die Abschneide-Probe gefallen.
+Jede Pruefung eines Kandidaten benutzt ausschliesslich Kerzen bis zu seinem
+Bestaetigungsindex. Das erste Tief traegt seine Verzoegerung von ``strength``
+Kerzen, das Hoch ist das LAUFENDE Maximum - nicht das spaetere Hoch des ganzen
+Fensters. An genau dieser Stelle ist die erste Fassung des Vorgaengers durch
+die Abschneide-Probe gefallen; ``test_kein_lookahead_bei_abgeschnittener_reihe``
+haelt sie fest.
+
+Der Bestaetigungszeitpunkt liegt spaeter als der erste Ruecklauf. Das ist der
+Preis dafuer, das richtige Tief zu treffen, und darf nicht wegoptimiert
+werden.
 """
 
 from __future__ import annotations
@@ -63,36 +75,34 @@ from dataclasses import dataclass
 import numpy as np
 import pandas as pd
 
+from common.config import DoppelbodenConfig
 from common.indicators import validate_ohlcv
 from common.structure import find_swing_points
+from common.w_schablone import formfehler as _formfehler
+from common.w_schablone import glaette
 
-#: Vorgaben, aus Laurins beiden Beispielen kalibriert.
-STANDARD_STRENGTH = 6
-STANDARD_MAX_UEBER = 0.15      # zweites Tief hoechstens so viel HOEHER
-STANDARD_MAX_UNTER = 0.30      # ... und hoechstens so viel TIEFER
-STANDARD_MAX_RUECKSCHLAG = 0.25
-STANDARD_GLAETTUNG = 0.12      # Fenster der Durchschnittslinie, Anteil der Dauer
-STANDARD_MIN_DAUER = 12
-STANDARD_MAX_DAUER = 200
-STANDARD_MAX_SCHENKEL = 3.0
-STANDARD_MIN_HOEHE_ATR = 2.0
-STANDARD_MIN_ARM = 0.5
+#: Voreinstellung. Die verbindlichen Werte stehen in ``config.yaml`` unter
+#: ``patterns.doppelboden``; hier steht nur, was ohne Config gilt.
+STANDARD = DoppelbodenConfig()
 
 
 @dataclass(frozen=True)
 class WMuster:
-    """Ein Doppelboden mit dem Zeitpunkt, an dem er handelbar wird."""
+    """Eine W-Form mit dem Zeitpunkt, an dem sie bestaetigt ist."""
 
     erst_idx: int
     hoch_idx: int
     zweit_idx: int
+    #: Letzte Kerze, die zur Erkennung benutzt wurde.
+    bestaetigt_idx: int
+    #: Frueheste zulaessige Ausfuehrung: Eroeffnung der Folgekerze.
     einstieg_idx: int
     tief1: float
     tief2: float
     hoch: float
     linker_arm: float      #: Abverkauf vor dem ersten Tief, in Musterhoehen
-    sauber_auf: float      #: Rueckschlag im GEGLAETTETEN Aufschenkel
-    sauber_ab: float       #: Erholung im GEGLAETTETEN Abschenkel
+    formfehler: float      #: Abstand zur W-Schablone, 0 = deckungsgleich
+    gipfellage: float      #: Position des Schablonengipfels, Anteil der Dauer
     atr: float
 
     @property
@@ -118,6 +128,11 @@ class WMuster:
         """Wurde das erste Tief abgeraeumt? Die starke Variante."""
         return self.tief2 < self.tief1
 
+    @property
+    def verzoegerung(self) -> int:
+        """Kerzen zwischen dem zweiten Tief und seiner Bestaetigung."""
+        return self.bestaetigt_idx - self.zweit_idx
+
     def stop(self, anteil: float) -> float:
         """Stop ``anteil`` der Musterhoehe UNTER der unteren Linie."""
         if anteil <= 0:
@@ -140,27 +155,19 @@ def finde_w(
     df: pd.DataFrame,
     atr: np.ndarray | pd.Series,
     *,
-    strength: int = STANDARD_STRENGTH,
-    max_ueber_anteil: float = STANDARD_MAX_UEBER,
-    max_unter_anteil: float = STANDARD_MAX_UNTER,
-    max_rueckschlag: float = STANDARD_MAX_RUECKSCHLAG,
-    glaettung: float = STANDARD_GLAETTUNG,
-    min_dauer: int = STANDARD_MIN_DAUER,
-    max_dauer: int = STANDARD_MAX_DAUER,
-    max_schenkel_verhaeltnis: float = STANDARD_MAX_SCHENKEL,
-    min_hoehe_atr: float = STANDARD_MIN_HOEHE_ATR,
-    min_linker_arm: float = STANDARD_MIN_ARM,
-    n_gruen: int = 1,
-    max_warten: int = 20,
+    cfg: DoppelbodenConfig | None = None,
 ) -> list[WMuster]:
-    """Alle W-Formen der Reihe, in zeitlicher Ordnung.
+    """Alle W-Formen der Reihe, nach Bestaetigungszeitpunkt geordnet.
 
-    Alle Toleranzen sind Anteile der Musterhoehe, nicht Punktzahlen - ein
+    Zu einem ersten Tief koennen MEHRERE Kandidaten entstehen - siehe
+    Modul-Docstring. Aussortiert wird ueber den Formfehler, entweder hier
+    (wenn ``cfg.max_formfehler`` gesetzt ist) oder spaeter beim Auswerten.
+
+    Alle Toleranzen sind Anteile der Musterhoehe, keine Punktzahlen - ein
     20-Punkte-W und ein 100-Punkte-W bekommen dieselbe Regel.
     """
     validate_ohlcv(df)
-    if strength < 1:
-        raise ValueError("strength muss mindestens 1 sein.")
+    k = cfg or STANDARD
 
     atr_werte = np.asarray(atr, dtype=float)
     if len(atr_werte) != len(df):
@@ -168,14 +175,12 @@ def finde_w(
             f"atr hat {len(atr_werte)} Werte, der Rahmen {len(df)} Kerzen."
         )
 
-    o = df["open"].to_numpy(float)
     h = df["high"].to_numpy(float)
     l = df["low"].to_numpy(float)
     c = df["close"].to_numpy(float)
     n = len(df)
-    ist_gruen = c > o
 
-    punkte = find_swing_points(df, strength=strength)
+    punkte = find_swing_points(df, strength=k.strength)
     letzter = n - 1
     tiefs = sorted(
         ((letzter - p.bars_ago, p.price) for p in punkte if p.kind == "low"),
@@ -184,100 +189,178 @@ def finde_w(
 
     funde: list[WMuster] = []
     for erst_idx, tief1 in tiefs:
-        bekannt = erst_idx + strength
-        if bekannt >= n - 2 or erst_idx < 120:
+        # Vor dem ersten Tief muss genug Reihe fuer den linken Arm liegen.
+        if erst_idx < k.max_dauer:
             continue
-        ende = min(erst_idx + max_dauer, n - 1)
+        if erst_idx + k.strength >= n - 2:
+            continue
+        funde.extend(
+            _kandidaten_zum_tief(h, l, c, atr_werte, n, erst_idx,
+                                 float(tief1), k)
+        )
 
-        # Laufendes Hoch und Ruecklauf in EINEM Vorwaertslauf.
-        hoch, hoch_idx, zweit_idx = -np.inf, -1, -1
-        for j in range(erst_idx + 1, ende + 1):
-            if h[j] > hoch:
-                hoch, hoch_idx = h[j], j
-            if j < bekannt or hoch_idx < 0 or j - erst_idx < min_dauer:
-                continue
-            hoehe_j = hoch - tief1
-            if hoehe_j <= 0:
-                continue
-            a_j = atr_werte[j]
-            if not np.isfinite(a_j) or a_j <= 0 or hoehe_j < min_hoehe_atr * a_j:
-                continue
-            # Das zweite Tief DARF das erste unterschreiten - siehe Docstring.
-            if l[j] < tief1 - max_unter_anteil * hoehe_j:
-                break
-            if j > hoch_idx and l[j] <= tief1 + max_ueber_anteil * hoehe_j:
-                zweit_idx = j
-                break
-        if zweit_idx < 0 or hoch_idx <= erst_idx:
-            continue
-
-        hoch = float(hoch)
-        tief2 = float(l[zweit_idx])
-        tief = min(tief1, tief2)
-        hoehe = hoch - tief
-        if hoehe <= 0:
-            continue
-
-        auf = hoch_idx - erst_idx
-        ab = zweit_idx - hoch_idx
-        if auf < 3 or ab < 3:
-            continue
-        if max(auf, ab) / min(auf, ab) > max_schenkel_verhaeltnis:
-            continue
-
-        # Formtest auf der Durchschnittslinie - Laurins eigenes Kriterium.
-        fenster = max(3, int((zweit_idx - erst_idx) * glaettung))
-        seg = c[erst_idx:zweit_idx + 1]
-        if len(seg) <= fenster:
-            continue
-        glatt = np.convolve(seg, np.ones(fenster) / fenster, mode="valid")
-        if len(glatt) < 6:
-            continue
-        gipfel = int(np.argmax(glatt))
-        # Der Gipfel muss ZWISCHEN den Tiefs liegen, sonst ist es eine Flanke.
-        if not (0.1 * len(glatt) < gipfel < 0.9 * len(glatt)):
-            continue
-        auf_g, ab_g = glatt[:gipfel + 1], glatt[gipfel:]
-        spanne_auf = float(auf_g.max() - auf_g.min())
-        spanne_ab = float(ab_g.max() - ab_g.min())
-        if spanne_auf <= 0 or spanne_ab <= 0:
-            continue
-        s_auf = float(np.max(np.maximum.accumulate(auf_g) - auf_g)) / spanne_auf
-        s_ab = float(np.max(ab_g - np.minimum.accumulate(ab_g))) / spanne_ab
-        if s_auf > max_rueckschlag or s_ab > max_rueckschlag:
-            continue
-
-        # Linker Arm: ohne Abverkauf davor kehrt eine Umkehrformation nichts um.
-        vor = h[max(0, erst_idx - 120):erst_idx + 1]
-        arm = (float(vor.max()) - tief1) / hoehe
-        if arm < min_linker_arm:
-            continue
-
-        folge, einstieg = 0, -1
-        for j in range(zweit_idx, min(zweit_idx + max_warten, n - 2) + 1):
-            if l[j] < tief - max_unter_anteil * hoehe:
-                break
-            folge = folge + 1 if ist_gruen[j] else 0
-            if folge >= n_gruen:
-                einstieg = j + 1
-                break
-        if einstieg < 0 or einstieg >= n:
-            continue
-        a_e = atr_werte[einstieg]
-        if not np.isfinite(a_e) or a_e <= 0:
-            continue
-
-        funde.append(WMuster(
-            erst_idx=erst_idx, hoch_idx=hoch_idx, zweit_idx=zweit_idx,
-            einstieg_idx=einstieg, tief1=float(tief1), tief2=tief2,
-            hoch=hoch, linker_arm=arm, sauber_auf=s_auf, sauber_ab=s_ab,
-            atr=float(a_e),
-        ))
-
-    funde.sort(key=lambda f: f.einstieg_idx)
+    if k.max_formfehler is not None:
+        funde = [f for f in funde if f.formfehler <= k.max_formfehler]
+    funde.sort(key=lambda f: (f.bestaetigt_idx, f.erst_idx))
     return funde
 
 
-__all__ = ["WMuster", "finde_w"] + [
-    n for n in dir() if n.startswith("STANDARD_")
-]
+def _kandidaten_zum_tief(
+    h: np.ndarray,
+    l: np.ndarray,
+    c: np.ndarray,
+    atr_werte: np.ndarray,
+    n: int,
+    erst_idx: int,
+    tief1: float,
+    k: DoppelbodenConfig,
+) -> list[WMuster]:
+    """Alle W-Kandidaten, die auf EIN erstes Tief folgen.
+
+    Ein Vorwaertslauf. ``hoch`` ist das laufende Maximum, ``min2`` das
+    laufende Minimum des Ruecklaufs. Jedes Mal, wenn der Kurs sich von
+    ``min2`` weit genug erholt, entsteht ein Kandidat; faellt er danach
+    tiefer, gilt das neue Minimum und es kann ein weiterer entstehen.
+    """
+    bekannt = erst_idx + k.strength
+    ende = min(erst_idx + k.max_dauer, n - 2)
+
+    # Linker Arm: der Abverkauf VOR dem ersten Tief. Eine Umkehrformation
+    # ohne etwas zum Umkehren ist keine.
+    vor_hoch = float(h[max(0, erst_idx - k.max_dauer):erst_idx + 1].max())
+
+    hoch, hoch_idx = -np.inf, -1
+    nackenlinie = np.inf    # Hoch zu Beginn des Ruecklaufs, dann eingefroren
+    min2, min2_idx = np.inf, -1
+    offen = False           # Ruecklauf hat begonnen
+    gemeldet = -1           # Index des zuletzt gemeldeten zweiten Tiefs
+    kandidaten: list[WMuster] = []
+
+    for j in range(erst_idx + 1, ende + 1):
+        if h[j] > hoch:
+            hoch, hoch_idx = h[j], j
+        if j < bekannt or hoch_idx <= erst_idx:
+            continue
+
+        # Das Band immer aus (Hoch - erstes Tief). Wuerde es das laufende
+        # Minimum enthalten, zoege ein langsames Abrutschen das Band mit sich
+        # nach unten und erlaubte sich damit selbst.
+        spanne = hoch - tief1
+        if spanne <= 0:
+            continue
+
+        # Gerissen: das Tief taugt nicht mehr als untere Linie.
+        if l[j] < tief1 - k.max_unter * spanne:
+            break
+
+        if j - erst_idx < k.min_dauer:
+            continue
+
+        # Ueber die Nackenlinie hinaus - die Formation ist abgeschlossen,
+        # alles Weitere ist eine andere Struktur.
+        #
+        # Verglichen wird gegen das EINGEFRORENE Hoch vom Beginn des
+        # Ruecklaufs, nicht gegen das laufende: ``hoch`` wird oben in
+        # derselben Kerze mitgezogen, und weil ein Schlusskurs nie ueber dem
+        # eigenen Hoch liegt, konnte diese Bedingung nie zutreffen. Der
+        # Zweig war toter Code.
+        if offen and c[j] > nackenlinie:
+            break
+
+        if j > hoch_idx and l[j] <= tief1 + k.max_ueber * spanne:
+            if not offen:
+                nackenlinie = hoch
+            offen = True
+            if l[j] < min2:
+                min2, min2_idx = l[j], j
+
+        if not offen or min2_idx < 0 or j <= min2_idx or min2_idx == gemeldet:
+            continue
+
+        # Bestaetigung: Schlusskurs weit genug ueber dem laufenden Minimum.
+        if c[j] - min2 < k.bestaetigung_anteil * spanne:
+            continue
+
+        gemeldet = min2_idx
+        muster = _baue(c, atr_werte, n, erst_idx, tief1, hoch_idx,
+                       float(hoch), min2_idx, float(min2), j, vor_hoch, k)
+        if muster is not None:
+            kandidaten.append(muster)
+            if len(kandidaten) >= k.max_kandidaten:
+                break
+
+    return kandidaten
+
+
+def _baue(
+    c: np.ndarray,
+    atr_werte: np.ndarray,
+    n: int,
+    erst_idx: int,
+    tief1: float,
+    hoch_idx: int,
+    hoch: float,
+    zweit_idx: int,
+    tief2: float,
+    bestaetigt_idx: int,
+    vor_hoch: float,
+    k: DoppelbodenConfig,
+) -> WMuster | None:
+    """Ein Kandidat, wenn er Hoehe, Arm und Glaettung uebersteht.
+
+    Alles hier benutzt ausschliesslich Kerzen bis ``bestaetigt_idx``.
+    """
+    tief = min(tief1, tief2)
+    hoehe = hoch - tief
+    if hoehe <= 0:
+        return None
+
+    a = atr_werte[bestaetigt_idx]
+    if not np.isfinite(a) or a <= 0 or hoehe < k.min_hoehe_atr * a:
+        return None
+
+    arm = (vor_hoch - tief1) / hoehe
+    if arm < k.min_linker_arm:
+        return None
+
+    einstieg = bestaetigt_idx + 1
+    if einstieg >= n:
+        return None
+
+    try:
+        linie = glaette(c[erst_idx:zweit_idx + 1], k.glaettung)
+    except ValueError:
+        return None
+    if len(linie) < 5:
+        return None
+    fehler, gipfel = _formfehler(linie)
+    if not np.isfinite(fehler):
+        return None
+
+    return WMuster(
+        erst_idx=erst_idx, hoch_idx=hoch_idx, zweit_idx=zweit_idx,
+        bestaetigt_idx=bestaetigt_idx, einstieg_idx=einstieg,
+        tief1=tief1, tief2=tief2, hoch=hoch, linker_arm=arm,
+        formfehler=fehler, gipfellage=gipfel, atr=float(a),
+    )
+
+
+def bester_je_tief(funde: list[WMuster]) -> list[WMuster]:
+    """Je erstem Tief nur der Kandidat mit dem kleinsten Formfehler.
+
+    NUR FUER DIE AUSWERTUNG, NICHT FUER DEN LIVE-BOT. Die Auswahl vergleicht
+    Kandidaten, die zu verschiedenen Zeitpunkten bestaetigt wurden - wer um
+    09:51 handeln will, kann nicht wissen, dass der Kandidat von 09:57 besser
+    zur Schablone passt. Live ist der richtige Weg eine Schranke
+    (``patterns.doppelboden.max_formfehler``) und der ERSTE Kandidat, der sie
+    unterschreitet.
+    """
+    beste: dict[int, WMuster] = {}
+    for f in funde:
+        vorher = beste.get(f.erst_idx)
+        if vorher is None or f.formfehler < vorher.formfehler:
+            beste[f.erst_idx] = f
+    return sorted(beste.values(), key=lambda f: f.bestaetigt_idx)
+
+
+__all__ = ["WMuster", "finde_w", "bester_je_tief", "STANDARD"]
