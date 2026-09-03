@@ -72,3 +72,4 @@ data/w_referenz_bilder/
 data/w_kandidaten.npz
 data/w_stufenmessung.csv
 data/rueckprall.csv
+data/trailing_vergleich.csv

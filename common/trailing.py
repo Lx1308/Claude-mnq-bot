@@ -66,8 +66,15 @@ import pandas as pd
 from common.indicators import validate_ohlcv
 
 #: Wie viel vom Gewinnhoch wieder abgegeben werden darf. Laurins 20 % sind
-#: einer von sechs Werten, kein Vorgabewert.
-RUECKGABE: tuple[float, ...] = (0.10, 0.20, 0.30, 0.40, 0.50, 0.65)
+#: einer von zehn Werten, kein Vorgabewert.
+#:
+#: Die kleinen Werte stehen hier, weil der erste FVG-Lauf sein Optimum am
+#: RAND des Rasters hatte (10 %, der kleinste geprueftte Wert). Ein Optimum am
+#: Rand ist keins - es kann bedeuten, dass der wahre beste Wert daneben liegt.
+#: Wird 3 % noch besser, heisst die Regel in Wahrheit "so frueh wie moeglich
+#: raus", und das ist ein Scalp, kein Trendausstieg.
+RUECKGABE: tuple[float, ...] = (0.03, 0.05, 0.075, 0.10, 0.15, 0.20,
+                                0.30, 0.40, 0.50, 0.65)
 
 #: Ab welchem Gewinn der Stop nachgezogen wird, als Vielfaches des Risikos.
 #: 0.0 heisst "sofort" - fuer den Vergleich mit drin, obwohl es der Wert ist,
