@@ -2,6 +2,20 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
+Stand: 2026-09-03 (Abschnitt 42 - **Das W je Bestaetigungsstufe vermessen.**
+88.137 Kandidaten im Training, 20 Einstiegsstufen x 9 strukturelle Stops x 7
+strukturelle Ziele = 1.260 Zellen. Befund: der Trade-off zwischen
+Bestaetigung und Restpotential ist real und hat sein Optimum bei rund 70 %
+der Strecke zur Nackenlinie. Das Muster traegt einen ECHTEN
+Richtungsvorteil - bis zu 1,2 Prozentpunkte Trefferquote ueber einer
+volatilitaetsgematchten Kontrolle, monoton wachsend mit der Bestaetigung,
+null bei der ersten Sprosse. Er ist aber nur ein SECHSTEL der Handelskosten
+(0,47 USD gegen 2,90 USD Round Turn): **0 von 1.260 Zellen nach Kosten
+positiv.** Die W-FORM traegt nichts bei, die Bestaetigung schon. Damit ist
+der Geometriebefund vom 02.09. praezisiert, nicht widerlegt - dort fehlte die
+gematchte Kontrolle. Einziger Hebel, der gross genug waere: die Zeitebene.
+.)
+
 Stand: 2026-09-03 (Abschnitt 41 - **W-Erkennung: Kalibrierung statt Raten.**
 Der Formtest ist jetzt EINE Kennzahl (`common/w_schablone.py`, Schablonen-
 vergleich nach Laurins eigenem Kriterium) statt dreier Einzelregeln; das
@@ -4117,3 +4131,115 @@ Grenzbereich abdeckt und der Sweep später nicht nur sich selbst misst.
 
 `tests/test_muster_handelbar.py` bleibt bestehen; `common/muster_handelbar.py`
 ist damit überholt, aber noch nicht entfernt — erst wenn die W-Definition steht.
+
+## 42. Das W je Bestätigungsstufe vermessen — der Vorteil ist echt und zu klein (03.09.2026)
+
+Laurins Auftrag: nicht **einen** Einstieg festlegen, sondern die
+Bestätigungsstufe als Messgröße behandeln und die Daten entscheiden lassen,
+wo zwischen „viel Potential, wenig Bestätigung" und „viel Bestätigung, wenig
+Potential" das Optimum liegt.
+
+Vollständiger Bericht: `docs/W_STUFENMESSUNG_2026-09-03.md`.
+
+### 42.1 Neu: `common/muster_w_stufen.py` — die Bestätigungsleiter
+
+Zwei Leitern, weil es zwei Fragen sind:
+
+- **Weg-Stufen** — der Kurs hat 15/25/35/45/55/70/85/100 % der Strecke vom
+  zweiten Boden zur Nackenlinie zurückgelegt. Parameterfrei.
+- **Struktur-Stufen** — die s-te abgeschlossene Aufwärtsbewegung eines
+  Zickzacks mit Mindestbewegung als Anteil der Musterhöhe (10 % und 20 %
+  gerechnet, nicht gesetzt).
+
+Ein Bruch unter den zweiten Boden macht alle folgenden Sprossen ungültig.
+Abschneide-Probe für beide Leitern.
+
+**Fehler beim Bauen gefunden und behoben:** die erste Zickzack-Fassung zählte
+eine durchlaufende Rally als vier Bestätigungen — die Korrekturbedingung
+verglich gegen ein stehengebliebenes Tief statt gegen den mitwandernden
+Gipfel, sodass der Abstand von selbst über die Mindestbewegung wuchs.
+`test_durchlaufende_rally_ist_nicht_vier_bestaetigungen`.
+
+### 42.2 Neu: `werkzeuge/w_stufenmessung.py`
+
+88.137 Kandidaten im Training (2019-05 bis 2023-12), 20 Einstiegsstufen ×
+9 strukturelle Stops × 7 strukturelle Ziele = **1.260 Zellen**, plus
+Untergruppen je Formfehler-Viertel und Jahr (12.591 Zeilen).
+
+Stop = zweiter Boden minus Abstand, Ziel = Nackenlinie minus Abstand — der
+Abstand in **beiden** Währungen (Anteil der Musterhöhe UND absolute Punkte),
+weil vorher nicht entschieden ist, welche trägt.
+
+**Zwei Messfehler beim Nachrechnen gefunden:**
+
+1. **MFE lief über den ganzen Horizont, auch nach dem Stop.** Ein Trade, der
+   in Kerze 3 ausgestoppt wurde und danach vier Stunden stieg, sah aus, als
+   hätte er weit im Gewinn gestanden — genau die Kennzahl für „erst
+   gestiegen, dann doch eingebrochen" war damit wertlos. Jetzt getrennt:
+   `mfe_R_bis_ausstieg` und `mfe_R_horizont`.
+2. **Der Geometrievergleich war schief.** Trefferquote über die
+   *entschiedenen* Fälle, Geometrielinie über *alle*. Wer im Horizont nicht
+   entscheidet, ist kein Zufallsauszug. Machte die Abweichung um rund
+   0,7 Prozentpunkte zu groß und hätte fast einen Scheinfund erzeugt.
+
+### 42.3 Die Placebo-Kontrolle — der eigentliche Beitrag
+
+Eine Trefferquote über der Geometrielinie hat zwei Ursachen, die in der
+Tabelle gleich aussehen: das Muster, oder die Aufwärtsdrift des Kontrakts
+(7.000 → 16.000 im Training). `placebo()` trennt sie: gleiche Risiko- und
+Lohnabstände, gleiche Richtung, aber der Einstieg um **1–5 ganze Handelstage
+verschoben**.
+
+Der erste Anlauf zog gleichverteilt aus dem Training — das war unfair, weil
+ein Zufallspunkt aus sieben Jahren im Mittel in einer ruhigeren Phase sitzt
+als ein Muster. Mit der Verschiebung ist die Median-ATR gematcht (4,2 an der
+Kontrolle gegen 4,0 am Muster, also leicht *gegen* das Muster).
+
+### 42.4 Die Befunde
+
+**Der Trade-off ist real und hat ein Optimum.** Bestes E[R] je Stufe:
+−0,0216 (15 %) → −0,0147 (70 %) → −0,0233 (100 %). Genau die Kurvenform, die
+Laurin vermutet hatte.
+
+**Nur 31 % der Kandidaten erreichen die Nackenlinie**, bevor sie unter den
+zweiten Boden fallen. Über den Horizont brechen 88 %.
+
+**Das Muster trägt einen echten Richtungsvorteil — und der wächst monoton
+mit der Bestätigung:** +0,0 pp bei der ersten Sprosse, +1,2 pp bei 85 % der
+Strecke. Die Kontrolle streut dabei nur ±0,03 bis ±0,13 pp. Die monotone
+Ordnung über acht Stufen ist das stärkere Argument als jede Einzelzahl.
+
+**Damit ist der Befund vom 02.09.2026 präzisiert, nicht widerlegt:** damals
+wurde nur gegen die Geometrielinie geprüft, nicht gegen eine gematchte
+Kontrolle. Die Linie beschreibt den Markt weiterhin fast exakt — aber nicht
+bis zur letzten Nachkommastelle.
+
+**Der Vorteil ist rund ein Sechstel der Kosten.** Bester gemessener Vorteil
+0,47 USD je Trade gegen 2,90 USD Round Turn. **0 von 1.260 Zellen sind nach
+Kosten profitabel** — obwohl das Muster nachweislich etwas trägt.
+
+**Die W-FORM trägt nichts bei.** Nach Formfehler-Vierteln kein Gefälle in die
+erwartete Richtung, eher das Gegenteil. Was trägt, ist die **Bestätigung**,
+nicht die Ähnlichkeit zum Buchstaben. (Mit Vorsicht: Formfehler hängt mit
+Dauer und damit mit Höhe und Kostenanteil zusammen.)
+
+### 42.5 Was daraus folgt
+
+Der einzige Hebel, der groß genug ist, ist die **Zeitebene**. Kosten sind je
+Trade konstant, die Bewegungsgröße nicht: auf 15m ist eine Musterhöhe rund
+viermal größer, auf 1h rund achtmal. Bleibt der Vorsprung von 1,2
+Prozentpunkten dabei erhalten, dreht das Vorzeichen. Dieselbe Leiter,
+dieselbe Kontrolle, andere Kerzen — das ist die nächste Messung.
+
+### 42.6 Neue Dateien
+
+| Datei | Zweck |
+|---|---|
+| `common/muster_w_stufen.py` | Weg- und Struktur-Leiter |
+| `werkzeuge/w_stufenmessung.py` | die Messung samt Placebo |
+| `tests/test_muster_w_stufen.py` | 15 Tests |
+| `tests/test_w_stufenmessung.py` | 15 Tests |
+| `docs/W_STUFENMESSUNG_2026-09-03.md` | der Bericht |
+
+`data/w_kandidaten.npz` (Zwischenspeicher) und `data/w_stufenmessung.csv`
+(Rohtabelle) sind gitignoriert und aus der Kerzenhistorie reproduzierbar.
