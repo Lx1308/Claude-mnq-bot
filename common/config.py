@@ -492,6 +492,18 @@ class DoppelbodenConfig:
     #: Hoechstens so viele Kandidaten je erstem Tief.
     max_kandidaten: int = 6
 
+    #: Wie viele Kerzen nach dem zweiten Tief nach oben gehen muessen, bevor
+    #: die untere Linie als bestaetigt gilt.
+    #:
+    #: Laurin am 03.09.2026, woertlich: *"man kann ein W erst dann bestimmen,
+    #: indem die Bottom Line bestaetigt wurde ... fruehestens ab der zweiten
+    #: Kerze nach oben, da man da erst sieht, dass die erste erst ca. auf
+    #: selber Hoehe aufgehoert hat und der Chart wieder nach oben geht."*
+    #:
+    #: Eine einzelne gruene Kerze reicht also nicht - sie kann noch zum
+    #: Abverkauf gehoeren. Erst die zweite zeigt, dass das Tief gehalten hat.
+    min_aufwaerts_kerzen: int = 2
+
     #: Formfehler-Schranke. ``None`` heisst: nicht gesetzt, der Erkenner gibt
     #: den Wert nur aus. Die Zahl kommt aus der Kalibrierung gegen den
     #: Referenzsatz, nicht aus einer Schaetzung.
@@ -737,6 +749,8 @@ class Config:
                 bestaetigung_anteil=float(
                     dbo.get("bestaetigung_anteil", _vor.bestaetigung_anteil)),
                 max_kandidaten=int(dbo.get("max_kandidaten", _vor.max_kandidaten)),
+                min_aufwaerts_kerzen=int(dbo.get(
+                    "min_aufwaerts_kerzen", _vor.min_aufwaerts_kerzen)),
                 max_formfehler=(
                     None if dbo.get("max_formfehler") is None
                     else float(dbo["max_formfehler"])
@@ -971,6 +985,11 @@ class Config:
             raise ConfigError("patterns.doppelboden.min_linker_arm darf nicht negativ sein.")
         if dbo.max_kandidaten < 1:
             raise ConfigError("patterns.doppelboden.max_kandidaten muss >= 1 sein.")
+        if dbo.min_aufwaerts_kerzen < 1:
+            raise ConfigError(
+                "patterns.doppelboden.min_aufwaerts_kerzen muss >= 1 sein - "
+                "ohne Aufwaertskerze ist die untere Linie nicht bestaetigt."
+            )
         if dbo.max_formfehler is not None and dbo.max_formfehler <= 0:
             raise ConfigError(
                 "patterns.doppelboden.max_formfehler muss > 0 sein oder fehlen. "

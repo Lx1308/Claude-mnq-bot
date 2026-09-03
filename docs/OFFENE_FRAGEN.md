@@ -17,48 +17,62 @@ der Entscheidung, damit die Begründung nicht verloren geht.
 
 ---
 
-## 1. `max_unter: 0.15` verwirft Laurins eigenes W — offen seit 03.09.2026
+## 1. Was ist das zweite Tief? — offen seit 03.09.2026, **blockiert alles**
 
-**Blockiert:** nichts. Der Erkenner läuft, der Widerspruch ist festgehalten.
+**Blockiert:** den Referenzsatz, die Kalibrierung, jede weitere Messung.
 
-Du hast am 03.09.2026 vorgegeben: `max_unter` von 0,30 auf **0,15**. Damit
-darf das zweite Tief höchstens 15 % der Musterhöhe unter dem ersten liegen.
+Am ersten W (31.08.2026) liegen zwei Kandidaten für den zweiten Boden:
 
-Dein W vom 02.09.2026 verletzt das:
+| | Zeit | Kurs | |
+|---|---|---|---|
+| **A** | 02:42 | 29.286,50 | das **tiefste** Tief |
+| **B** | 02:53 | 29.291,75 | 5,25 Punkte **höher** — das, was Laurin markiert |
 
-| | |
-|---|---|
-| erstes Tief | 29.036,75 (13:38 UTC / 09:38 ET) |
-| Hoch | 29.119,00 (13:43) |
-| zweites Tief | 29.017,25 (13:56) |
-| Unterschreitung | 19,50 Punkte |
-| bezogen auf die damals bekannte Spanne (82,25) | **23,7 %** |
-| bezogen auf die volle Musterhöhe (101,75) | 19,2 % |
+Dazwischen: nach A kommen zwei Aufwärtskerzen (02:42, 02:43), der Kurs steigt
+40 Punkte auf 29.326 — und fällt bis 02:53 **komplett zurück**. Erst ab 02:54
+läuft die Bewegung wirklich.
 
-Mit `max_unter = 0.15` bricht der Erkenner die Suche ab, sobald der Kurs unter
-29.024,4 fällt — das ist die Kerze 13:55. Der Kandidat mit dem richtigen Tief
-um 13:56 **entsteht gar nicht**. Nachgeprüft und festgenagelt in
-`tests/test_muster_w.py::test_konflikt_max_unter_verwirft_laurins_w2`.
+**Der Erkenner kann B strukturell nicht wählen.** `_kandidaten_zum_tief`
+führt ein laufendes Minimum und meldet je Minimum höchstens einen Kandidaten;
+ein späteres, *höheres* Tief aktualisiert das Minimum nicht und wird nie zum
+zweiten Boden. Das ist keine Schwelle, sondern die Konstruktion.
 
-Es ist genau die Variante, die du selbst als die starke beschrieben hast: das
-erste Tief wird abgeräumt, und *danach* dreht es.
+Damit feuert der Erkenner bei Laurins eigenem W auf A und steigt 02:45 ein —
+in einen Trade, der 40 Punkte ins Plus lief und bei null wieder herauskam.
 
-**Was zur Wahl steht**
+**Meine Vermutung, Laurin vorgelegt und noch nicht bestätigt:** Das zweite
+Tief zählt erst, wenn danach ein **höheres Tief** entsteht. A war nur der
+erste Anlauf; weil der Kurs komplett zurückkam, war A nicht die Umkehr. B
+liegt über A, und das bestätigt, dass die untere Linie hält.
 
-1. `max_unter` zurück auf 0,30 (dann existiert dein W wieder als Kandidat)
-2. bei 0,15 bleiben und dein W als Ausnahme akzeptieren
-3. offen lassen bis AP3 — dann sagt der Referenzsatz, wie viele der von dir
-   bejahten Formen ein zweites Tief unter 15 % haben
+Wäre das die Regel, verschöbe sich der Einstieg von 02:45 auf 02:54 — und
+der Fehltrade fiele weg.
 
-**Mein Vorschlag:** 3, und bis dahin 0,30 als Arbeitswert. Ein Wert, der das
-einzige bestätigte Beispiel verwirft, kann nicht die Voreinstellung sein,
-solange nichts Besseres gemessen ist.
-
-**Deine Entscheidung.**
+**Solange das offen ist, wird nichts gemessen und kein Referenzsatz gebaut.**
+Ein Erkenner, der den zweiten Boden anders bestimmt als Laurin, misst wieder
+das falsche Objekt — zum fünften Mal.
 
 ---
 
-## 2. Der Formfehler benachteiligt kurze Muster — offen seit 03.09.2026
+## 2. Der Formfehler ordnet Laurins eigenes W nicht nach oben ein
+
+**Blockiert:** die Formfehler-Schranke aus AP3.
+
+Sein erstes W (31.08.) hat einen Formfehler von **0,207**. Der Median über
+alle 150 Kandidaten des Referenzsatzes lag bei 0,189 — sein Beispiel liegt
+also in der **schlechteren Hälfte**.
+
+Die Gegenprobe aus AP2b („Laurins Ws müssen die kleinsten Formfehler haben")
+ist damit auch am ersten Beispiel nicht bestanden. Zusammen mit dem Befund,
+dass die Formfehler-Viertel in der Messung vom 03.09. **kein Gefälle** in die
+erwartete Richtung zeigen, spricht das dafür, dass die Schablone die falsche
+Größe misst.
+
+Die Schablone wurde weiterhin **nicht** angepasst.
+
+---
+
+## 3. Der Formfehler benachteiligt kurze Muster — offen seit 03.09.2026
 
 **Blockiert:** die Schwelle aus AP3 wäre sonst dauerabhängig, ohne dass es
 jemandem auffällt.
@@ -105,7 +119,7 @@ vorschreibt und weil „melden, nicht anpassen" die Regel war. Festgehalten in
 
 ---
 
-## 3. Der Formfehler wählt bei deinem W den falschen Kandidaten — offen seit 03.09.2026
+## 4. Der Formfehler wählt bei deinem W den falschen Kandidaten — offen seit 03.09.2026
 
 **Blockiert:** die Gegenprobe aus AP2b ist damit nicht bestanden.
 
@@ -140,28 +154,39 @@ stimmt, ist die Schablone falsch — und *das* wäre der Befund.
 
 ---
 
-## 4. Bilder ohne Nachlauf — bestätigen, bevor du 250 Stück beurteilst
+## 5. Der Bildschnitt — ERLEDIGT am 03.09.2026
 
-**Blockiert:** AP3 vollständig.
+Die Beurteilungsbilder endeten am **zweiten Tief**. Damit fehlte der zweite
+Anstieg, und ein W ist Tief – Hoch – Tief – **hoch**. Laurin nach vierzig
+Bildern: *„keins war annähernd ein W."* Alle vierzig Urteile lauteten „nein" —
+die richtige Antwort auf das falsche Bild.
 
-Der Referenzsatz zeigt dir jedes Fenster **ohne** Datum, **ohne** Kursniveau
-und **ohne** das, was danach passiert ist. Der Grund steht in
-`werkzeuge/w_referenz.py`: sähest du den Ausgang, würdest du Gewinner
-beschriften statt Ws, und der Erkenner lernte den Ausgang statt der Form.
+Die Bilder reichen jetzt bis zur **Bestätigung**, dem frühesten handelbaren
+Zeitpunkt. Das ist kein Nachlauf: die Bestätigung gehört zum Muster und ist
+zum Entscheidungszeitpunkt bekannt. Verdeckt bleibt nur, was danach passiert.
 
-Das heißt aber auch: du beurteilst mit weniger Information, als du beim
-Traden hättest. Wenn dir das für die Frage „ist das ein W" zu wenig ist, sag
-es, bevor du dich durch 250 Bilder klickst — dann ändere ich das Rendering,
-nicht die Urteile.
-
-Eine **Abweichung** von der Vorgabe steckt schon drin: der Vorlauf ist nicht
-fest 40 Kerzen, sondern 80 % der Formationsdauer (mindestens 15, höchstens
-60). Bei einer 10-Kerzen-Formation hätten feste 40 Kerzen vier Fünftel des
-Bildes gefüllt, und du hättest den Vorlauf beurteilt statt die Form. Beide
-Klassen bekommen dieselbe Regel.
+Die vierzig Urteile sind gelöscht.
 
 ---
 
 ## Entschieden
 
-*(noch nichts)*
+**`max_unter` bleibt bei 0,15** (03.09.2026). Der Konflikt bestand nur gegen
+das zweite Beispiel vom 02.09., und Laurin hat es ausdrücklich verworfen
+(*„verwirf das zweite W mal komplett"*). Sein **erstes** W vom 31.08. hat
+einen Versatz von 5,75 Punkten auf 76,50 Punkte Höhe — **7,5 %**, weit
+innerhalb der Schwelle. Der Test
+`test_konflikt_max_unter_verwirft_laurins_w2` bleibt bestehen, weil er die
+Mechanik korrekt beschreibt; er ist kein Blocker mehr.
+
+**Mindestens zwei Aufwärtskerzen nach dem zweiten Tief** (03.09.2026).
+Laurins Regel, wörtlich: *„frühestens ab der zweiten Kerze nach oben, da man
+da erst sieht, dass die erste erst ca. auf selber Höhe aufgehört hat und der
+Chart wieder nach oben geht."* Eingebaut als
+`patterns.doppelboden.min_aufwaerts_kerzen`. Sie allein reicht allerdings
+nicht — siehe Punkt 1.
+
+**Die große Lesart des ersten W** (03.09.2026). Nicht der Buckel um 01:30 mit
+dem Rücksetzer um 01:50, sondern: erstes Tief 01:12, mittlere Spitze 02:11
+(die Nackenlinie), zweites Tief danach. Alles vor der mittleren Spitze gehört
+zum linken Schenkel.

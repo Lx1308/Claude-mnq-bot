@@ -17,12 +17,29 @@ Ohne Negativbeispiele misst der Sweep nur die Trefferquote INNERHALB der
 Kandidaten. Die Frage "wie viel Rauschen laesst diese Schwelle durch" waere
 gar nicht stellbar - und genau daran ist der Erkenner bisher gescheitert.
 
-WARUM DER NACHLAUF VERDECKT BLEIBT
-----------------------------------
-Auf den Bildern endet die Reihe mit dem zweiten Tief. Saehe Laurin, wie es
-weitergeht, wuerde er Gewinner beschriften statt Ws - und der Erkenner lernte
-den Ausgang statt der Form. Aus demselben Grund fehlen Datum und Kursniveau:
-mit beidem liesse sich der Chart nachschlagen.
+WO DAS BILD ENDET - UND WARUM DER ERSTE ANLAUF FALSCH WAR
+---------------------------------------------------------
+Die Bilder endeten zuerst am ZWEITEN TIEF. Der Gedanke war, den Nachlauf zu
+verdecken, damit Laurin nicht Gewinner beschriftet statt Formen. Das hat
+genau das abgeschnitten, was ein W zum W macht.
+
+Er hat nach vierzig Bildern gesagt: *"keins war annaehernd ein W ... man kann
+ein W erst dann bestimmen, indem die Bottom Line bestaetigt wurde, da das
+zweite Tief auf der Hoehe des ersten Tiefs wieder umgekehrt ist und dann nach
+oben gestiegen ist."*
+
+Er hat recht. Ein W ist Tief - Hoch - Tief - **HOCH**. Ein Bild, das am
+zweiten Tief endet, zeigt Tief - Hoch - Tief, und das sieht nie aus wie ein W.
+Alle vierzig Urteile lauteten "nein", und das war die richtige Antwort auf
+das falsche Bild.
+
+Die Bilder reichen deshalb jetzt bis zur **Bestaetigung** - dem fruehesten
+Zeitpunkt, an dem gehandelt werden koennte. Das ist kein Nachlauf: die
+Bestaetigung gehoert zum Muster und ist zum Entscheidungszeitpunkt bekannt.
+Verdeckt bleibt nur, was DANACH passiert - der Ausgang.
+
+Aus demselben Grund fehlen weiterhin Datum und Kursniveau: mit beidem liesse
+sich der Chart nachschlagen und der Ausgang doch sehen.
 
 WARUM MAN DIE BEIDEN KLASSEN NICHT UNTERSCHEIDEN KANN
 -----------------------------------------------------
@@ -167,6 +184,7 @@ def sammle_kandidaten(df: pd.DataFrame) -> pd.DataFrame:
                 "erst_idx": global_erst,
                 "hoch_idx": von + f.hoch_idx,
                 "zweit_idx": von + f.zweit_idx,
+                "bestaetigt_idx": von + f.bestaetigt_idx,
                 "hoehe": f.hoehe,
                 "dauer": f.dauer,
                 "versatz": f.versatz,
@@ -246,13 +264,20 @@ def ziehe_zufallsfenster(df: pd.DataFrame, alle: pd.DataFrame,
 
     laengen = gezogen["dauer"].to_numpy()
     ziele = rng.choice(laengen, size=anzahl, replace=len(laengen) < anzahl)
+    # Kandidatenbilder reichen bis zur Bestaetigung, also einige Kerzen ueber
+    # das zweite Tief hinaus. Die Zufallsfenster bekommen denselben Zuschlag
+    # aus derselben Verteilung - sonst waeren die Klassen an der Bildbreite
+    # zu unterscheiden.
+    zuschlaege = rng.choice(
+        (gezogen["bestaetigt_idx"] - gezogen["zweit_idx"]).to_numpy(),
+        size=anzahl, replace=True)
     rand = WEIT.max_dauer + VORLAUF_MAX + 20
     belegt = np.zeros(len(df), dtype=bool)      # nur gegen Doppelziehung
     zeilen: list[dict] = []
     gescheitert = 0
 
-    for dauer in ziele:
-        dauer = int(dauer)
+    for dauer, zuschlag in zip(ziele, zuschlaege):
+        dauer = int(dauer) + int(zuschlag)
         vor = vorlauf(dauer)
         for _ in range(VERSUCHE_JE_FENSTER):
             start = int(rng.integers(rand, len(df) - rand))
@@ -318,6 +343,8 @@ def marker(df: pd.DataFrame, start: int, ende: int) -> tuple[int, int, int]:
         hoch = 1
     if hoch >= len(h) - 1:
         hoch = len(h) - 2
+    # Das Fenster reicht ueber den zweiten Boden hinaus bis zur Bestaetigung;
+    # das tiefste Tief NACH dem Hoch ist damit weiterhin genau dieser Boden.
     tief1 = int(np.argmin(l[:hoch + 1]))
     tief2 = hoch + int(np.argmin(l[hoch:]))
     return start + tief1, start + hoch, start + tief2
@@ -499,9 +526,10 @@ def baue(anzahl_kandidaten: int, anzahl_zufall: int, seed: int) -> int:
     # Gemischte Reihenfolge. Ohne sie stuende die Klasse in der Reihenfolge.
     eintraege: list[dict] = []
     for _, k in kandidaten.iterrows():
+        # Bis zur BESTAETIGUNG, nicht bis zum zweiten Tief - siehe Docstring.
         eintraege.append({
             "art": "kandidat",
-            "start": int(k["erst_idx"]), "ende": int(k["zweit_idx"]),
+            "start": int(k["erst_idx"]), "ende": int(k["bestaetigt_idx"]),
             "dauer": int(k["dauer"]), "hoehe": float(k["hoehe"]),
             "versatz": float(k["versatz"]), "linker_arm": float(k["linker_arm"]),
             "formfehler": float(k["formfehler"]),

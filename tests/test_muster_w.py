@@ -113,18 +113,61 @@ def test_laurins_w2_wird_erst_nach_dem_tief_bestaetigt():
                    and df.index[f.zweit_idx].strftime("%H:%M") == "13:56")
     assert treffer.bestaetigt_idx > treffer.zweit_idx
     assert treffer.einstieg_idx == treffer.bestaetigt_idx + 1
-    assert df.index[treffer.bestaetigt_idx].strftime("%H:%M") == "13:57"
+    assert df.index[treffer.bestaetigt_idx].strftime("%H:%M") == "14:00"
+
+
+def test_zwei_aufwaertskerzen_entfernen_den_verfruehten_kandidaten():
+    """Laurins Regel vom 03.09.2026, an seinem eigenen W nachgerechnet.
+
+    Was die Regel tut - und was sie NICHT tut:
+
+        1 Aufwaertskerze   zwei Kandidaten
+                           13:52 zu 29.068,25  (das verfruehte Tief 13:50)
+                           13:58 zu 29.051,00  (das richtige Tief 13:56)
+        2 Aufwaertskerzen  EIN Kandidat
+                           14:01 zu 29.062,00
+
+    Der Gewinn liegt darin, dass der verfruehte Kandidat ganz verschwindet.
+    Der Einstieg beim richtigen wird dagegen 11 Punkte TEURER, nicht
+    billiger - die strengere Bestaetigung kostet Strecke.
+
+    Ob sich das rechnet, entscheidet die Messung ueber alle Faelle, nicht
+    dieses eine Beispiel. Der Test haelt nur fest, was tatsaechlich
+    passiert.
+    """
+    df, a = _laurins_w2()
+    erst = df.index.get_loc(pd.Timestamp("2026-09-02T13:38:00Z"))
+
+    def kandidaten(n_auf: int) -> list:
+        cfg = DoppelbodenConfig(max_dauer=60, max_unter=0.35,
+                                min_aufwaerts_kerzen=n_auf)
+        return sorted((f for f in finde_w(df, a, cfg=cfg)
+                       if f.erst_idx == erst), key=lambda f: f.zweit_idx)
+
+    locker, streng = kandidaten(1), kandidaten(2)
+    opens = df["open"].to_numpy()
+
+    assert [df.index[f.zweit_idx].strftime("%H:%M") for f in locker] == \
+        ["13:50", "13:56"]
+    assert [df.index[f.zweit_idx].strftime("%H:%M") for f in streng] == \
+        ["13:56"], "der verfruehte Kandidat muss verschwinden"
+
+    assert opens[locker[1].einstieg_idx] == pytest.approx(29_051.00)
+    assert opens[streng[0].einstieg_idx] == pytest.approx(29_062.00)
 
 
 def test_mehrere_kandidaten_je_erstem_tief():
     """Kein ``break`` mehr beim ersten Ruecklauf.
 
-    Zu Laurins Tief um 13:38 gehoeren zwei Kandidaten: der zu fruehe von
-    13:50 und der richtige von 13:56. Welcher gilt, entscheidet nicht die
-    Reihenfolge, sondern der Formfehler.
+    Geprueft mit der lockeren Ein-Kerzen-Regel, weil Laurins Zwei-Kerzen-
+    Regel den verfruehten Kandidaten bei seinem W gerade wegfiltert - was
+    sie soll. Die Mechanik, dass MEHRERE Kandidaten je erstem Tief entstehen
+    koennen, muss davon unabhaengig funktionieren.
     """
     df, a = _laurins_w2()
-    funde = finde_w(df, a, cfg=DoppelbodenConfig(max_dauer=60, max_unter=0.35))
+    cfg = DoppelbodenConfig(max_dauer=60, max_unter=0.35,
+                            min_aufwaerts_kerzen=1)
+    funde = finde_w(df, a, cfg=cfg)
     erst = df.index.get_loc(pd.Timestamp("2026-09-02T13:38:00Z"))
     zum_tief = sorted((f for f in funde if f.erst_idx == erst),
                       key=lambda f: f.zweit_idx)
@@ -206,7 +249,8 @@ def test_nackenlinie_ist_das_laufende_hoch_nicht_das_spaetere():
     kerzen += [(91, 92 + i, 90.5, 91.5 + i) for i in range(12)]   # Anstieg
     kerzen += [(103, 104, 102, 103)] * 6          # Hoch bei 104
     kerzen += [(103, 103.5, 91, 92)]              # Ruecklauf ans Tief
-    kerzen += [(92, 96, 91.5, 95.5)]              # Bestaetigung
+    kerzen += [(92, 94, 91.5, 93.5)]              # erste Aufwaertskerze
+    kerzen += [(93.5, 96, 93, 95.5)]              # zweite -> Bestaetigung
     kerzen += [(96, 130, 95, 129)]                # viel spaeteres Hoch: 130
     kerzen += [(129, 131, 128, 130)] * 20
     df = _rahmen(kerzen)
@@ -340,10 +384,12 @@ def test_nach_dem_nackenlinienbruch_kommt_kein_kandidat_mehr():
     kerzen += [(91, 92 + i, 90.5, 91.5 + i) for i in range(12)]
     kerzen += [(103, 104, 102, 103)] * 6          # Nackenlinie 104
     kerzen += [(103, 103.5, 91, 92)]              # Ruecklauf ans Tief
-    kerzen += [(92, 97, 91.5, 96.5)]              # Bestaetigung -> Kandidat
+    kerzen += [(92, 94, 91.5, 93.5)]              # erste Aufwaertskerze
+    kerzen += [(93.5, 97, 93, 96.5)]              # zweite -> Kandidat
     kerzen += [(97, 120, 96, 119)]                # Bruch ueber die Nackenlinie
     kerzen += [(119, 120, 90.5, 91)]              # zurueck ans alte Tief
-    kerzen += [(91, 99, 90.5, 98)]                # wuerde erneut bestaetigen
+    kerzen += [(91, 95, 90.5, 94)]                # erste Aufwaertskerze
+    kerzen += [(94, 99, 93.5, 98)]                # zweite - wuerde bestaetigen
     kerzen += [(98, 99, 97, 98)] * 20
     df = _rahmen(kerzen)
     a = np.full(len(df), 2.0)
@@ -354,3 +400,26 @@ def test_nach_dem_nackenlinienbruch_kommt_kein_kandidat_mehr():
         "nach dem Bruch der Nackenlinie darf zu diesem Tief kein weiterer "
         f"Kandidat entstehen, es sind {len(zum_ersten)}"
     )
+
+
+def test_eine_einzelne_gruene_kerze_bestaetigt_nicht():
+    """Laurins Regel: die untere Linie ist erst nach zwei Aufwaertskerzen
+    bestaetigt. Eine allein kann noch zum Abverkauf gehoeren."""
+    kerzen = [(100, 101, 99, 100)] * 60
+    kerzen += [(100, 100.5, 90, 91)]              # erstes Tief
+    kerzen += [(91, 92 + i, 90.5, 91.5 + i) for i in range(12)]
+    kerzen += [(103, 104, 102, 103)] * 6          # Nackenlinie
+    kerzen += [(103, 103.5, 91, 92)]              # Ruecklauf ans Tief
+    kerzen += [(92, 97, 91.5, 96.5)]              # EINE gruene Kerze
+    kerzen += [(96.5, 97, 91.5, 92)] * 30         # danach nur noch abwaerts
+    df = _rahmen(kerzen)
+    a = np.full(len(df), 2.0)
+    cfg = DoppelbodenConfig(strength=5, max_dauer=60, min_dauer=10,
+                            min_hoehe_atr=2.0, min_linker_arm=0.0)
+    mit_zwei = finde_w(df, a, cfg=cfg)
+    lockerer = DoppelbodenConfig(strength=5, max_dauer=60, min_dauer=10,
+                                 min_hoehe_atr=2.0, min_linker_arm=0.0,
+                                 min_aufwaerts_kerzen=1)
+    mit_einer = finde_w(df, a, cfg=lockerer)
+    assert not mit_zwei, "eine gruene Kerze darf nicht reichen"
+    assert mit_einer, "mit der lockeren Regel entstuende hier ein Kandidat"

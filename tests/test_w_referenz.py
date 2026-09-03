@@ -185,17 +185,21 @@ def test_zufallsfenster_haben_dieselbe_laengenverteilung():
     starts = np.sort(rng.integers(500, len(df) - 500, 400))
     dauern = rng.integers(10, 150, 400)
     alle = pd.DataFrame({"erst_idx": starts, "zweit_idx": starts + dauern,
+                         "bestaetigt_idx": starts + dauern + 2,
                          "dauer": dauern})
     gezogen = alle.sample(n=60, random_state=3)
 
     zufall = W.ziehe_zufallsfenster(df, alle, gezogen, 60, rng)
     assert len(zufall) >= 55, "zu viele Laengen waren nicht platzierbar"
 
-    # Jede gezogene Laenge muss aus der Kandidatenverteilung stammen ...
-    erlaubt = set(gezogen["dauer"].tolist())
+    # Die Laenge stammt aus der Kandidatenverteilung plus dem Zuschlag bis
+    # zur Bestaetigung - Kandidatenbilder reichen genauso weit.
+    zuschlag = int((gezogen["bestaetigt_idx"] - gezogen["zweit_idx"]).iloc[0])
+    erlaubt = {d + zuschlag for d in gezogen["dauer"].tolist()}
     assert set(zufall["dauer"].tolist()) <= erlaubt
     # ... und die Verteilung darf nicht wegdriften.
-    assert abs(zufall["dauer"].mean() - gezogen["dauer"].mean()) < 15
+    assert abs(zufall["dauer"].mean() - zuschlag
+               - gezogen["dauer"].mean()) < 15
     assert (zufall["zweit_idx"] - zufall["erst_idx"]).equals(zufall["dauer"])
 
 

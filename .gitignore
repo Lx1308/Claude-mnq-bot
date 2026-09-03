@@ -71,3 +71,4 @@ data/w_referenz_bilder/
 # fuer die Versionierung; die Befunde stehen in docs/.
 data/w_kandidaten.npz
 data/w_stufenmessung.csv
+data/rueckprall.csv

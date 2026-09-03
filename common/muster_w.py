@@ -175,6 +175,7 @@ def finde_w(
             f"atr hat {len(atr_werte)} Werte, der Rahmen {len(df)} Kerzen."
         )
 
+    o = df["open"].to_numpy(float)
     h = df["high"].to_numpy(float)
     l = df["low"].to_numpy(float)
     c = df["close"].to_numpy(float)
@@ -195,7 +196,7 @@ def finde_w(
         if erst_idx + k.strength >= n - 2:
             continue
         funde.extend(
-            _kandidaten_zum_tief(h, l, c, atr_werte, n, erst_idx,
+            _kandidaten_zum_tief(o, h, l, c, atr_werte, n, erst_idx,
                                  float(tief1), k)
         )
 
@@ -206,6 +207,7 @@ def finde_w(
 
 
 def _kandidaten_zum_tief(
+    o: np.ndarray,
     h: np.ndarray,
     l: np.ndarray,
     c: np.ndarray,
@@ -232,6 +234,7 @@ def _kandidaten_zum_tief(
     hoch, hoch_idx = -np.inf, -1
     nackenlinie = np.inf    # Hoch zu Beginn des Ruecklaufs, dann eingefroren
     min2, min2_idx = np.inf, -1
+    auf_seit_min = 0        # Aufwaertskerzen seit dem laufenden Minimum
     offen = False           # Ruecklauf hat begonnen
     gemeldet = -1           # Index des zuletzt gemeldeten zweiten Tiefs
     kandidaten: list[WMuster] = []
@@ -273,11 +276,20 @@ def _kandidaten_zum_tief(
             offen = True
             if l[j] < min2:
                 min2, min2_idx = l[j], j
+                auf_seit_min = 0        # neues Tief, Zaehlung von vorn
 
         if not offen or min2_idx < 0 or j <= min2_idx or min2_idx == gemeldet:
             continue
 
-        # Bestaetigung: Schlusskurs weit genug ueber dem laufenden Minimum.
+        if c[j] > o[j]:
+            auf_seit_min += 1
+
+        # Bestaetigung braucht ZWEIERLEI: genug Aufwaertskerzen und genug
+        # Weg. Die Kerzenbedingung ist Laurins Regel vom 03.09.2026 - eine
+        # einzelne gruene Kerze kann noch zum Abverkauf gehoeren, erst die
+        # zweite zeigt, dass die untere Linie gehalten hat.
+        if auf_seit_min < k.min_aufwaerts_kerzen:
+            continue
         if c[j] - min2 < k.bestaetigung_anteil * spanne:
             continue
 

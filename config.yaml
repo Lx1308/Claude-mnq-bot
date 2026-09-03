@@ -640,6 +640,11 @@ patterns:
     # trifft, entscheidet der Formfehler, nicht diese Schwelle.
     bestaetigung_anteil: 0.15
     max_kandidaten: 6
+    # Aufwaertskerzen nach dem zweiten Tief, bevor die untere Linie als
+    # bestaetigt gilt. Laurin am 03.09.2026: "fruehestens ab der zweiten
+    # Kerze nach oben, da man da erst sieht, dass die erste erst ca. auf
+    # selber Hoehe aufgehoert hat und der Chart wieder nach oben geht."
+    min_aufwaerts_kerzen: 2
     # Schranke fuer den Formfehler. Fehlt bewusst: sie kommt aus der
     # Kalibrierung gegen den Referenzsatz (AP3). Solange sie fehlt, gibt der
     # Erkenner den Formfehler nur aus und filtert nicht.
