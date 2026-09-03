@@ -450,6 +450,60 @@ class AusfuehrungConfig:
 
 
 @dataclass(frozen=True)
+class DoppelbodenConfig:
+    """Schwellen der W-Erkennung (``common/muster_w.py``).
+
+    Alle Toleranzen sind ANTEILE der Musterhoehe oder ATR-Vielfache, keine
+    Punktzahlen - damit gilt dieselbe Regel fuer ein 20-Punkte-W und ein
+    140-Punkte-W. Punktwerte im Code waeren an das Kursniveau von 2026
+    gebunden und an 2019 falsch.
+
+    Die Werte sind VORLAEUFIG. Sie stammen aus zwei Beispielen von Laurin und
+    werden gegen den Referenzsatz (``data/w_referenz.sqlite3``) kalibriert.
+    Bis dahin darf auf dieser Definition nichts gemessen werden.
+    """
+
+    #: Fenster fuer die Bestaetigung eines Swingtiefs.
+    strength: int = 6
+    #: Zweites Tief hoechstens so viel HOEHER als das erste (Anteil Hoehe).
+    max_ueber: float = 0.15
+    #: ... und hoechstens so viel TIEFER. Das Unterschreiten ist erlaubt:
+    #: das erste Tief wird abgeraeumt, und DANN dreht es.
+    max_unter: float = 0.15
+    #: Fenster der Durchschnittslinie, Anteil der Musterdauer.
+    glaettung: float = 0.12
+    #: Mindestabstand der beiden Tiefs in Kerzen.
+    min_dauer: int = 10
+    max_dauer: int = 200
+    #: Mindesthoehe in ATR - darunter ist es Rauschen, kein Muster.
+    min_hoehe_atr: float = 2.0
+    #: Abverkauf vor dem ersten Tief, in Musterhoehen. Eine Umkehrformation
+    #: ohne etwas zum Umkehren ist keine.
+    min_linker_arm: float = 0.5
+
+    #: Wie weit der Kurs ueber das laufende Minimum steigen muss, damit die
+    #: Umkehr als bestaetigt gilt - Anteil der Musterhoehe, auf Schlusskurs.
+    #:
+    #: BEWUSST KLEIN. Ein kleiner Wert erzeugt MEHR Kandidaten je erstem
+    #: Tief, nicht weniger; welcher davon die Form trifft, entscheidet der
+    #: Formfehler (``common/w_schablone.py``). Ein grosser Wert wuerde die
+    #: Auswahl schon hier treffen - und zwar blind.
+    bestaetigung_anteil: float = 0.15
+    #: Hoechstens so viele Kandidaten je erstem Tief.
+    max_kandidaten: int = 6
+
+    #: Formfehler-Schranke. ``None`` heisst: nicht gesetzt, der Erkenner gibt
+    #: den Wert nur aus. Die Zahl kommt aus der Kalibrierung gegen den
+    #: Referenzsatz, nicht aus einer Schaetzung.
+    max_formfehler: float | None = None
+
+
+@dataclass(frozen=True)
+class PatternsConfig:
+    doppelboden: DoppelbodenConfig = field(default_factory=DoppelbodenConfig)
+
+
+@dataclass(frozen=True)
 class Config:
     market: MarketConfig
     indicators: IndicatorConfig
@@ -463,6 +517,7 @@ class Config:
     logging: LoggingConfig = field(default_factory=LoggingConfig)
     backtest: BacktestConfig = field(default_factory=BacktestConfig)
     ausfuehrung: AusfuehrungConfig = field(default_factory=AusfuehrungConfig)
+    patterns: PatternsConfig = field(default_factory=PatternsConfig)
     raw: dict[str, Any] = field(default_factory=dict, repr=False)
 
     # -- Laden -------------------------------------------------------------
@@ -666,6 +721,29 @@ class Config:
             takt_sekunden=int(aus.get("takt_sekunden", 60)),
         )
 
+        pat = dict(data.get("patterns", {}) or {})
+        dbo = dict(pat.get("doppelboden", {}) or {})
+        _vor = DoppelbodenConfig()
+        patterns = PatternsConfig(
+            doppelboden=DoppelbodenConfig(
+                strength=int(dbo.get("strength", _vor.strength)),
+                max_ueber=float(dbo.get("max_ueber", _vor.max_ueber)),
+                max_unter=float(dbo.get("max_unter", _vor.max_unter)),
+                glaettung=float(dbo.get("glaettung", _vor.glaettung)),
+                min_dauer=int(dbo.get("min_dauer", _vor.min_dauer)),
+                max_dauer=int(dbo.get("max_dauer", _vor.max_dauer)),
+                min_hoehe_atr=float(dbo.get("min_hoehe_atr", _vor.min_hoehe_atr)),
+                min_linker_arm=float(dbo.get("min_linker_arm", _vor.min_linker_arm)),
+                bestaetigung_anteil=float(
+                    dbo.get("bestaetigung_anteil", _vor.bestaetigung_anteil)),
+                max_kandidaten=int(dbo.get("max_kandidaten", _vor.max_kandidaten)),
+                max_formfehler=(
+                    None if dbo.get("max_formfehler") is None
+                    else float(dbo["max_formfehler"])
+                ),
+            )
+        )
+
         cfg = Config(
             market=market,
             indicators=indicators,
@@ -677,6 +755,7 @@ class Config:
             logging=logging_cfg,
             backtest=backtest,
             ausfuehrung=ausfuehrung,
+            patterns=patterns,
             raw=dict(data),
         )
         cfg.validate()
@@ -862,3 +941,39 @@ class Config:
                 "erlaubt sind nur 'High', 'Medium', 'Low'."
             )
 
+
+        # Doppelboden. Jede dieser Pruefungen faengt einen STILLEN Ausfall:
+        # eine unsinnige Schwelle liefert nicht null Funde mit Fehlermeldung,
+        # sondern null Funde ohne - was sich liest wie "das Muster kommt
+        # nicht vor".
+        dbo = self.patterns.doppelboden
+        if dbo.strength < 1:
+            raise ConfigError("patterns.doppelboden.strength muss >= 1 sein.")
+        if dbo.min_dauer < 4:
+            raise ConfigError(
+                "patterns.doppelboden.min_dauer muss >= 4 sein - darunter hat "
+                "die Formation keine drei unterscheidbaren Wendepunkte mehr."
+            )
+        if dbo.max_dauer <= dbo.min_dauer:
+            raise ConfigError(
+                "patterns.doppelboden.max_dauer muss groesser als min_dauer sein."
+            )
+        for name in ("max_ueber", "max_unter", "glaettung", "bestaetigung_anteil"):
+            wert = getattr(dbo, name)
+            if not 0.0 < wert < 1.0:
+                raise ConfigError(
+                    f"patterns.doppelboden.{name} ({wert}) muss zwischen 0 und 1 "
+                    "liegen - es ist ein Anteil der Musterhoehe, keine Punktzahl."
+                )
+        if dbo.min_hoehe_atr <= 0:
+            raise ConfigError("patterns.doppelboden.min_hoehe_atr muss > 0 sein.")
+        if dbo.min_linker_arm < 0:
+            raise ConfigError("patterns.doppelboden.min_linker_arm darf nicht negativ sein.")
+        if dbo.max_kandidaten < 1:
+            raise ConfigError("patterns.doppelboden.max_kandidaten muss >= 1 sein.")
+        if dbo.max_formfehler is not None and dbo.max_formfehler <= 0:
+            raise ConfigError(
+                "patterns.doppelboden.max_formfehler muss > 0 sein oder fehlen. "
+                "Fehlt sie, gibt der Erkenner den Formfehler nur aus und filtert "
+                "nicht - genau das ist der Stand, solange die Kalibrierung laeuft."
+            )

@@ -599,3 +599,48 @@ ausfuehrung:
   # Kerzenschluessen, nicht auf Ticks - haeufiger als der Kerzentakt bringt
   # nichts.
   takt_sekunden: 60
+
+# ---------------------------------------------------------------------------
+# Chartmuster
+# ---------------------------------------------------------------------------
+# VORLAEUFIG. Diese Schwellen stammen aus ZWEI Beispielen von Laurin
+# (01.09. und 02.09.2026) und sind damit nicht kalibriert, sondern geraten.
+# Sie werden gegen den Referenzsatz in data/w_referenz.sqlite3 geprueft
+# (werkzeuge/w_referenz.py). Bis Laurin die Definition freigegeben hat, wird
+# auf ihr NICHTS gemessen - der Fehler vom 02.09.2026 war, dreimal vor der
+# Definition zu messen.
+#
+# Alle Toleranzen sind ANTEILE der Musterhoehe oder ATR-Vielfache. Eine
+# Punktzahl waere an das Kursniveau von 2026 gebunden und an 2019 falsch.
+patterns:
+  doppelboden:
+    strength: 6
+    # Zweites Tief hoechstens so viel hoeher / tiefer als das erste.
+    #
+    # ACHTUNG, BEKANNTER KONFLIKT (03.09.2026): max_unter 0.15 verwirft
+    # Laurins EIGENES W vom 02.09.2026 - dessen zweites Tief liegt 19,50
+    # Punkte unter dem ersten, das sind 24 % der Hoehe am Ruecklauf. Der Wert
+    # steht hier, weil Laurin ihn am 03.09. so vorgegeben hat; der Widerspruch
+    # ist in docs/OFFENE_FRAGEN.md protokolliert und wird in AP3 gegen den
+    # Referenzsatz entschieden. Festgehalten in
+    # tests/test_muster_w.py::test_konflikt_max_unter_verwirft_laurins_w2.
+    max_ueber: 0.15
+    max_unter: 0.15
+    # Fenster der Durchschnittslinie, Anteil der Musterdauer. Laurins
+    # Kriterium lautet woertlich: "es heisst W, weil wenn man eine
+    # Durchschnittslinie durchlegen wuerde, es aussieht wie ein W."
+    glaettung: 0.12
+    min_dauer: 10
+    max_dauer: 200
+    min_hoehe_atr: 2.0
+    min_linker_arm: 0.5
+    # Bestaetigung der Umkehr: Schlusskurs steigt um diesen Anteil der
+    # Musterhoehe ueber das laufende Minimum. Bewusst KLEIN - ein kleiner
+    # Wert erzeugt mehr Kandidaten je erstem Tief, und welcher davon die Form
+    # trifft, entscheidet der Formfehler, nicht diese Schwelle.
+    bestaetigung_anteil: 0.15
+    max_kandidaten: 6
+    # Schranke fuer den Formfehler. Fehlt bewusst: sie kommt aus der
+    # Kalibrierung gegen den Referenzsatz (AP3). Solange sie fehlt, gibt der
+    # Erkenner den Formfehler nur aus und filtert nicht.
+    max_formfehler: null

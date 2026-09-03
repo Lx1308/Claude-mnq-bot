@@ -2,6 +2,35 @@
 
 **Technisches Langzeitgedächtnis des Projekts "Claude Chart Bot".**
 
+Stand: 2026-09-03 (Abschnitt 42 - **Das W je Bestaetigungsstufe vermessen.**
+88.137 Kandidaten im Training, 20 Einstiegsstufen x 9 strukturelle Stops x 7
+strukturelle Ziele = 1.260 Zellen. Befund: der Trade-off zwischen
+Bestaetigung und Restpotential ist real und hat sein Optimum bei rund 70 %
+der Strecke zur Nackenlinie. Das Muster traegt einen ECHTEN
+Richtungsvorteil - bis zu 1,2 Prozentpunkte Trefferquote ueber einer
+volatilitaetsgematchten Kontrolle, monoton wachsend mit der Bestaetigung,
+null bei der ersten Sprosse. Er ist aber nur ein SECHSTEL der Handelskosten
+(0,47 USD gegen 2,90 USD Round Turn): **0 von 1.260 Zellen nach Kosten
+positiv.** Die W-FORM traegt nichts bei, die Bestaetigung schon. Damit ist
+der Geometriebefund vom 02.09. praezisiert, nicht widerlegt - dort fehlte die
+gematchte Kontrolle. Einziger Hebel, der gross genug waere: die Zeitebene.
+.)
+
+Stand: 2026-09-03 (Abschnitt 41 - **W-Erkennung: Kalibrierung statt Raten.**
+Der Formtest ist jetzt EINE Kennzahl (`common/w_schablone.py`, Schablonen-
+vergleich nach Laurins eigenem Kriterium) statt dreier Einzelregeln; das
+zweite Tief wird nicht mehr beim ersten Ruecklauf genommen, sondern als
+Minimum bis zur bestaetigten Umkehr, und pro erstem Tief entstehen mehrere
+Kandidaten. Schwellen liegen in `config.yaml` unter `patterns.doppelboden`.
+**Nichts davon ist gemessen - die Definition ist nicht freigegeben.** Neu:
+der Referenzsatz (`werkzeuge/w_referenz.py` + `_server.py`), 150 Kandidaten
+und 100 Zufallsfenster zur Beurteilung durch Laurin, damit Schwellen messbar
+werden statt erfragt. **Zwei Befunde warten auf seine Entscheidung**
+(`docs/OFFENE_FRAGEN.md`): `max_unter = 0,15` verwirft sein eigenes W, und
+der Formfehler bevorzugt bei genau diesem W den abgeschnittenen Kandidaten -
+beides als bestehende Tests festgehalten, die Schablone bewusst NICHT
+angepasst.)
+
 Stand: 2026-08-31 (Abschnitte 37–40 — **Ereignisdatenbank Etappen 1–4 und 8
 gebaut, erster Befund steht**: 2.592.334 Ereignisse + 23,3 Mio Outcome-Zeilen
 in `data/eventdb.sqlite3` (~7 GB), sieben serielle Erkenner in
@@ -3957,3 +3986,294 @@ Abfragen + deckender Index). Selbst danach ist jede Auswertung Gigabyte-Arbeit
 auf diesem Laptop. Weg 2 aus `docs/UEBERGABE_2026-08-31.md` Teil 3
 (Swing-Niveaus ausduennen, ~800 k Ereignisse weniger) ist auf dieser Hardware
 wohl noetig, nicht nur wuenschenswert - Laurins Entscheidung.
+
+## 41. W-Erkennung: Kalibrierung statt Raten (03.09.2026)
+
+Vier Anläufe an der W-Definition sind daran gescheitert, dass die Schwellen aus
+**zwei** Beispielen von Laurin stammten. Damit ließ sich kein Kandidat prüfen —
+jede Frage ging an Laurin zurück, und jede Antwort galt für genau ein Bild.
+Diese Sitzung baut die Grundlage, auf der Schwellen *messbar* werden.
+
+**Nichts davon ist gemessen. Die Definition ist nicht freigegeben.**
+
+### 41.1 Neu: `common/w_schablone.py` — die Form als eine Kennzahl
+
+Ersetzt drei Einzelregeln (`max_rueckschlag`, Gipfel-Mittigkeit,
+Schenkelverhältnis) durch den **Formfehler**, nach Laurins Kriterium: *„am
+einfachsten ist, wenn man ein W drüberlegt und das ca. passt."*
+
+Geglättetes Segment Tief 1 → Tief 2, Zeit und Preis je per Min-Max auf [0,1],
+darüber eine W-Schablone aus fünf Ankerpunkten
+`(0,0) · (p/2,½) · (p,1) · ((1+p)/2,½) · (1,0)`, Gipfellage `p` von 0,10 bis
+0,90 in 2-%-Schritten durchgeschoben. Die kleinste RMS-Abweichung ist der
+Formfehler, das zugehörige `p` die Gipfellage. Verglichen wird auf einem festen
+Raster von 101 Punkten, damit ein 15-Kerzen- und ein 200-Kerzen-Muster
+vergleichbar bleiben.
+
+Einordnung: perfektes W ≈ 0 · Gerade 0,20 · Plateau 0,35 · Rauschen 0,42 ·
+Laurins echtes W 0,085.
+
+**Das löst die Plateau-Frage ohne eigene Regel.** Die Schablone steigt und fällt
+durchgehend; ein Plateau tut weder das eine noch das andere und bekommt
+automatisch einen großen Fehler.
+
+**Bekannte Schwäche, gemessen und festgenagelt:** ein *perfektes* W bekommt
+0,082 bei 8 Stützstellen und 0,001 bei 400. Ursache ist die Min-Max-Normierung:
+liegt die Spitze zwischen zwei Kerzen, wird das beobachtete Maximum auf 1,0
+gestreckt und die ganze Linie mit hochgezogen. Kurze Muster tragen also einen
+Aufschlag in der Größenordnung des Signals. `docs/OFFENE_FRAGEN.md` Punkt 2;
+Vorschlag ist eine affine Anpassung per kleinster Quadrate statt Min-Max —
+**nicht umgesetzt**, weil die Vorgabe Min-Max lautete.
+
+### 41.2 `common/muster_w.py` neu geschrieben — das zweite Tief
+
+Der bestätigte Fehler vom 02.09.: die Schleife brach bei der **ersten** Kerze
+ab, die ins Tiefband zurückkam. Bei Laurins W lieferte das die 13:50 bei
+29.041,75 statt der 13:56 bei 29.017,25 — sechs Kerzen zu früh, 24 Punkte zu
+hoch.
+
+Korrektur:
+
+- weiterlaufen, bis die Umkehr **bestätigt** ist (Schluss ≥
+  `bestaetigung_anteil` der Musterhöhe über dem laufenden Minimum)
+- als `tief2` gilt das **Minimum** des Abschnitts, nicht der erste Treffer
+- **kein `break` mehr**: ein späteres, tieferes Minimum ergibt einen *zweiten*
+  Kandidaten zum selben ersten Tief. Welcher gilt, entscheidet die Form
+- der Bestätigungsindex ist der früheste zulässige Einstieg; ausgeführt wird
+  zur Eröffnung der Folgekerze
+
+Das Band wird immer aus `(Hoch − erstes Tief)` gebildet, nie unter Einbezug des
+laufenden Minimums — sonst zöge ein langsames Abrutschen das Band mit sich nach
+unten und erlaubte sich selbst.
+
+Weggefallen: `n_gruen`/`max_warten` (der Bestätigungszeitpunkt ersetzt sie),
+`max_rueckschlag`, `max_schenkel_verhaeltnis`, die Gipfel-Mittigkeit.
+
+**Nebenbefund beim Nachlesen: der Abbruch am Nackenlinienbruch war toter
+Code.** Verglichen wurde `close > hoch` gegen das *laufende* Hoch — das in
+derselben Kerze schon mitgezogen worden war. Ein Schlusskurs liegt nie über
+dem eigenen Hoch, die Bedingung konnte also nie zutreffen. Jetzt wird gegen
+die beim Beginn des Rücklaufs **eingefrorene** Nackenlinie verglichen.
+Festgehalten in `test_nach_dem_nackenlinienbruch_kommt_kein_kandidat_mehr`.
+
+`bester_je_tief()` wählt je erstem Tief den kleinsten Formfehler — im Docstring
+ausdrücklich als **Auswertungsfunktion, nicht live-tauglich** markiert: sie
+vergleicht Kandidaten mit verschiedenen Bestätigungszeitpunkten.
+
+### 41.3 Schwellen aus dem Code in `config.yaml`
+
+Neu `patterns.doppelboden` mit `DoppelbodenConfig`/`PatternsConfig` in
+`common/config.py`, inklusive abbrechender Startprüfungen (Anteile zwischen 0
+und 1, `max_dauer > min_dauer`, `min_dauer ≥ 4`). `max_formfehler` ist bewusst
+`null`: die Schranke kommt aus der Kalibrierung, nicht aus einer Schätzung, und
+solange sie fehlt, gibt der Erkenner den Wert nur aus.
+
+### 41.4 Zwei Befunde, die Laurin entscheiden muss
+
+Beide in `docs/OFFENE_FRAGEN.md`, beide als bestehende Tests festgehalten.
+
+**`max_unter = 0,15` verwirft Laurins eigenes W.** Sein zweites Tief liegt
+19,50 Punkte unter dem ersten = **23,7 %** der damals bekannten Spanne
+(29.119,00 − 29.036,75 = 82,25). Der Kandidat mit dem richtigen Tief entsteht
+gar nicht. `test_konflikt_max_unter_verwirft_laurins_w2` schlägt fehl, sobald
+der Widerspruch behoben ist — dann ist er zu löschen.
+
+**Die Gegenprobe aus AP2b ist nicht bestanden.** Zum selben ersten Tief hat der
+zu frühe Kandidat (13:50) Formfehler 0,040, Laurins richtiger (13:56) 0,085 —
+die Form bevorzugt den abgeschnittenen. Ursache ist 41.1. Die Schablone wurde
+bewusst **nicht** angepasst.
+
+### 41.5 Neu: der Referenzsatz — `werkzeuge/w_referenz.py` + `_server.py`
+
+150 Kandidaten aus der ganzen Historie und 100 Zufallsfenster mit derselben
+Längenverteilung, gemischt, identisch gerendert, per lokaler HTML-Seite
+beurteilt. Ablage `data/w_referenz.sqlite3`.
+
+Entwurfsentscheidungen, jede gegen eine konkrete Verfälschung:
+
+- **Negativbeispiele.** Ohne sie misst der Sweep nur die Trefferquote innerhalb
+  der Kandidaten; die Frage „wie viel Rauschen lässt diese Schwelle durch" wäre
+  nicht stellbar.
+- **Nach Monaten gleichmäßig ziehen**, nicht aus der Gesamtmenge — sonst wäre
+  der Satz eine Aussage über die volatilen Jahre.
+- **Kein Nachlauf im Bild.** Sonst beschriftet Laurin Gewinner statt Ws.
+- **Kein Datum, kein Kursniveau.** Sonst ließe sich der Chart nachschlagen und
+  der Ausgang doch sehen. Die y-Achse zeigt Punkte über dem Fenstertief.
+- **Marker für beide Klassen nach derselben rein geometrischen Regel**
+  (höchstes Hoch, tiefstes Tief davor, tiefstes Tief danach) statt aus den
+  Feldern des Erkenners — sonst wären die Klassen am Bild unterscheidbar. Bei
+  86 % der Kandidaten liefert die Regel exakt dieselben drei Punkte.
+- **`art` wird der Seite nicht ausgeliefert**, und die Tabelle `urteile` hängt
+  am Zeitfenster, nicht an der Klasse.
+- Spalte `musterart` von Anfang an — dasselbe Werkzeug gilt später für
+  M-Formation, Keil und Flagge.
+- **Abweichung von der Vorgabe:** der Vorlauf ist nicht fest 40 Kerzen, sondern
+  80 % der Formationsdauer (15 bis 60). Bei einer 10-Kerzen-Formation hätten
+  feste 40 Kerzen vier Fünftel des Bildes gefüllt, und beurteilt worden wäre
+  der Vorlauf.
+
+Die Kandidaten werden mit **bewusst weiten** Schwellen gezogen (`max_unter`
+0,35, `min_hoehe_atr` 1,0, kein Formfehler-Filter), damit der Satz den
+Grenzbereich abdeckt und der Sweep später nicht nur sich selbst misst.
+
+### 41.6 Neue Dateien und Tests
+
+| Datei | Zweck |
+|---|---|
+| `common/w_schablone.py` | Formfehler und Gipfellage |
+| `common/muster_w.py` | neu geschrieben (siehe 41.2) |
+| `werkzeuge/w_referenz.py` | Referenzsatz bauen, Bilder rendern |
+| `werkzeuge/w_referenz_server.py` | Beurteilungsseite, Port 8795 |
+| `tests/test_w_schablone.py` | 16 Tests |
+| `tests/test_muster_w.py` | 16 Tests, darunter die Abschneide-Probe |
+| `tests/daten/laurins_w2_2026-09-02.csv` | 101 echte Minutenkerzen als Fixture |
+| `docs/OFFENE_FRAGEN.md` | Entscheidungen, die bei Laurin liegen |
+
+`tests/test_muster_handelbar.py` bleibt bestehen; `common/muster_handelbar.py`
+ist damit überholt, aber noch nicht entfernt — erst wenn die W-Definition steht.
+
+## 42. Das W je Bestätigungsstufe vermessen — der Vorteil ist echt und zu klein (03.09.2026)
+
+Laurins Auftrag: nicht **einen** Einstieg festlegen, sondern die
+Bestätigungsstufe als Messgröße behandeln und die Daten entscheiden lassen,
+wo zwischen „viel Potential, wenig Bestätigung" und „viel Bestätigung, wenig
+Potential" das Optimum liegt.
+
+Vollständiger Bericht: `docs/W_STUFENMESSUNG_2026-09-03.md`.
+
+### 42.1 Neu: `common/muster_w_stufen.py` — die Bestätigungsleiter
+
+Zwei Leitern, weil es zwei Fragen sind:
+
+- **Weg-Stufen** — der Kurs hat 15/25/35/45/55/70/85/100 % der Strecke vom
+  zweiten Boden zur Nackenlinie zurückgelegt. Parameterfrei.
+- **Struktur-Stufen** — die s-te abgeschlossene Aufwärtsbewegung eines
+  Zickzacks mit Mindestbewegung als Anteil der Musterhöhe (10 % und 20 %
+  gerechnet, nicht gesetzt).
+
+Ein Bruch unter den zweiten Boden macht alle folgenden Sprossen ungültig.
+Abschneide-Probe für beide Leitern.
+
+**Fehler beim Bauen gefunden und behoben:** die erste Zickzack-Fassung zählte
+eine durchlaufende Rally als vier Bestätigungen — die Korrekturbedingung
+verglich gegen ein stehengebliebenes Tief statt gegen den mitwandernden
+Gipfel, sodass der Abstand von selbst über die Mindestbewegung wuchs.
+`test_durchlaufende_rally_ist_nicht_vier_bestaetigungen`.
+
+### 42.2 Neu: `werkzeuge/w_stufenmessung.py`
+
+88.137 Kandidaten im Training (2019-05 bis 2023-12), 20 Einstiegsstufen ×
+9 strukturelle Stops × 7 strukturelle Ziele = **1.260 Zellen**, plus
+Untergruppen je Formfehler-Viertel und Jahr (12.591 Zeilen).
+
+Stop = zweiter Boden minus Abstand, Ziel = Nackenlinie minus Abstand — der
+Abstand in **beiden** Währungen (Anteil der Musterhöhe UND absolute Punkte),
+weil vorher nicht entschieden ist, welche trägt.
+
+**Zwei Messfehler beim Nachrechnen gefunden:**
+
+1. **MFE lief über den ganzen Horizont, auch nach dem Stop.** Ein Trade, der
+   in Kerze 3 ausgestoppt wurde und danach vier Stunden stieg, sah aus, als
+   hätte er weit im Gewinn gestanden — genau die Kennzahl für „erst
+   gestiegen, dann doch eingebrochen" war damit wertlos. Jetzt getrennt:
+   `mfe_R_bis_ausstieg` und `mfe_R_horizont`.
+2. **Der Geometrievergleich war schief.** Trefferquote über die
+   *entschiedenen* Fälle, Geometrielinie über *alle*. Wer im Horizont nicht
+   entscheidet, ist kein Zufallsauszug. Machte die Abweichung um rund
+   0,7 Prozentpunkte zu groß und hätte fast einen Scheinfund erzeugt.
+
+### 42.3 Die Placebo-Kontrolle — der eigentliche Beitrag
+
+Eine Trefferquote über der Geometrielinie hat zwei Ursachen, die in der
+Tabelle gleich aussehen: das Muster, oder die Aufwärtsdrift des Kontrakts
+(7.000 → 16.000 im Training). `placebo()` trennt sie: gleiche Risiko- und
+Lohnabstände, gleiche Richtung, aber der Einstieg um **1–5 ganze Handelstage
+verschoben**.
+
+Der erste Anlauf zog gleichverteilt aus dem Training — das war unfair, weil
+ein Zufallspunkt aus sieben Jahren im Mittel in einer ruhigeren Phase sitzt
+als ein Muster. Mit der Verschiebung ist die Median-ATR gematcht (4,2 an der
+Kontrolle gegen 4,0 am Muster, also leicht *gegen* das Muster).
+
+### 42.4 Die Befunde
+
+**Der Trade-off ist real und hat ein Optimum.** Bestes E[R] je Stufe:
+−0,0216 (15 %) → −0,0147 (70 %) → −0,0233 (100 %). Genau die Kurvenform, die
+Laurin vermutet hatte.
+
+**Nur 31 % der Kandidaten erreichen die Nackenlinie**, bevor sie unter den
+zweiten Boden fallen. Über den Horizont brechen 88 %.
+
+**Das Muster trägt einen echten Richtungsvorteil — und der wächst monoton
+mit der Bestätigung:** +0,0 pp bei der ersten Sprosse, +1,2 pp bei 85 % der
+Strecke. Die Kontrolle streut dabei nur ±0,03 bis ±0,13 pp. Die monotone
+Ordnung über acht Stufen ist das stärkere Argument als jede Einzelzahl.
+
+**Damit ist der Befund vom 02.09.2026 präzisiert, nicht widerlegt:** damals
+wurde nur gegen die Geometrielinie geprüft, nicht gegen eine gematchte
+Kontrolle. Die Linie beschreibt den Markt weiterhin fast exakt — aber nicht
+bis zur letzten Nachkommastelle.
+
+**Der Vorteil ist rund ein Sechstel der Kosten.** Bester gemessener Vorteil
+0,47 USD je Trade gegen 2,90 USD Round Turn. **0 von 1.260 Zellen sind nach
+Kosten profitabel** — obwohl das Muster nachweislich etwas trägt.
+
+**Die W-FORM trägt nichts bei.** Nach Formfehler-Vierteln kein Gefälle in die
+erwartete Richtung, eher das Gegenteil. Was trägt, ist die **Bestätigung**,
+nicht die Ähnlichkeit zum Buchstaben. (Mit Vorsicht: Formfehler hängt mit
+Dauer und damit mit Höhe und Kostenanteil zusammen.)
+
+### 42.5 Was daraus folgt
+
+Der einzige Hebel, der groß genug ist, ist die **Zeitebene**. Kosten sind je
+Trade konstant, die Bewegungsgröße nicht: auf 15m ist eine Musterhöhe rund
+viermal größer, auf 1h rund achtmal. Bleibt der Vorsprung von 1,2
+Prozentpunkten dabei erhalten, dreht das Vorzeichen. Dieselbe Leiter,
+dieselbe Kontrolle, andere Kerzen — das ist die nächste Messung.
+
+### 42.6 Neue Dateien
+
+| Datei | Zweck |
+|---|---|
+| `common/muster_w_stufen.py` | Weg- und Struktur-Leiter |
+| `werkzeuge/w_stufenmessung.py` | die Messung samt Placebo |
+| `tests/test_muster_w_stufen.py` | 15 Tests |
+| `tests/test_w_stufenmessung.py` | 15 Tests |
+| `docs/W_STUFENMESSUNG_2026-09-03.md` | der Bericht |
+
+`data/w_kandidaten.npz` (Zwischenspeicher) und `data/w_stufenmessung.csv`
+(Rohtabelle) sind gitignoriert und aus der Kerzenhistorie reproduzierbar.
+
+
+## 43. Der Order-Bracket-Fix war nie ausgeliefert (03.09.2026)
+
+Laurin am 03.09.: *"der order bug in tradayri ist immernoch nicht behoben
+obwohl ich neugestartet, kompiliert etc hab."*
+
+**Ursache:** Der Fix vom 02.09. stand im Quelltext
+(`ui/frontend/src/panels/OrderPanel.tsx` schickt seither `stop_loss_points`),
+aber die Oberflaeche wird aus `ui/frontend/dist/` ausgeliefert - und dort lag
+noch der Bundle vom **31.08.2026, 00:52**. Im ausgelieferten JavaScript stand
+unveraendert `stop_loss:`, das Kursfeld.
+
+NinjaScript neu kompilieren und die App neu starten half deshalb nichts: das
+Frontend muss **gebaut** werden, nicht kompiliert.
+
+    cd uirontend && npm run build
+
+**Warum das keiner gemerkt hat:** `dist/` ist gitignoriert, es gab keinen
+Test ueber den ausgelieferten Stand, und der Server sagt beim Start nur
+etwas, wenn `dist/` ganz fehlt - nicht, wenn es veraltet ist. Ein Fix, der
+im Quelltext steht und in der Realitaet nicht wirkt, ist von innen
+unsichtbar.
+
+**Neu: `tests/test_ui_bundle_aktuell.py`.** Zwei Pruefungen:
+
+1. Keine Datei unter `ui/frontend/src` darf neuer sein als der neueste Stand
+   in `dist/` (120 Sekunden Toleranz wegen frischer Clones). Das faengt
+   JEDE ungebaute Aenderung, nicht nur diese eine.
+2. Der ausgelieferte Bundle muss `stop_loss_points` enthalten und darf
+   `stop_loss:` nicht mehr enthalten.
+
+Gegengeprueft: mit einem um zwei Stunden vorgestellten Zeitstempel schlaegt
+der Waechter an und nennt den Build-Befehl im Fehlertext.

@@ -14,13 +14,14 @@ Wochenlimit war zuletzt nach zwei bis drei Tagen aufgebraucht.
 
 ## Kontextdateien — zuerst lesen, am Ende pflegen
 
-**Vier** Dateien bilden das Projektgedächtnis (seit 23.08.2026; vorher zwei).
+**Fünf** Dateien bilden das Projektgedächtnis (seit 03.09.2026; vorher vier).
 **Zu Beginn einer Aufgabe lesen**, bevor du Code änderst:
 
 | Datei | Inhalt |
 |---|---|
 | `CODE_CHAT_KONTEXT.md` | **WIE und WIE WEIT**: Architektur, Module, Implementierungsstand, Blocker, Bugs mit Fundstelle, Tests, verworfene Ansätze |
-| `NORMALER_CHAT_KONTEXT.md` | **WAS und WARUM**: Ziele, Anforderungen, Nutzerpräferenzen, Kostenrahmen, Etappen A–F, **offene Fragen an Laurin** (Abschnitt 18) |
+| `NORMALER_CHAT_KONTEXT.md` | **WAS und WARUM**: Ziele, Anforderungen, Nutzerpräferenzen, Kostenrahmen, Etappen A–F, entschiedene Fragen (Abschnitt 18) |
+| `docs/OFFENE_FRAGEN.md` | **WAS LAURIN ENTSCHEIDEN MUSS**: Schwellen-Arbeitspunkte, verworfene Kandidaten, Übertragung auf weitere Muster, Entry-/Stop-/Zielregeln. Seit 03.09.2026; vorher standen diese Punkte in Abschnitt 18 und gingen dort unter. |
 | `MASTERPLAN.md` | **WOHIN**: Zielarchitektur, Market Intelligence, Research-Engine, Etappen G–L |
 | `ETAPPE_C_SPEZIFIKATION.md` | verbindliche Vorgabe der Ideen-Protokollierung |
 
@@ -127,7 +128,7 @@ das **repo-weit**.
 Immer das venv des Projekts verwenden:
 
 ```bash
-.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 632)
+.venv\Scripts\python.exe -m pytest                          # alle Tests (aktuell 981)
 .venv\Scripts\python.exe -m pytest tests/test_engine.py      # eine Datei
 .venv\Scripts\python.exe -m pytest -k lookahead -v           # einzelne Tests nach Namensmuster
 .venv\Scripts\python.exe -m pytest tests/test_ideas.py::test_deviation_reentry_feuert_nur_beim_uebertritt

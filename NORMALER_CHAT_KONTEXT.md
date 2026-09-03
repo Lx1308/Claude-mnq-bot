@@ -3,6 +3,11 @@
 **Dauerhaftes Gedächtnis der inhaltlichen Projektseite.**
 Für künftige Claude-Chat-Sessions ohne Zugriff auf den alten Verlauf.
 
+**Ergänzt 3. September 2026: Offene Fragen an Laurin stehen ab sofort in
+`docs/OFFENE_FRAGEN.md`, nicht mehr in Abschnitt 18. Eine Musterdefinition
+wird erst nach Laurins Freigabe gemessen; Grundlage ist ein Referenzsatz aus
+150 Kandidaten und 100 Zufallsfenstern, nicht mehr ein Einzelbeispiel.**
+
 **Stand: 25. August 2026** — vollständig gegen Code, Datenbanken und Testlauf
 gegengeprüft, nicht aus Notizen fortgeschrieben.
 **Ergänzt 25. August 2026: Market-Intelligence Phase 1 gebaut (FRED/ALFRED,
@@ -657,7 +662,28 @@ NinjaTrader funktioniert — ist bestanden.
 
 ---
 
-## 18. ENTSCHIEDENE FRAGEN (23.08.2026)
+## 18. FRAGEN AN LAURIN
+
+> **Seit dem 03.09.2026 stehen die *offenen* Fragen in einer eigenen Datei:
+> `docs/OFFENE_FRAGEN.md`.** Dort landet, was ich beim Arbeiten finde und nicht
+> selbst entscheiden darf — Arbeitspunkte von Schwellen, ob ein verworfener
+> Kandidat trotzdem im Erkenner bleibt, die Übertragung einer Methode auf
+> weitere Muster, und alles, was Entry-, Stop- oder Zielregeln betrifft.
+> Entschiedenes wandert dort in einen eigenen Abschnitt und bleibt mit
+> Begründung stehen.
+>
+> Der Grund für die eigene Datei: solche Punkte gingen hier zwischen den
+> historischen Abschnitten unter, und ich habe stattdessen weitergebaut und
+> selbst entschieden. Vier Anläufe an der W-Definition sind daran gescheitert.
+>
+> **Ebenfalls seit dem 03.09.2026 verbindlich:** Eine Musterdefinition wird
+> erst gemessen, wenn Laurin sie freigegeben hat. Grundlage der Freigabe ist
+> kein einzelnes Beispiel mehr, sondern ein **Referenzsatz** — 150 Kandidaten
+> und 100 Zufallsfenster, gemischt und ohne sichtbaren Ausgang beurteilt
+> (`werkzeuge/w_referenz.py`). Erst danach lassen sich Schwellen als
+> Falsch-Positiv- und Falsch-Negativ-Rate messen statt erfragen.
+
+### Entschieden am 23.08.2026
 
 Die fünf Punkte, die hier als offen standen, hat Laurin am 23.08.2026
 entschieden. Sie bleiben mit der Begründung stehen, damit später nachvollziehbar
